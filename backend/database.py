@@ -26,6 +26,9 @@ db_name = os.environ.get('DB_NAME', 'earnwise_production')
 
 client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]
+async def get_database():
+    """Get database instance"""
+    return db
 
 async def init_database():
     """Initialize database with indexes and constraints"""
