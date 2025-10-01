@@ -57,7 +57,7 @@ async def process_30_day_activity_bonuses():
                     await db.referral_earnings.insert_one(activity_earning)
                     
                     # Update referrer's earnings and successful referrals count
-                    await db.referrals.update_one(
+                    await db.referral_programs.update_one(
                         {"referrer_id": referrer_id},
                         {
                             "$inc": {
@@ -107,7 +107,7 @@ async def process_milestone_bonuses():
         db = await get_database()
         
         # Get all referrers with successful referrals
-        referrers = await db.referrals.find({
+        referrers = await db.referral_programs.find({
             "successful_referrals": {"$gte": 5}
         }).to_list(None)
         
@@ -150,7 +150,7 @@ async def process_milestone_bonuses():
                         await db.referral_earnings.insert_one(milestone_earning)
                         
                         # Update referrer's total earnings
-                        await db.referrals.update_one(
+                        await db.referral_programs.update_one(
                             {"referrer_id": referrer_id},
                             {"$inc": {"total_earnings": bonus_amount}}
                         )
