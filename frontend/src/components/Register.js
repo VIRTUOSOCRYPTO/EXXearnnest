@@ -23,6 +23,7 @@ const Register = () => {
     full_name: '',
     role: '', // MANDATORY - will be required
     student_level: 'undergraduate',
+    university: '', // For campus integration
     skills: [],  // Changed to array for better handling
     availability_hours: 10,
     location: '', // MANDATORY - will be required
@@ -40,18 +41,24 @@ const Register = () => {
   });
   const [passwordsMatch, setPasswordsMatch] = useState(true);
   const [trendingSkills, setTrendingSkills] = useState([]);
+  const [universities, setUniversities] = useState([]);
   const [customSkill, setCustomSkill] = useState('');
   
   const { login } = useAuth();
 
-  // Fetch trending skills on component mount
+  // Fetch trending skills and universities on component mount
   useEffect(() => {
-    const fetchTrendingSkills = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get(`${API}/auth/trending-skills`);
-        setTrendingSkills(response.data.trending_skills || response.data);
+        const [skillsResponse, universitiesResponse] = await Promise.all([
+          axios.get(`${API}/auth/trending-skills`),
+          axios.get(`${API}/gamification/universities`)
+        ]);
+        
+        setTrendingSkills(skillsResponse.data.trending_skills || skillsResponse.data);
+        setUniversities(universitiesResponse.data.universities || []);
       } catch (error) {
-        console.error('Error fetching trending skills:', error);
+        console.error('Error fetching data:', error);
         // Set default skills if API fails
         setTrendingSkills([
           { name: 'Freelancing', category: 'Business' },
@@ -63,10 +70,11 @@ const Register = () => {
           { name: 'AI Tools & Automation', category: 'Technical' },
           { name: 'Social Media Management', category: 'Marketing' }
         ]);
+        setUniversities([]);
       }
     };
     
-    fetchTrendingSkills();
+    fetchData();
   }, []);
 
   // Skills management functions
@@ -481,6 +489,29 @@ const Register = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  University/College
+                </label>
+                <select
+                  name="university"
+                  value={formData.university}
+                  onChange={handleChange}
+                  className="input-modern"
+                >
+                  <option value="">Select your institution (optional)</option>
+                  {universities.map((uni) => (
+                    <option key={uni.id} value={uni.name}>
+                      {uni.name} ({uni.short_name})
+                    </option>
+                  ))}
+                  <option value="other">Other (not listed)</option>
+                </select>
+                <p className="text-sm text-gray-500 mt-1">
+                  Select your university for campus competitions and leaderboards
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Available Hours/Week
                 </label>
                 <input
@@ -494,7 +525,9 @@ const Register = () => {
                   placeholder="10"
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Location *
@@ -511,6 +544,10 @@ const Register = () => {
                 <p className="text-sm text-gray-500 mt-1">
                   Please include city and state/country
                 </p>
+              </div>
+
+              <div>
+                {/* Empty space for grid alignment */}
               </div>
             </div>
 
