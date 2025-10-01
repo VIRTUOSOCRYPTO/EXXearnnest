@@ -10,7 +10,8 @@ import {
   ArrowRightOnRectangleIcon,
   UserCircleIcon,
   StarIcon,
-  LightBulbIcon
+  LightBulbIcon,
+  TrophyIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
 
@@ -24,6 +25,7 @@ const Navigation = () => {
     { path: '/transactions', label: 'Transactions', icon: CreditCardIcon },
     { path: '/budget', label: 'Budget', icon: BanknotesIcon },
     { path: '/goals', label: 'Goals', icon: StarIcon },
+    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
     { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
     { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
     { path: '/recommendations', label: 'Recommendations', icon: LightBulbIcon },
