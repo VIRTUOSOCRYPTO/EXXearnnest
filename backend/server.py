@@ -23,6 +23,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from cache_service import cache_service
 from fallback_hospital_db import fallback_db
+from gamification_service import get_gamification_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -752,6 +753,16 @@ async def register_user(request: Request, user_data: UserCreate):
         
         await create_user(user_doc)
         
+        # Initialize gamification profile for new user
+        gamification = await get_gamification_service()
+        await gamification.update_user_streak(user_doc["id"])  # Start with day 1 streak
+        
+        # Give welcome achievement and check for first-time badges
+        await gamification.create_milestone_achievement(user_doc["id"], "welcome", {
+            "registration_date": datetime.now(timezone.utc).isoformat(),
+            "university": user_dict.get("university")
+        })
+        
         # Create JWT token immediately - no email verification needed
         token = create_jwt_token(user_doc["id"])
         
@@ -1117,15 +1128,24 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 {"$inc": {"spent_amount": transaction_data.amount}}
             )
             
+            # Gamification hooks for expense transactions
+            gamification = await get_gamification_service()
+            await gamification.update_user_streak(user_id)
+            await gamification.check_and_award_badges(user_id, "expense_created", {
+                "amount": transaction_data.amount,
+                "category": transaction_dict["category"]
+            })
+            await gamification.update_leaderboards(user_id)
+            
         else:
             # For income transactions, no budget validation needed
             transaction = Transaction(**transaction_dict)
             await create_transaction(transaction.dict())
             
-            # Update user's total earnings and current streak if it's income
+            # Update user's total earnings and net savings
             await db.users.update_one(
                 {"id": user_id},
-                {"$inc": {"total_earnings": transaction.amount}}
+                {"$inc": {"total_earnings": transaction.amount, "net_savings": transaction.amount}}
             )
             
             # Recalculate and update income streak
@@ -1142,6 +1162,23 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
 
             # Update Monthly Income Goal progress automatically
             await update_monthly_income_goal_progress(user_id)
+            
+            # Gamification hooks for income transactions
+            gamification = await get_gamification_service()
+            await gamification.update_user_streak(user_id)
+            await gamification.check_and_award_badges(user_id, "income_created", {
+                "amount": transaction.amount,
+                "source": transaction_dict.get("source"),
+                "total_earnings": user_doc.get("total_earnings", 0) + transaction.amount
+            })
+            await gamification.update_leaderboards(user_id)
+            
+            # Create milestone achievements for first transactions
+            if len(await get_user_transactions(user_id, limit=2)) == 1:  # First transaction
+                await gamification.create_milestone_achievement(user_id, "first_transaction", {
+                    "type": "income",
+                    "amount": transaction.amount
+                })
         
         return transaction
         
@@ -1472,6 +1509,20 @@ async def create_budget_endpoint(request: Request, budget_data: BudgetCreate, us
     budget = Budget(**budget_dict)
     await create_budget(budget.dict())
     
+    # Gamification hooks for budget creation
+    gamification = await get_gamification_service()
+    user_budgets = await get_user_budgets(user_id)
+    if len(user_budgets) == 1:  # First budget
+        await gamification.create_milestone_achievement(user_id, "first_budget", {
+            "category": budget_dict["category"],
+            "amount": budget_data.allocated_amount
+        })
+    
+    await gamification.check_and_award_badges(user_id, "budget_created", {
+        "budget_count": len(user_budgets),
+        "category": budget_dict["category"]
+    })
+    
     return budget
 
 @api_router.get("/budgets", response_model=List[Budget])
@@ -1580,8 +1631,41 @@ async def update_financial_goal_endpoint(request: Request, goal_id: str, goal_up
         if "description" in update_data:
             update_data["description"] = sanitize_input(update_data["description"])
         
+        # Check if goal is being marked as completed
+        was_completed = False
+        if "is_completed" in update_data and update_data["is_completed"]:
+            # Get the goal before updating to check if it wasn't already completed
+            db = await get_database()
+            existing_goal = await db.financial_goals.find_one({"id": goal_id, "user_id": user_id})
+            if existing_goal and not existing_goal.get("is_completed", False):
+                was_completed = True
+        
         if update_data:
             await update_financial_goal(goal_id, user_id, update_data)
+        
+        # Gamification hooks for goal completion
+        if was_completed:
+            gamification = await get_gamification_service()
+            
+            # Create goal completion achievement
+            goal = await db.financial_goals.find_one({"id": goal_id, "user_id": user_id})
+            if goal:
+                achievement_id = await gamification.create_milestone_achievement(user_id, "goal_completed", {
+                    "goal_name": goal["name"],
+                    "goal_category": goal["category"],
+                    "target_amount": goal["target_amount"],
+                    "completion_date": datetime.now(timezone.utc).isoformat()
+                })
+            
+            # Check for goal-related badges
+            await gamification.check_and_award_badges(user_id, "goal_completed", {
+                "completed_goals": await db.financial_goals.count_documents({
+                    "user_id": user_id,
+                    "is_completed": True
+                })
+            })
+            
+            await gamification.update_leaderboards(user_id)
         
         return {"message": "Financial goal updated successfully"}
         
@@ -3223,6 +3307,399 @@ async def get_learning_feedback_endpoint(
     except Exception as e:
         logger.error(f"Get learning feedback error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get learning feedback")
+
+# ===== GAMIFICATION & VIRAL FEATURES ENDPOINTS =====
+
+@api_router.get("/gamification/profile")
+@limiter.limit("30/minute")
+async def get_gamification_profile_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's complete gamification profile"""
+    try:
+        gamification = await get_gamification_service()
+        profile = await gamification.get_user_gamification_profile(user_id)
+        return profile
+        
+    except Exception as e:
+        logger.error(f"Get gamification profile error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get gamification profile")
+
+@api_router.get("/gamification/badges")
+@limiter.limit("30/minute") 
+async def get_available_badges_endpoint(request: Request):
+    """Get all available badges"""
+    try:
+        db = await get_database()
+        badges = await db.badges.find({"is_active": True}).sort("requirement_value", 1).to_list(None)
+        
+        # Format badges by category
+        categorized_badges = {}
+        for badge in badges:
+            category = badge["category"]
+            if category not in categorized_badges:
+                categorized_badges[category] = []
+            
+            categorized_badges[category].append({
+                "id": str(badge["_id"]),
+                "name": badge["name"],
+                "description": badge["description"],
+                "icon": badge["icon"],
+                "rarity": badge["rarity"],
+                "requirement_type": badge["requirement_type"],
+                "requirement_value": badge["requirement_value"],
+                "points_awarded": badge["points_awarded"]
+            })
+        
+        return {
+            "badges_by_category": categorized_badges,
+            "total_badges": len(badges)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get badges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get badges")
+
+@api_router.get("/gamification/leaderboards/{leaderboard_type}")
+@limiter.limit("20/minute")
+async def get_leaderboard_endpoint(
+    request: Request,
+    leaderboard_type: str,
+    period: str = "all_time",
+    university: Optional[str] = None,
+    limit: int = 10,
+    user_id: str = Depends(get_current_user)
+):
+    """Get leaderboard rankings"""
+    try:
+        gamification = await get_gamification_service()
+        leaderboard = await gamification.get_leaderboard(leaderboard_type, period, university, limit)
+        
+        # Add current user's rank
+        user_rank = await gamification.get_user_rank(user_id, leaderboard_type, period, university)
+        leaderboard["user_rank"] = user_rank
+        
+        return leaderboard
+        
+    except Exception as e:
+        logger.error(f"Get leaderboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+
+@api_router.get("/gamification/achievements")
+@limiter.limit("30/minute")
+async def get_user_achievements_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user),
+    limit: int = 20,
+    skip: int = 0
+):
+    """Get user's achievements"""
+    try:
+        db = await get_database()
+        achievements = await db.achievements.find(
+            {"user_id": user_id}
+        ).sort("created_at", -1).skip(skip).limit(limit).to_list(None)
+        
+        # Format achievements
+        formatted_achievements = []
+        for achievement in achievements:
+            formatted_achievements.append({
+                "id": str(achievement["_id"]),
+                "type": achievement["type"],
+                "title": achievement["title"],
+                "description": achievement["description"],
+                "icon": achievement["icon"],
+                "points_earned": achievement["points_earned"],
+                "created_at": achievement["created_at"],
+                "is_shared": achievement.get("is_shared", False),
+                "reaction_count": achievement.get("reaction_count", 0),
+                "achievement_data": achievement.get("achievement_data", {})
+            })
+        
+        total_achievements = await db.achievements.count_documents({"user_id": user_id})
+        
+        return {
+            "achievements": formatted_achievements,
+            "total": total_achievements,
+            "page": skip // limit + 1,
+            "has_more": skip + limit < total_achievements
+        }
+        
+    except Exception as e:
+        logger.error(f"Get achievements error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get achievements")
+
+@api_router.post("/gamification/achievements/{achievement_id}/share")
+@limiter.limit("10/minute")
+async def share_achievement_endpoint(
+    request: Request,
+    achievement_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Share an achievement to the community"""
+    try:
+        db = await get_database()
+        
+        # Verify achievement belongs to user
+        achievement = await db.achievements.find_one({
+            "_id": achievement_id,
+            "user_id": user_id
+        })
+        
+        if not achievement:
+            raise HTTPException(status_code=404, detail="Achievement not found")
+        
+        # Mark achievement as shared
+        await db.achievements.update_one(
+            {"_id": achievement_id},
+            {"$set": {"is_shared": True}}
+        )
+        
+        # Update user's shared count
+        await db.users.update_one(
+            {"id": user_id},
+            {"$inc": {"achievements_shared": 1}}
+        )
+        
+        # Create community post
+        community_post = {
+            "user_id": user_id,
+            "type": "achievement_share",
+            "content": f"Just earned the '{achievement['title']}' badge! {achievement['description']}",
+            "achievement_id": achievement_id,
+            "created_at": datetime.now(timezone.utc),
+            "like_count": 0,
+            "comment_count": 0,
+            "share_count": 0,
+            "is_featured": False
+        }
+        
+        result = await db.community_posts.insert_one(community_post)
+        
+        # Check for social badges
+        gamification = await get_gamification_service()
+        await gamification.check_and_award_badges(user_id, "achievement_shared", {
+            "shared_count": await db.achievements.count_documents({
+                "user_id": user_id,
+                "is_shared": True
+            })
+        })
+        
+        return {
+            "message": "Achievement shared successfully",
+            "post_id": str(result.inserted_id),
+            "shared": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Share achievement error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to share achievement")
+
+@api_router.get("/gamification/community/feed")
+@limiter.limit("30/minute")
+async def get_community_feed_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user),
+    limit: int = 20,
+    skip: int = 0,
+    university_only: bool = False
+):
+    """Get community activity feed"""
+    try:
+        db = await get_database()
+        
+        # Build query
+        query = {}
+        if university_only:
+            user = await get_user_by_id(user_id)
+            if user and user.get("university"):
+                # Get posts from users in the same university
+                university_users = await db.users.find(
+                    {"university": user["university"]}
+                ).to_list(None)
+                university_user_ids = [u["id"] for u in university_users]
+                query["user_id"] = {"$in": university_user_ids}
+        
+        # Get community posts
+        posts = await db.community_posts.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(None)
+        
+        # Format posts with user details
+        formatted_posts = []
+        for post in posts:
+            post_user = await get_user_by_id(post["user_id"])
+            if post_user:
+                formatted_post = {
+                    "id": str(post["_id"]),
+                    "type": post["type"],
+                    "content": post["content"],
+                    "created_at": post["created_at"],
+                    "like_count": post["like_count"],
+                    "comment_count": post["comment_count"],
+                    "share_count": post["share_count"],
+                    "is_featured": post["is_featured"],
+                    "user": {
+                        "id": post_user["id"],
+                        "full_name": post_user["full_name"],
+                        "avatar": post_user.get("avatar", "boy"),
+                        "university": post_user.get("university"),
+                        "level": post_user.get("level", 1),
+                        "title": post_user.get("title", "Beginner")
+                    }
+                }
+                
+                # Add achievement details if it's an achievement share
+                if post.get("achievement_id"):
+                    achievement = await db.achievements.find_one({"_id": post["achievement_id"]})
+                    if achievement:
+                        formatted_post["achievement"] = {
+                            "id": str(achievement["_id"]),
+                            "title": achievement["title"],
+                            "description": achievement["description"],
+                            "icon": achievement["icon"],
+                            "points_earned": achievement["points_earned"]
+                        }
+                
+                formatted_posts.append(formatted_post)
+        
+        total_posts = await db.community_posts.count_documents(query)
+        
+        return {
+            "posts": formatted_posts,
+            "total": total_posts,
+            "page": skip // limit + 1,
+            "has_more": skip + limit < total_posts
+        }
+        
+    except Exception as e:
+        logger.error(f"Get community feed error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get community feed")
+
+@api_router.post("/gamification/community/posts/{post_id}/like")
+@limiter.limit("30/minute")
+async def like_community_post_endpoint(
+    request: Request,
+    post_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Like a community post"""
+    try:
+        db = await get_database()
+        
+        # Check if post exists
+        post = await db.community_posts.find_one({"_id": post_id})
+        if not post:
+            raise HTTPException(status_code=404, detail="Post not found")
+        
+        # Check if user already liked this post
+        existing_like = await db.community_interactions.find_one({
+            "user_id": user_id,
+            "post_id": post_id,
+            "interaction_type": "like"
+        })
+        
+        if existing_like:
+            # Unlike - remove the interaction and decrement count
+            await db.community_interactions.delete_one({"_id": existing_like["_id"]})
+            await db.community_posts.update_one(
+                {"_id": post_id},
+                {"$inc": {"like_count": -1}}
+            )
+            return {"liked": False, "message": "Post unliked"}
+        else:
+            # Like - create interaction and increment count
+            interaction = {
+                "user_id": user_id,
+                "target_user_id": post["user_id"],
+                "post_id": post_id,
+                "interaction_type": "like",
+                "created_at": datetime.now(timezone.utc)
+            }
+            
+            await db.community_interactions.insert_one(interaction)
+            await db.community_posts.update_one(
+                {"_id": post_id},
+                {"$inc": {"like_count": 1}}
+            )
+            
+            return {"liked": True, "message": "Post liked"}
+        
+    except Exception as e:
+        logger.error(f"Like post error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to like post")
+
+@api_router.get("/gamification/universities")
+@limiter.limit("30/minute")
+async def get_universities_endpoint(request: Request):
+    """Get list of universities for registration"""
+    try:
+        db = await get_database()
+        universities = await db.universities.find().sort("name", 1).to_list(None)
+        
+        formatted_universities = []
+        for uni in universities:
+            formatted_universities.append({
+                "id": str(uni["_id"]),
+                "name": uni["name"],
+                "short_name": uni["short_name"],
+                "location": uni["location"],
+                "type": uni["type"],
+                "is_verified": uni["is_verified"],
+                "student_count": uni["student_count"]
+            })
+        
+        return {
+            "universities": formatted_universities,
+            "total": len(formatted_universities)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get universities error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get universities")
+
+@api_router.post("/gamification/universities")
+@limiter.limit("5/minute")
+async def create_university_endpoint(
+    request: Request,
+    university_data: UniversityCreate,
+    user_id: str = Depends(get_current_user)
+):
+    """Create a new university (user-submitted)"""
+    try:
+        db = await get_database()
+        
+        # Check if university already exists
+        existing = await db.universities.find_one({
+            "$or": [
+                {"name": university_data.name},
+                {"short_name": university_data.short_name}
+            ]
+        })
+        
+        if existing:
+            return {
+                "id": str(existing["_id"]),
+                "name": existing["name"],
+                "message": "University already exists"
+            }
+        
+        # Create new university
+        university_dict = university_data.dict()
+        university_dict["is_verified"] = False  # User-submitted universities need admin verification
+        university_dict["student_count"] = 1  # Creator is the first student
+        university_dict["created_at"] = datetime.now(timezone.utc)
+        
+        result = await db.universities.insert_one(university_dict)
+        
+        return {
+            "id": str(result.inserted_id),
+            "name": university_data.name,
+            "message": "University created successfully (pending verification)"
+        }
+        
+    except Exception as e:
+        logger.error(f"Create university error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create university")
 
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
