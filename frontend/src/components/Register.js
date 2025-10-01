@@ -42,6 +42,8 @@ const Register = () => {
   const [passwordsMatch, setPasswordsMatch] = useState(true);
   const [trendingSkills, setTrendingSkills] = useState([]);
   const [universities, setUniversities] = useState([]);
+  const [suggestedUniversities, setSuggestedUniversities] = useState([]);
+  const [loadingUniversities, setLoadingUniversities] = useState(false);
   const [customSkill, setCustomSkill] = useState('');
   
   const { login } = useAuth();
@@ -50,15 +52,10 @@ const Register = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [skillsResponse, universitiesResponse] = await Promise.all([
-          axios.get(`${API}/auth/trending-skills`),
-          axios.get(`${API}/gamification/universities`)
-        ]);
-        
+        const skillsResponse = await axios.get(`${API}/auth/trending-skills`);
         setTrendingSkills(skillsResponse.data.trending_skills || skillsResponse.data);
-        setUniversities(universitiesResponse.data.universities || []);
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching skills:', error);
         // Set default skills if API fails
         setTrendingSkills([
           { name: 'Freelancing', category: 'Business' },
@@ -70,12 +67,43 @@ const Register = () => {
           { name: 'AI Tools & Automation', category: 'Technical' },
           { name: 'Social Media Management', category: 'Marketing' }
         ]);
-        setUniversities([]);
       }
     };
     
     fetchData();
   }, []);
+
+  // Smart university suggestions based on location and student level
+  useEffect(() => {
+    const fetchUniversitySuggestions = async () => {
+      if (!formData.location.trim() || formData.location.length < 3 || !formData.student_level) {
+        setSuggestedUniversities([]);
+        return;
+      }
+
+      setLoadingUniversities(true);
+      try {
+        const response = await axios.get(`${API}/gamification/universities/suggestions`, {
+          params: {
+            location: formData.location,
+            student_level: formData.student_level,
+            limit: 8
+          }
+        });
+        
+        setSuggestedUniversities(response.data.suggestions || []);
+      } catch (error) {
+        console.error('Error fetching university suggestions:', error);
+        setSuggestedUniversities([]);
+      } finally {
+        setLoadingUniversities(false);
+      }
+    };
+
+    // Debounce the API call
+    const timeoutId = setTimeout(fetchUniversitySuggestions, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [formData.location, formData.student_level]);
 
   // Skills management functions
   const toggleSkill = (skillName) => {
@@ -491,22 +519,82 @@ const Register = () => {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   University/College
                 </label>
-                <select
-                  name="university"
-                  value={formData.university}
-                  onChange={handleChange}
-                  className="input-modern"
-                >
-                  <option value="">Select your institution (optional)</option>
-                  {universities.map((uni) => (
-                    <option key={uni.id} value={uni.name}>
-                      {uni.name} ({uni.short_name})
-                    </option>
-                  ))}
-                  <option value="other">Other (not listed)</option>
-                </select>
-                <p className="text-sm text-gray-500 mt-1">
-                  Select your university for campus competitions and leaderboards
+                
+                {/* Smart University Suggestions */}
+                <div className="space-y-3">
+                  <select
+                    name="university"
+                    value={formData.university}
+                    onChange={handleChange}
+                    className="input-modern"
+                  >
+                    <option value="">Select your institution (optional)</option>
+                    
+                    {/* Smart Suggestions Section */}
+                    {suggestedUniversities.length > 0 && (
+                      <optgroup label="🎯 Recommended for you">
+                        {suggestedUniversities.slice(0, 5).map((uni) => (
+                          <option key={uni.id} value={uni.name}>
+                            {uni.name} {uni.distance_match ? '📍' : uni.level_match ? '🎓' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    
+                    {/* More Options */}
+                    {suggestedUniversities.length > 5 && (
+                      <optgroup label="🏫 More Options">
+                        {suggestedUniversities.slice(5).map((uni) => (
+                          <option key={uni.id} value={uni.name}>
+                            {uni.name} - {uni.city}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    
+                    <option value="other">Other (not listed)</option>
+                  </select>
+                  
+                  {/* Loading indicator */}
+                  {loadingUniversities && (
+                    <div className="flex items-center text-sm text-emerald-600">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-600 mr-2"></div>
+                      Finding universities near you...
+                    </div>
+                  )}
+                  
+                  {/* Smart suggestions info */}
+                  {suggestedUniversities.length > 0 && !loadingUniversities && (
+                    <div className="text-sm text-gray-600 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                      <div className="flex items-center mb-2">
+                        <span className="text-emerald-600 font-semibold">🎯 Smart Suggestions</span>
+                      </div>
+                      <div className="text-xs space-y-1">
+                        <div className="flex items-center">
+                          <span className="mr-2">📍</span>
+                          <span>Near your location ({formData.location})</span>
+                        </div>
+                        <div className="flex items-center">
+                          <span className="mr-2">🎓</span>
+                          <span>Matches your level ({formData.student_level})</span>
+                        </div>
+                        <p className="text-emerald-700 font-medium mt-2">
+                          Found {suggestedUniversities.length} institutions for you!
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* No suggestions message */}
+                  {suggestedUniversities.length === 0 && !loadingUniversities && formData.location.length >= 3 && (
+                    <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <p>💡 Enter your location and student level to see personalized university suggestions!</p>
+                    </div>
+                  )}
+                </div>
+                
+                <p className="text-sm text-gray-500 mt-2">
+                  Join campus competitions and connect with your peers
                 </p>
               </div>
 
