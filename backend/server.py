@@ -1190,6 +1190,9 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 {"$inc": {"spent_amount": transaction_data.amount}}
             )
             
+            # Update challenge progress for savings challenges
+            await update_user_challenge_progress(user_id)
+            
             # Gamification hooks for expense transactions
             gamification = await get_gamification_service()
             await gamification.update_user_streak(user_id)
@@ -1224,6 +1227,9 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
 
             # Update Monthly Income Goal progress automatically
             await update_monthly_income_goal_progress(user_id)
+            
+            # Update challenge progress for savings challenges
+            await update_user_challenge_progress(user_id)
             
             # Gamification hooks for income transactions
             gamification = await get_gamification_service()
@@ -1705,6 +1711,10 @@ async def update_financial_goal_endpoint(request: Request, goal_id: str, goal_up
         if update_data:
             await update_financial_goal(goal_id, user_id, update_data)
         
+        # Update challenge progress for goal completion challenges
+        if was_completed:
+            await update_user_challenge_progress(user_id)
+            
         # Gamification hooks for goal completion
         if was_completed:
             gamification = await get_gamification_service()
@@ -4223,6 +4233,528 @@ async def process_referral_signup(request: Request, referral_code: str, new_user
     except Exception as e:
         logger.error(f"Process referral signup error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to process referral signup")
+
+# ===== SOCIAL CHALLENGES SYSTEM =====
+
+@api_router.get("/challenges")
+@limiter.limit("20/minute")
+async def get_active_challenges(request: Request, current_user: str = Depends(get_current_user)):
+    """Get all active challenges"""
+    try:
+        db = await get_database()
+        
+        # Get all active challenges
+        challenges = await db.challenges.find({
+            "is_active": True,
+            "end_date": {"$gte": datetime.now(timezone.utc)}
+        }).sort("created_at", -1).to_list(None)
+        
+        # Get user's participation status for each challenge
+        for challenge in challenges:
+            participant = await db.challenge_participants.find_one({
+                "challenge_id": challenge["id"],
+                "user_id": current_user["id"]
+            })
+            challenge["is_joined"] = participant is not None
+            challenge["user_progress"] = participant["current_progress"] if participant else 0.0
+            challenge["user_rank"] = participant["rank"] if participant else None
+        
+        return {"challenges": challenges}
+        
+    except Exception as e:
+        logger.error(f"Get challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenges")
+
+@api_router.post("/challenges/create")
+@limiter.limit("5/minute") 
+async def create_challenge(request: Request, challenge_data: ChallengeCreate, current_user: str = Depends(get_current_user)):
+    """Create a new challenge (admin can create featured challenges, users can create peer challenges)"""
+    try:
+        db = await get_database()
+        
+        # Check if user is admin
+        user = await get_user_by_id(current_user)
+        is_admin = user.get("role") == "admin" if user else False
+        
+        # Calculate end date
+        start_date = datetime.now(timezone.utc)
+        end_date = start_date + timedelta(days=challenge_data.duration_days)
+        
+        challenge_dict = challenge_data.dict()
+        challenge_dict.update({
+            "id": str(uuid.uuid4()),
+            "start_date": start_date,
+            "end_date": end_date,
+            "created_by": current_user,
+            "created_at": start_date,
+            "is_active": is_admin,  # Admin challenges are active immediately, user challenges need approval
+            "participant_count": 0,
+            "featured": is_admin  # Admin challenges are featured
+        })
+        
+        challenge = Challenge(**challenge_dict)
+        await db.challenges.insert_one(challenge.dict())
+        
+        # If user challenge, add to moderation queue
+        if not is_admin:
+            await db.challenge_moderation.insert_one({
+                "challenge_id": challenge.id,
+                "created_by": current_user,
+                "status": "pending_review",
+                "created_at": datetime.now(timezone.utc)
+            })
+        
+        return {
+            "challenge_id": challenge.id,
+            "message": "Challenge created successfully" if is_admin else "Challenge submitted for review",
+            "needs_approval": not is_admin
+        }
+        
+    except Exception as e:
+        logger.error(f"Create challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create challenge")
+
+@api_router.post("/challenges/{challenge_id}/join")
+@limiter.limit("10/minute")
+async def join_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+    """Join a challenge"""
+    try:
+        db = await get_database()
+        
+        # Check if challenge exists and is active
+        challenge = await db.challenges.find_one({
+            "id": challenge_id,
+            "is_active": True,
+            "end_date": {"$gte": datetime.now(timezone.utc)}
+        })
+        
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found or inactive")
+        
+        # Check if user already joined
+        existing = await db.challenge_participants.find_one({
+            "challenge_id": challenge_id,
+            "user_id": current_user
+        })
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Already joined this challenge")
+        
+        # Check participant limit
+        if challenge.get("max_participants"):
+            participant_count = await db.challenge_participants.count_documents({
+                "challenge_id": challenge_id
+            })
+            if participant_count >= challenge["max_participants"]:
+                raise HTTPException(status_code=400, detail="Challenge is full")
+        
+        # Create participant record
+        participant_data = {
+            "id": str(uuid.uuid4()),
+            "challenge_id": challenge_id,
+            "user_id": current_user["id"],
+            "joined_at": datetime.now(timezone.utc),
+            "current_progress": 0.0,
+            "is_completed": False
+        }
+        
+        await db.challenge_participants.insert_one(participant_data)
+        
+        # Update challenge participant count
+        await db.challenges.update_one(
+            {"id": challenge_id},
+            {"$inc": {"participant_count": 1}}
+        )
+        
+        # Initialize progress based on challenge type
+        await update_challenge_progress(challenge_id, current_user["id"])
+        
+        return {"message": "Successfully joined challenge", "challenge_id": challenge_id}
+        
+    except Exception as e:
+        logger.error(f"Join challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to join challenge")
+
+@api_router.get("/challenges/{challenge_id}/leaderboard")
+@limiter.limit("20/minute")
+async def get_challenge_leaderboard(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+    """Get challenge leaderboard"""
+    try:
+        db = await get_database()
+        
+        # Get challenge details
+        challenge = await db.challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Get all participants with progress
+        participants = await db.challenge_participants.find({
+            "challenge_id": challenge_id
+        }).sort("current_progress", -1).to_list(None)
+        
+        # Enrich with user data
+        leaderboard = []
+        for idx, participant in enumerate(participants):
+            user = await get_user_by_id(participant["user_id"])
+            if user:
+                leaderboard.append({
+                    "rank": idx + 1,
+                    "user_id": participant["user_id"],
+                    "user_name": user.get("full_name", "Unknown"),
+                    "avatar": user.get("avatar", "man"),
+                    "progress": participant["current_progress"],
+                    "progress_percentage": min(100, (participant["current_progress"] / challenge["target_value"]) * 100) if challenge["target_value"] > 0 else 0,
+                    "is_completed": participant["is_completed"],
+                    "completion_date": participant.get("completion_date"),
+                    "is_current_user": participant["user_id"] == current_user["id"]
+                })
+        
+        # Find current user's rank
+        user_rank = None
+        for item in leaderboard:
+            if item["is_current_user"]:
+                user_rank = item["rank"]
+                break
+        
+        return {
+            "challenge": {
+                "id": challenge["id"],
+                "title": challenge["title"],
+                "description": challenge["description"],
+                "target_value": challenge["target_value"],
+                "challenge_type": challenge["challenge_type"],
+                "end_date": challenge["end_date"]
+            },
+            "leaderboard": leaderboard[:50],  # Top 50
+            "user_rank": user_rank,
+            "total_participants": len(participants)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get challenge leaderboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenge leaderboard")
+
+@api_router.get("/challenges/my-challenges")
+@limiter.limit("20/minute")
+async def get_my_challenges(request: Request, current_user: str = Depends(get_current_user)):
+    """Get user's active challenges with progress"""
+    try:
+        db = await get_database()
+        
+        # Get user's challenge participations
+        participations = await db.challenge_participants.find({
+            "user_id": current_user["id"]
+        }).to_list(None)
+        
+        my_challenges = []
+        for participation in participations:
+            challenge = await db.challenges.find_one({"id": participation["challenge_id"]})
+            if challenge and challenge.get("is_active", True):
+                # Calculate progress percentage
+                progress_percentage = min(100, (participation["current_progress"] / challenge["target_value"]) * 100) if challenge["target_value"] > 0 else 0
+                
+                # Get user's rank in this challenge
+                better_participants = await db.challenge_participants.count_documents({
+                    "challenge_id": challenge["id"],
+                    "current_progress": {"$gt": participation["current_progress"]}
+                })
+                user_rank = better_participants + 1
+                
+                my_challenges.append({
+                    "challenge": challenge,
+                    "participation": participation,
+                    "progress_percentage": progress_percentage,
+                    "user_rank": user_rank,
+                    "days_remaining": (challenge["end_date"] - datetime.now(timezone.utc)).days,
+                    "is_expired": challenge["end_date"] < datetime.now(timezone.utc)
+                })
+        
+        # Sort by remaining time
+        my_challenges.sort(key=lambda x: x["days_remaining"])
+        
+        return {"my_challenges": my_challenges}
+        
+    except Exception as e:
+        logger.error(f"Get my challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get user challenges")
+
+@api_router.post("/challenges/{challenge_id}/share")
+@limiter.limit("5/minute")
+async def generate_challenge_share_content(request: Request, challenge_id: str, share_type: str, current_user: dict = Depends(get_current_user)):
+    """Generate shareable content for social media platforms"""
+    try:
+        db = await get_database()
+        
+        # Get challenge and user participation
+        challenge = await db.challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+            
+        participant = await db.challenge_participants.find_one({
+            "challenge_id": challenge_id,
+            "user_id": current_user["id"]
+        })
+        
+        if not participant:
+            raise HTTPException(status_code=400, detail="You must join the challenge first")
+        
+        user = await get_user_by_id(current_user["id"])
+        user_name = user.get("full_name", "EarnNest User")
+        
+        # Calculate progress
+        progress_percentage = min(100, (participant["current_progress"] / challenge["target_value"]) * 100) if challenge["target_value"] > 0 else 0
+        
+        # Get user rank
+        better_participants = await db.challenge_participants.count_documents({
+            "challenge_id": challenge_id,
+            "current_progress": {"$gt": participant["current_progress"]}
+        })
+        user_rank = better_participants + 1
+        
+        # Generate platform-specific content
+        base_url = "https://earnest.app"  # Replace with actual domain
+        challenge_url = f"{base_url}/challenges/{challenge_id}"
+        
+        share_content = {}
+        
+        if share_type == "whatsapp":
+            if participant["is_completed"]:
+                message = f"🎉 I just completed the '{challenge['title']}' challenge on EarnNest! 💪\n\n"
+                message += f"Target: ₹{challenge['target_value']:,.0f}\n"
+                message += f"My Achievement: ₹{participant['current_progress']:,.0f}\n"
+                message += f"Final Rank: #{user_rank}\n\n"
+                message += f"Join me in building better financial habits! 📱\n{challenge_url}"
+            else:
+                message = f"🚀 I'm taking on the '{challenge['title']}' challenge on EarnNest!\n\n"
+                message += f"Target: ₹{challenge['target_value']:,.0f}\n"
+                message += f"Current Progress: {progress_percentage:.0f}% (₹{participant['current_progress']:,.0f})\n"
+                message += f"Current Rank: #{user_rank}\n\n"
+                message += f"Want to join me? Let's build better financial habits together! 💪\n{challenge_url}"
+            
+            encoded_message = message.replace(' ', '%20').replace('\n', '%0A')
+            share_content["whatsapp"] = {
+                "text": message,
+                "url": f"https://wa.me/?text={encoded_message}"
+            }
+        
+        elif share_type == "instagram":
+            if participant["is_completed"]:
+                story_text = f"Challenge Completed! 🎉\n{challenge['title']}\n₹{participant['current_progress']:,.0f} saved\nRank #{user_rank} 🏆\n#EarnNest #FinancialGoals #Savings"
+            else:
+                story_text = f"Challenge Progress 📊\n{challenge['title']}\n{progress_percentage:.0f}% Complete\n₹{participant['current_progress']:,.0f}/₹{challenge['target_value']:,.0f}\nRank #{user_rank} 💪\n#EarnNest #FinancialChallenge"
+            
+            share_content["instagram"] = {
+                "story_text": story_text,
+                "hashtags": ["EarnNest", "FinancialGoals", "Savings", "Challenge", "StudentFinance"]
+            }
+        
+        elif share_type == "twitter":
+            if participant["is_completed"]:
+                tweet = f"🎉 Just completed the '{challenge['title']}' challenge! Saved ₹{participant['current_progress']:,.0f} and ranked #{user_rank}! 💪 Building better financial habits with @EarnNest 📱 {challenge_url} #FinancialGoals #Savings"
+            else:
+                tweet = f"🚀 {progress_percentage:.0f}% through the '{challenge['title']}' challenge! Currently at ₹{participant['current_progress']:,.0f}/₹{challenge['target_value']:,.0f} (Rank #{user_rank}) 📊 Join me on @EarnNest! 💪 {challenge_url} #FinancialChallenge"
+            
+            tweet_text = tweet[:280]  # Twitter character limit
+            encoded_tweet = tweet_text.replace(' ', '%20').replace('\n', '%0A')
+            share_content["twitter"] = {
+                "text": tweet_text,
+                "url": f"https://twitter.com/intent/tweet?text={encoded_tweet}"
+            }
+        
+        elif share_type == "linkedin":
+            if participant["is_completed"]:
+                post = f"Excited to share that I just completed the '{challenge['title']}' financial challenge! 🎉\n\n"
+                post += f"✅ Target: ₹{challenge['target_value']:,.0f}\n"
+                post += f"✅ Achieved: ₹{participant['current_progress']:,.0f}\n"
+                post += f"✅ Final Rank: #{user_rank}\n\n"
+                post += f"Building disciplined financial habits is crucial for long-term success. Proud to be part of the EarnNest community that's making financial literacy accessible to students across India! 💪\n\n"
+                post += f"#FinancialLiteracy #StudentFinance #PersonalFinance #Goals #EarnNest"
+            else:
+                post = f"Currently {progress_percentage:.0f}% through the '{challenge['title']}' financial challenge! 📊\n\n"
+                post += f"Progress: ₹{participant['current_progress']:,.0f} / ₹{challenge['target_value']:,.0f}\n"
+                post += f"Current Rank: #{user_rank}\n\n"
+                post += f"Consistency in financial habits is key to building wealth. Every small step counts toward achieving bigger goals! 💪\n\n"
+                post += f"Join the challenge: {challenge_url}\n\n"
+                post += f"#FinancialGoals #PersonalFinance #Savings #StudentFinance #EarnNest"
+            
+            share_content["linkedin"] = {
+                "text": post,
+                "url": f"https://www.linkedin.com/sharing/share-offsite/?url={challenge_url}"
+            }
+        
+        # Log sharing activity
+        await db.challenge_shares.insert_one({
+            "challenge_id": challenge_id,
+            "user_id": current_user["id"],
+            "platform": share_type,
+            "shared_at": datetime.now(timezone.utc),
+            "progress_at_share": participant["current_progress"]
+        })
+        
+        # Award experience points for sharing
+        await db.users.update_one(
+            {"_id": current_user["id"]},
+            {"$inc": {"experience_points": 10}}  # 10 points for sharing
+        )
+        
+        return share_content
+        
+    except Exception as e:
+        logger.error(f"Generate share content error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate share content")
+
+@api_router.post("/challenges/admin/approve/{challenge_id}")
+@limiter.limit("10/minute")
+async def approve_challenge(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user)):
+    """Admin endpoint to approve user-created challenges"""
+    try:
+        # Check if user is admin
+        user = await get_user_by_id(current_user["id"])
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        db = await get_database()
+        
+        # Update challenge status
+        result = await db.challenges.update_one(
+            {"id": challenge_id},
+            {"$set": {"is_active": True, "approved_at": datetime.now(timezone.utc), "approved_by": current_user["id"]}}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Update moderation record
+        await db.challenge_moderation.update_one(
+            {"challenge_id": challenge_id},
+            {"$set": {"status": "approved", "reviewed_at": datetime.now(timezone.utc), "reviewed_by": current_user["id"]}}
+        )
+        
+        return {"message": "Challenge approved successfully"}
+        
+    except Exception as e:
+        logger.error(f"Approve challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to approve challenge")
+
+# Helper function to update all active challenges for a user
+async def update_user_challenge_progress(user_id: str):
+    """Update progress for all active challenges the user is participating in"""
+    try:
+        db = await get_database()
+        
+        # Get all active challenge participations for this user
+        participations = await db.challenge_participants.find({
+            "user_id": user_id,
+            "is_completed": False
+        }).to_list(None)
+        
+        for participation in participations:
+            # Check if challenge is still active
+            challenge = await db.challenges.find_one({
+                "id": participation["challenge_id"],
+                "is_active": True,
+                "end_date": {"$gte": datetime.now(timezone.utc)}
+            })
+            
+            if challenge:
+                await update_challenge_progress(participation["challenge_id"], user_id)
+                
+    except Exception as e:
+        logger.error(f"Update user challenge progress error: {str(e)}")
+
+# Background function to update challenge progress
+async def update_challenge_progress(challenge_id: str, user_id: str):
+    """Update user's progress in a challenge based on their activity"""
+    try:
+        db = await get_database()
+        
+        challenge = await db.challenges.find_one({"id": challenge_id})
+        if not challenge:
+            return
+        
+        participant = await db.challenge_participants.find_one({
+            "challenge_id": challenge_id,
+            "user_id": user_id
+        })
+        
+        if not participant:
+            return
+        
+        new_progress = 0.0
+        
+        if challenge["challenge_type"] == "savings":
+            # Calculate total savings (income - expenses) since challenge start
+            start_date = participant["joined_at"]
+            
+            # Get income transactions
+            income_pipeline = [
+                {"$match": {
+                    "user_id": user_id,
+                    "type": "income",
+                    "timestamp": {"$gte": start_date}
+                }},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+            total_income = income_result[0]["total"] if income_result else 0.0
+            
+            # Get expense transactions
+            expense_pipeline = [
+                {"$match": {
+                    "user_id": user_id,
+                    "type": "expense",
+                    "timestamp": {"$gte": start_date}
+                }},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
+            total_expenses = expense_result[0]["total"] if expense_result else 0.0
+            
+            new_progress = max(0, total_income - total_expenses)
+            
+        elif challenge["challenge_type"] == "goals":
+            # Count completed financial goals since challenge start
+            start_date = participant["joined_at"]
+            completed_goals = await db.financial_goals.count_documents({
+                "user_id": user_id,
+                "is_completed": True,
+                "updated_at": {"$gte": start_date}
+            })
+            new_progress = float(completed_goals)
+        
+        # Update progress
+        is_completed = new_progress >= challenge["target_value"]
+        completion_date = datetime.now(timezone.utc) if is_completed and not participant["is_completed"] else participant.get("completion_date")
+        
+        await db.challenge_participants.update_one(
+            {"challenge_id": challenge_id, "user_id": user_id},
+            {
+                "$set": {
+                    "current_progress": new_progress,
+                    "is_completed": is_completed,
+                    "completion_date": completion_date
+                }
+            }
+        )
+        
+        # Award completion rewards
+        if is_completed and not participant["is_completed"]:
+            await db.users.update_one(
+                {"_id": user_id},
+                {"$inc": {"experience_points": challenge["reward_points"]}}
+            )
+            
+            # Create achievement for challenge completion
+            gamification = await get_gamification_service()
+            await gamification.create_milestone_achievement(user_id, "challenge_completed", {
+                "challenge_id": challenge_id,
+                "challenge_title": challenge["title"],
+                "target_value": challenge["target_value"],
+                "final_progress": new_progress
+            })
+        
+    except Exception as e:
+        logger.error(f"Update challenge progress error: {str(e)}")
 
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
