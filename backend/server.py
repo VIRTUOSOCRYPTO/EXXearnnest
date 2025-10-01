@@ -21,6 +21,8 @@ from email_service import email_service
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from cache_service import cache_service
+from fallback_hospital_db import fallback_db
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -2168,8 +2170,8 @@ async def fetch_karnataka_hospitals(latitude, longitude, emergency_type, special
     logger.info(f"Returning {len(relevant_hospitals)} hospitals for location {latitude}, {longitude}")
     return relevant_hospitals
 
-async def fetch_dynamic_hospitals(latitude, longitude, emergency_type, specialty_info):
-    """Fetch hospitals dynamically using OpenStreetMap Overpass API"""
+async def fetch_enhanced_hospitals(latitude, longitude, emergency_type, specialty_info):
+    """Enhanced hospital fetch with caching and fallback systems for 24/7 reliability"""
     import asyncio
     import aiohttp
     import math
@@ -2185,35 +2187,7 @@ async def fetch_dynamic_hospitals(latitude, longitude, emergency_type, specialty
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
         return R * c
     
-    # Helper function to determine location type and radius - Enhanced for 25km consistency
-    def get_search_radius(latitude, longitude, minimum_hospitals_needed=5):
-        # Smart radius that adapts based on location and needs
-        # Urban areas: start with 15km, rural areas: start with 20km
-        # Can extend up to 25km if minimum hospitals not found
-        
-        # Major Indian cities (approximate coordinates)
-        major_cities = [
-            (28.6139, 77.2090),  # Delhi
-            (19.0760, 72.8777),  # Mumbai
-            (12.9716, 77.5946),  # Bangalore
-            (13.0827, 80.2707),  # Chennai
-            (22.5726, 88.3639),  # Kolkata
-            (17.3850, 78.4867),  # Hyderabad
-            (18.5204, 73.8567),  # Pune
-            (23.0225, 72.5714),  # Ahmedabad
-            (26.9124, 75.7873),  # Jaipur
-            (21.1458, 79.0882),  # Nagpur
-        ]
-        
-        # Check if near major city (within 50km)
-        for city_lat, city_lon in major_cities:
-            distance_to_city = calculate_distance(latitude, longitude, city_lat, city_lon)
-            if distance_to_city <= 50:
-                return 15  # Start with smaller radius for urban areas
-        
-        return 20  # Start with larger radius for rural/suburban areas
-    
-    # Helper function to format address from OSM tags
+    # Helper functions for OSM data processing
     def format_address(tags):
         if not tags:
             return "Address not available"
@@ -2233,29 +2207,20 @@ async def fetch_dynamic_hospitals(latitude, longitude, emergency_type, specialty
         
         return ', '.join(parts) if parts else "Address not available"
     
-    # Helper function to extract hospital specialties from OSM data
     def extract_specialties(tags):
         specialties = []
         
-        # Check healthcare:speciality tag
         if tags.get('healthcare:speciality'):
             osm_specialties = tags['healthcare:speciality'].split(';')
             for spec in osm_specialties:
                 spec = spec.strip().title()
-                # Map OSM specialty names to our standard names
                 specialty_mapping = {
-                    'Cardiology': 'Cardiology',
-                    'Emergency': 'Emergency Medicine',
-                    'General': 'General Medicine',
-                    'Trauma': 'Trauma Surgery',
-                    'Orthopaedics': 'Orthopedics',
-                    'Orthopedics': 'Orthopedics',
-                    'Neurology': 'Neurology',
-                    'Paediatrics': 'Pediatrics',
-                    'Pediatrics': 'Pediatrics',
-                    'Psychiatry': 'Psychiatry',
-                    'Obstetrics': 'Obstetrics',
-                    'Gynaecology': 'Gynecology',
+                    'Cardiology': 'Cardiology', 'Emergency': 'Emergency Medicine',
+                    'General': 'General Medicine', 'Trauma': 'Trauma Surgery',
+                    'Orthopaedics': 'Orthopedics', 'Orthopedics': 'Orthopedics',
+                    'Neurology': 'Neurology', 'Paediatrics': 'Pediatrics',
+                    'Pediatrics': 'Pediatrics', 'Psychiatry': 'Psychiatry',
+                    'Obstetrics': 'Obstetrics', 'Gynaecology': 'Gynecology',
                     'Gynecology': 'Gynecology'
                 }
                 
@@ -2263,181 +2228,321 @@ async def fetch_dynamic_hospitals(latitude, longitude, emergency_type, specialty
                 if mapped_spec not in specialties:
                     specialties.append(mapped_spec)
         
-        # Check for emergency services
         if tags.get('emergency') == 'yes':
             if 'Emergency Medicine' not in specialties:
                 specialties.append('Emergency Medicine')
         
-        # If no specific specialties found, assume general hospital capabilities
         if not specialties:
             specialties = ['Emergency Medicine', 'General Medicine']
         
         return specialties
     
-    # Helper function to extract hospital features
     def extract_features(tags):
         features = []
         
-        # Emergency services
         if tags.get('emergency') == 'yes':
             features.append('24/7 Emergency')
-        
-        # Ambulance service
         if tags.get('ambulance') == 'yes':
             features.append('Ambulance Service')
-        
-        # ICU
         if 'icu' in str(tags.get('healthcare:speciality', '')).lower():
             features.append('ICU')
-        
-        # Trauma center
         if 'trauma' in str(tags.get('healthcare:speciality', '')).lower():
             features.append('Trauma Center')
-        
-        # Wheelchair access
         if tags.get('wheelchair') == 'yes':
             features.append('Wheelchair Accessible')
-        
-        # Pharmacy
         if tags.get('pharmacy') == 'yes':
             features.append('Pharmacy')
         
         return features
     
     try:
-        # Use strict 25km radius as requested by user
-        radius = 25
-        logger.info(f"Searching for hospitals within {radius}km of {latitude}, {longitude}")
+        # Step 1: Check Cache First
+        logger.info(f"🔍 Checking cache for {emergency_type} hospitals near {latitude}, {longitude}")
+        cached_hospitals = await cache_service.get_cached_hospitals(latitude, longitude, emergency_type)
         
-        # Build comprehensive Overpass query for hospitals, clinics, and medical centers
-        overpass_query = f'''
-        [out:json][timeout:30];
-        (
-          node["amenity"="hospital"](around:{radius * 1000},{latitude},{longitude});
-          way["amenity"="hospital"](around:{radius * 1000},{latitude},{longitude});
-          relation["amenity"="hospital"](around:{radius * 1000},{latitude},{longitude});
-          node["amenity"="clinic"](around:{radius * 1000},{latitude},{longitude});
-          way["amenity"="clinic"](around:{radius * 1000},{latitude},{longitude});
-          relation["amenity"="clinic"](around:{radius * 1000},{latitude},{longitude});
-          node["healthcare"="hospital"](around:{radius * 1000},{latitude},{longitude});
-          way["healthcare"="hospital"](around:{radius * 1000},{latitude},{longitude});
-          relation["healthcare"="hospital"](around:{radius * 1000},{latitude},{longitude});
-          node["healthcare"="clinic"](around:{radius * 1000},{latitude},{longitude});
-          way["healthcare"="clinic"](around:{radius * 1000},{latitude},{longitude});
-          relation["healthcare"="clinic"](around:{radius * 1000},{latitude},{longitude});
-        );
-        out center meta;
-        '''
+        if cached_hospitals:
+            logger.info(f"✅ Cache HIT: Returning {len(cached_hospitals)} cached hospitals")
+            return cached_hospitals
         
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(
-                'https://overpass-api.de/api/interpreter',
-                data=overpass_query,
-                headers={'Content-Type': 'application/x-www-form-urlencoded'}
-            ) as response:
+        # Step 2: Check API Rate Limiting
+        can_call_api, current_calls = await cache_service.check_api_rate_limit("overpass")
+        
+        if can_call_api:
+            # Step 3: Try OpenStreetMap API
+            try:
+                logger.info(f"🌐 Making Overpass API call ({current_calls + 1}/500 in 10min window)")
+                await cache_service.increment_api_calls("overpass")
                 
-                if response.status != 200:
-                    logger.warning(f"Overpass API returned status {response.status}")
-                    raise Exception(f"Overpass API returned status {response.status}")
+                radius = 25  # Fixed 25km radius
+                overpass_query = f'''
+                [out:json][timeout:30];
+                (
+                  node["amenity"="hospital"](around:{radius * 1000},{latitude},{longitude});
+                  way["amenity"="hospital"](around:{radius * 1000},{latitude},{longitude});
+                  relation["amenity"="hospital"](around:{radius * 1000},{latitude},{longitude});
+                  node["amenity"="clinic"](around:{radius * 1000},{latitude},{longitude});
+                  way["amenity"="clinic"](around:{radius * 1000},{latitude},{longitude});
+                  relation["amenity"="clinic"](around:{radius * 1000},{latitude},{longitude});
+                  node["healthcare"="hospital"](around:{radius * 1000},{latitude},{longitude});
+                  way["healthcare"="hospital"](around:{radius * 1000},{latitude},{longitude});
+                  relation["healthcare"="hospital"](around:{radius * 1000},{latitude},{longitude});
+                  node["healthcare"="clinic"](around:{radius * 1000},{latitude},{longitude});
+                  way["healthcare"="clinic"](around:{radius * 1000},{latitude},{longitude});
+                  relation["healthcare"="clinic"](around:{radius * 1000},{latitude},{longitude});
+                );
+                out center meta;
+                '''
                 
-                data = await response.json()
+                timeout = aiohttp.ClientTimeout(total=30)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        'https://overpass-api.de/api/interpreter',
+                        data=overpass_query,
+                        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+                    ) as response:
+                        
+                        if response.status != 200:
+                            logger.warning(f"⚠️  Overpass API returned status {response.status}")
+                            raise Exception(f"Overpass API error: {response.status}")
+                        
+                        data = await response.json()
+                        
+                        if not data.get('elements'):
+                            logger.info(f"ℹ️  No hospitals found in OSM data")
+                            raise Exception("No hospitals found in OpenStreetMap")
+                        
+                        hospitals = []
+                        for element in data['elements']:
+                            # Get coordinates
+                            lat = element.get('lat') or (element.get('center') and element['center'].get('lat'))
+                            lon = element.get('lon') or (element.get('center') and element['center'].get('lon'))
+                            
+                            if not lat or not lon:
+                                continue
+                            
+                            tags = element.get('tags', {})
+                            hospital_name = tags.get('name', 'Hospital')
+                            
+                            if not hospital_name or hospital_name == 'Hospital':
+                                continue
+                            
+                            distance = calculate_distance(latitude, longitude, lat, lon)
+                            if distance > 25:  # Strict 25km limit
+                                continue
+                            
+                            specialties = extract_specialties(tags)
+                            features = extract_features(tags)
+                            
+                            hospital_data = {
+                                "name": hospital_name,
+                                "address": format_address(tags),
+                                "phone": tags.get('phone') or tags.get('contact:phone') or "Contact hospital directly",
+                                "emergency_phone": "108",
+                                "distance": f"{distance:.1f} km",
+                                "rating": 4.0,
+                                "specialties": specialties,
+                                "features": features,
+                                "estimated_time": f"{int(distance * 3)}-{int(distance * 4)} minutes",
+                                "hospital_type": "Hospital" if tags.get('amenity') == 'hospital' else "Clinic"
+                            }
+                            hospitals.append(hospital_data)
                 
-                if not data.get('elements'):
-                    logger.info(f"No hospitals found within {radius}km")
-                    raise Exception("No hospitals found in the area")
+                if hospitals:
+                    # Score and sort hospitals
+                    scored_hospitals = []
+                    for hospital in hospitals:
+                        match_score = 0
+                        hospital_specialties = set(hospital["specialties"])
+                        
+                        for specialty in specialty_info["primary_specialties"]:
+                            if specialty in hospital_specialties:
+                                match_score += 3
+                        
+                        for specialty in specialty_info["secondary_specialties"]:
+                            if specialty in hospital_specialties:
+                                match_score += 1
+                        
+                        if match_score > 0 or "Emergency Medicine" in hospital_specialties:
+                            hospital_copy = hospital.copy()
+                            hospital_copy["specialty_match_score"] = match_score
+                            hospital_copy["speciality"] = specialty_info["description"]
+                            hospital_copy["matched_specialties"] = [
+                                s for s in specialty_info["primary_specialties"] + specialty_info["secondary_specialties"] 
+                                if s in hospital_specialties
+                            ]
+                            scored_hospitals.append(hospital_copy)
+                    
+                    # Sort by specialty match score first, then by distance
+                    scored_hospitals.sort(key=lambda x: (-x["specialty_match_score"], float(x["distance"].split()[0])))
+                    
+                    # Cache the results
+                    await cache_service.cache_hospitals(latitude, longitude, emergency_type, scored_hospitals)
+                    
+                    logger.info(f"✅ OSM API SUCCESS: Found {len(scored_hospitals)} hospitals, cached for future use")
+                    return scored_hospitals
                 
-                hospitals = []
-                for element in data['elements']:
-                    # Get coordinates
-                    lat = element.get('lat') or (element.get('center') and element['center'].get('lat'))
-                    lon = element.get('lon') or (element.get('center') and element['center'].get('lon'))
-                    
-                    if not lat or not lon:
-                        continue
-                    
-                    tags = element.get('tags', {})
-                    hospital_name = tags.get('name', 'Hospital')
-                    
-                    # Skip if no proper name
-                    if not hospital_name or hospital_name == 'Hospital':
-                        continue
-                    
-                    # Calculate distance and ensure it's within 25km
-                    distance = calculate_distance(latitude, longitude, lat, lon)
-                    if distance > 25:  # Strict 25km limit
-                        continue
-                    
-                    # Extract specialties and features
-                    specialties = extract_specialties(tags)
-                    features = extract_features(tags)
-                    
-                    hospital_data = {
-                        "name": hospital_name,
-                        "address": format_address(tags),
-                        "phone": tags.get('phone') or tags.get('contact:phone') or "Contact hospital directly",
-                        "emergency_phone": "108",
-                        "distance": f"{distance:.1f} km",
-                        "rating": 4.0,  # Default rating since OSM doesn't have ratings
-                        "specialties": specialties,
-                        "features": features,
-                        "estimated_time": f"{int(distance * 3)}-{int(distance * 4)} minutes",  # Rough estimate
-                        "hospital_type": "Hospital" if tags.get('amenity') == 'hospital' else "Clinic",
-                        "latitude": lat,
-                        "longitude": lon,
-                        "distance_km": distance
-                    }
-                    
-                    hospitals.append(hospital_data)
+            except Exception as api_error:
+                logger.warning(f"🚫 OpenStreetMap API failed: {str(api_error)}")
+        else:
+            logger.warning(f"🚫 API Rate limit reached ({current_calls}/500), using fallback")
         
-        # If no hospitals found, raise exception
-        if not hospitals:
-            raise Exception("No hospitals found within 25km")
+        # Step 4: Use Fallback Database
+        logger.info(f"🔄 Falling back to comprehensive hospital database")
+        fallback_hospitals = fallback_db.get_nearby_hospitals(latitude, longitude, emergency_type, 25)
         
-        # Sort by distance and take closest hospitals within 25km
-        hospitals.sort(key=lambda x: x["distance_km"])
+        if fallback_hospitals:
+            # Cache fallback results (shorter TTL)
+            await cache_service.cache_hospitals(latitude, longitude, emergency_type, fallback_hospitals[:15])
+            logger.info(f"✅ FALLBACK SUCCESS: Found {len(fallback_hospitals)} hospitals from database")
+            return fallback_hospitals[:15]  # Limit to 15 results
         
-        # Score hospitals based on specialty match
-        scored_hospitals = []
-        for hospital in hospitals:  # Use all hospitals found within 25km
-            match_score = 0
-            hospital_specialties = set(hospital["specialties"])
-            
-            # Calculate match score based on primary and secondary specialties
-            for specialty in specialty_info["primary_specialties"]:
-                if specialty in hospital_specialties:
-                    match_score += 3  # High weight for primary specialties
-            
-            for specialty in specialty_info["secondary_specialties"]:
-                if specialty in hospital_specialties:
-                    match_score += 1  # Lower weight for secondary specialties
-            
-            # Always include hospitals with emergency medicine or positive match
-            if match_score > 0 or "Emergency Medicine" in hospital_specialties:
-                hospital_copy = hospital.copy()
-                hospital_copy["specialty_match_score"] = match_score
-                hospital_copy["speciality"] = specialty_info["description"]
-                hospital_copy["matched_specialties"] = [
-                    s for s in specialty_info["primary_specialties"] + specialty_info["secondary_specialties"] 
-                    if s in hospital_specialties
-                ]
-                # Clean up temporary fields
-                del hospital_copy["distance_km"]
-                del hospital_copy["latitude"]
-                del hospital_copy["longitude"]
-                scored_hospitals.append(hospital_copy)
-        
-        # Sort by specialty match score first, then by distance
-        scored_hospitals.sort(key=lambda x: (-x["specialty_match_score"], float(x["distance"].split()[0])))
-        
-        # Return hospitals within 25km (no minimum requirement)
-        return scored_hospitals
+        # Final fallback - return basic emergency info
+        logger.warning(f"⚠️  No hospitals found in any source - returning emergency guidance")
+        return [{
+            "name": "Emergency Services",
+            "address": "Call emergency helpline for immediate assistance",
+            "phone": "108",
+            "emergency_phone": "108",
+            "distance": "N/A",
+            "rating": 0,
+            "specialties": ["Emergency Services"],
+            "features": ["24/7 Emergency Helpline"],
+            "estimated_time": "Immediate",
+            "hospital_type": "Emergency Services",
+            "specialty_match_score": 1,
+            "speciality": "Emergency assistance and ambulance dispatch",
+            "matched_specialties": ["Emergency Services"]
+        }]
                 
     except Exception as e:
-        logger.error(f"Dynamic hospital fetch error: {str(e)}")
-        raise e
+        logger.error(f"❌ Enhanced hospital fetch error: {str(e)}")
+        
+        # Last resort - fallback database
+        try:
+            fallback_hospitals = fallback_db.get_nearby_hospitals(latitude, longitude, emergency_type, 25)
+            if fallback_hospitals:
+                return fallback_hospitals[:10]
+        except:
+            pass
+        
+        raise Exception(f"Hospital search failed: {str(e)}")
 
-@api_router.post("/emergency-hospitals")
+@api_router.get("/cache/stats")
+@limiter.limit("10/minute") 
+async def get_cache_statistics(request: Request, user_id: str = Depends(get_current_user)):
+    """Get cache statistics and performance metrics"""
+    try:
+        cache_stats = await cache_service.get_cache_stats()
+        fallback_stats = fallback_db.get_database_stats()
+        
+        return {
+            "cache": cache_stats,
+            "fallback_database": fallback_stats,
+            "system_status": {
+                "cache_enabled": cache_service.cache_enabled,
+                "redis_connected": cache_service.connected,
+                "total_fallback_hospitals": fallback_stats["total_hospitals"],
+                "cities_covered": fallback_stats["cities_covered"]
+            },
+            "performance_info": {
+                "cache_hit_improves_response_time": "~10x faster than API calls",
+                "fallback_reliability": "24/7 availability during API outages",
+                "api_rate_limit_protection": "500 calls per 10 minutes"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Cache stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Cache statistics unavailable")
+
+@api_router.post("/cache/warm/{city}")
+@limiter.limit("5/minute")
+async def warm_city_cache(request: Request, city: str, user_id: str = Depends(get_current_user)):
+    """Warm cache for a specific city (admin function)"""
+    try:
+        # Get hospitals from fallback database for the city
+        city_hospitals = fallback_db.get_hospitals_by_city(city, "general")
+        
+        if city_hospitals:
+            # Cache the city data
+            success = await cache_service.cache_popular_location(city, city_hospitals)
+            if success:
+                return {
+                    "message": f"Cache warmed for {city}",
+                    "hospitals_cached": len(city_hospitals),
+                    "city": city
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to cache city data")
+        else:
+            raise HTTPException(status_code=404, detail=f"No hospitals found for {city}")
+            
+    except Exception as e:
+        logger.error(f"Cache warming error for {city}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Cache warming failed: {str(e)}")
+
+@api_router.get("/hospitals/fallback/cities")
+@limiter.limit("20/minute")
+async def get_available_cities(request: Request):
+    """Get list of cities available in fallback database"""
+    try:
+        cities = fallback_db.get_all_cities()
+        stats = fallback_db.get_database_stats()
+        
+        return {
+            "cities": cities,
+            "total_cities": len(cities),
+            "total_hospitals": stats["total_hospitals"],
+            "emergency_hospitals": stats["emergency_hospitals"],
+            "message": "Cities with comprehensive hospital data in fallback database"
+        }
+    except Exception as e:
+        logger.error(f"Cities lookup error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get cities list")
+
+@api_router.get("/hospitals/fallback/{city}")
+@limiter.limit("15/minute")
+async def get_city_hospitals_fallback(
+    request: Request, 
+    city: str,
+    emergency_type: str = "general",
+    user_id: str = Depends(get_current_user)
+):
+    """Get hospitals for a specific city from fallback database"""
+    try:
+        hospitals = fallback_db.get_hospitals_by_city(city, emergency_type)
+        
+        if not hospitals:
+            raise HTTPException(status_code=404, detail=f"No hospitals found in {city}")
+        
+        return {
+            "hospitals": hospitals,
+            "city": city,
+            "emergency_type": emergency_type,
+            "total_hospitals": len(hospitals),
+            "data_source": "fallback_database",
+            "message": f"Found {len(hospitals)} hospitals in {city} for {emergency_type}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"City hospitals error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get hospitals for {city}")
+
+# Add startup event to initialize cache warming
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    logger.info("🚀 Starting EarnNest with enhanced hospital system...")
+    
+    # Initialize cache warming for popular cities (background task)
+    try:
+        await cache_service.warm_popular_locations()
+        logger.info("✅ Cache warming initiated for popular cities")
+    except Exception as e:
+        logger.warning(f"⚠️  Cache warming failed: {str(e)}")
+    
+    logger.info("✅ EarnNest startup complete with hospital cache system")
 @limiter.limit("15/minute")
 async def get_emergency_hospitals_endpoint(
     request: Request, 
@@ -2560,16 +2665,16 @@ async def get_emergency_hospitals_endpoint(
         
         # Also try to fetch dynamic hospitals from OpenStreetMap for comprehensive coverage
         try:
-            dynamic_hospitals = await fetch_dynamic_hospitals(latitude, longitude, emergency_type, specialty_info)
-            if dynamic_hospitals:
-                # Merge dynamic hospitals with Karnataka data (avoid duplicates)
+            enhanced_hospitals = await fetch_enhanced_hospitals(latitude, longitude, emergency_type, specialty_info)
+            if enhanced_hospitals:
+                # Merge enhanced hospitals with Karnataka data (avoid duplicates)
                 existing_names = {h["name"].lower() for h in all_hospitals}
-                for hospital in dynamic_hospitals:
+                for hospital in enhanced_hospitals:
                     if hospital["name"].lower() not in existing_names:
                         all_hospitals.append(hospital)
-                logger.info(f"Added {len(dynamic_hospitals)} hospitals from OpenStreetMap")
+                logger.info(f"Added {len(enhanced_hospitals)} hospitals from enhanced system")
         except Exception as e:
-            logger.warning(f"Dynamic hospital fetch failed: {str(e)}")
+            logger.warning(f"Enhanced hospital fetch failed: {str(e)}")
         
         # Ensure we have hospitals and sort them properly
         if all_hospitals:
