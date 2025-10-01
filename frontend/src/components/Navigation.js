@@ -11,7 +11,8 @@ import {
   UserCircleIcon,
   StarIcon,
   LightBulbIcon,
-  TrophyIcon
+  TrophyIcon,
+  GiftIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
 
@@ -26,9 +27,9 @@ const Navigation = () => {
     { path: '/budget', label: 'Budget', icon: BanknotesIcon },
     { path: '/goals', label: 'Goals', icon: StarIcon },
     { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
+    { path: '/referrals', label: 'Refer & Earn', icon: GiftIcon },
     { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
     { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
-    { path: '/recommendations', label: 'Recommendations', icon: LightBulbIcon },
   ];
 
   const handleLogout = () => {
