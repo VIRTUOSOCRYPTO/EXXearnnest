@@ -16,6 +16,7 @@ import FinancialGoals from './components/FinancialGoals';
 import Recommendations from './components/Recommendations';
 import GamificationProfile from './components/GamificationProfile';
 import Referrals from './components/Referrals';
+import Challenges from './components/Challenges';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 
@@ -167,6 +168,10 @@ function App() {
               <Route 
                 path="/referrals" 
                 element={user ? <Referrals /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/challenges" 
+                element={user ? <Challenges /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
