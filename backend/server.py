@@ -3701,6 +3701,126 @@ async def create_university_endpoint(
         logger.error(f"Create university error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create university")
 
+@api_router.get("/gamification/universities/suggestions")
+@limiter.limit("30/minute")
+async def get_university_suggestions_endpoint(
+    request: Request,
+    location: str,
+    student_level: str,
+    limit: int = 10
+):
+    """Get smart university suggestions based on user location and student level"""
+    try:
+        db = await get_database()
+        
+        # Parse user location
+        location_parts = [part.strip().lower() for part in location.split(',')]
+        city_query = location_parts[0] if location_parts else ""
+        state_query = location_parts[-1] if len(location_parts) > 1 else location_parts[0] if location_parts else ""
+        
+        # Build query for location matching
+        location_query = {
+            "$or": [
+                {"city": {"$regex": city_query, "$options": "i"}},
+                {"state": {"$regex": state_query, "$options": "i"}},
+                {"location": {"$regex": location, "$options": "i"}}
+            ]
+        }
+        
+        # Add student level filter
+        level_query = {"student_levels": student_level}
+        
+        # Combine queries
+        combined_query = {
+            "$and": [location_query, level_query]
+        }
+        
+        # Get matching universities sorted by ranking
+        universities = await db.universities.find(combined_query).sort("ranking", 1).limit(limit).to_list(None)
+        
+        # If no exact matches, get broader results
+        if len(universities) < 3:
+            # Fallback: Get universities by state only
+            state_fallback = await db.universities.find({
+                "$and": [
+                    {"state": {"$regex": state_query, "$options": "i"}},
+                    {"student_levels": student_level}
+                ]
+            }).sort("ranking", 1).limit(limit - len(universities)).to_list(None)
+            
+            # Add fallback results if not already included
+            for uni in state_fallback:
+                if str(uni["_id"]) not in [str(u["_id"]) for u in universities]:
+                    universities.append(uni)
+        
+        # If still not enough, get top universities for the student level
+        if len(universities) < 3:
+            top_universities = await db.universities.find({
+                "student_levels": student_level,
+                "ranking": {"$lte": 20}  # Top 20 institutions
+            }).sort("ranking", 1).limit(limit - len(universities)).to_list(None)
+            
+            for uni in top_universities:
+                if str(uni["_id"]) not in [str(u["_id"]) for u in universities]:
+                    universities.append(uni)
+        
+        # Format response
+        suggestions = []
+        for uni in universities[:limit]:
+            # Calculate relevance score
+            relevance_score = 100
+            if city_query in uni.get("city", "").lower():
+                relevance_score += 50  # Same city bonus
+            elif state_query in uni.get("state", "").lower():
+                relevance_score += 25  # Same state bonus
+            
+            # Type bonus for student level
+            if student_level == "graduate" and uni.get("type") in ["engineering_institute", "management_institute"]:
+                relevance_score += 20
+            elif student_level == "undergraduate" and uni.get("type") in ["state_university", "central_university"]:
+                relevance_score += 15
+            
+            # Ranking bonus (lower ranking = higher score)
+            relevance_score += max(0, 30 - uni.get("ranking", 30))
+            
+            suggestions.append({
+                "id": str(uni["_id"]),
+                "name": uni["name"],
+                "short_name": uni["short_name"],
+                "location": uni["location"],
+                "city": uni["city"],
+                "state": uni["state"],
+                "type": uni["type"],
+                "student_levels": uni["student_levels"],
+                "categories": uni.get("categories", []),
+                "ranking": uni.get("ranking", 999),
+                "is_verified": uni["is_verified"],
+                "student_count": uni["student_count"],
+                "relevance_score": relevance_score,
+                "distance_match": city_query in uni.get("city", "").lower(),
+                "level_match": student_level in uni["student_levels"]
+            })
+        
+        # Sort by relevance score
+        suggestions.sort(key=lambda x: x["relevance_score"], reverse=True)
+        
+        return {
+            "suggestions": suggestions,
+            "total": len(suggestions),
+            "user_location": location,
+            "student_level": student_level,
+            "query_info": {
+                "city_searched": city_query,
+                "state_searched": state_query,
+                "exact_matches": len([s for s in suggestions if s["distance_match"]]),
+                "same_state_matches": len([s for s in suggestions if s["state"].lower() == state_query.lower()])
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get university suggestions error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get university suggestions")
+
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
 
