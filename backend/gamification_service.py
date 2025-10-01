@@ -3,6 +3,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from bson import ObjectId
 from database import get_database, get_user_by_id
 import logging
 
@@ -154,7 +155,9 @@ class GamificationService:
         newly_earned_badges = []
         
         for badge in badges:
-            if badge["_id"] in earned_badge_ids:
+            # Convert badge ObjectId to string for comparison
+            badge_id_str = str(badge["_id"])
+            if badge_id_str in earned_badge_ids:
                 continue  # User already has this badge
                 
             if await self._check_badge_requirement(user, badge, event_type, event_data):
@@ -513,8 +516,8 @@ class GamificationService:
         """Check if user has maintained budget for consecutive days"""
         # This is a simplified implementation
         # In a real app, you'd analyze transaction history vs budget allocations
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=int(required_days))
+        # end_date = datetime.now(timezone.utc)
+        # start_date = end_date - timedelta(days=int(required_days))
         
         # Count days where expenses were within budget
         # This would need more complex logic based on your specific requirements
@@ -530,7 +533,12 @@ class GamificationService:
         user_badges = await self.db.user_badges.find({"user_id": user_id}).to_list(None)
         badge_details = []
         for user_badge in user_badges:
-            badge = await self.db.badges.find_one({"_id": user_badge["badge_id"]})
+            # Convert badge_id to ObjectId if it's a string
+            badge_id = user_badge["badge_id"]
+            if isinstance(badge_id, str):
+                badge_id = ObjectId(badge_id)
+            
+            badge = await self.db.badges.find_one({"_id": badge_id})
             if badge:
                 badge_details.append({
                     "badge_id": str(badge["_id"]),
