@@ -10,6 +10,7 @@ class User(BaseModel):
     full_name: str
     role: str  # "Student", "Professional", "Other" - MANDATORY
     student_level: str  # "undergraduate", "graduate", "high_school"
+    university: Optional[str] = None  # For campus integration
     skills: List[str] = []
 
     @validator('skills')
@@ -32,7 +33,19 @@ class User(BaseModel):
     total_earnings: float = 0.0
     net_savings: float = 0.0
     current_streak: int = 0
-    achievements: List[Dict[str, Any]] = []
+    last_activity_date: Optional[datetime] = None
+    
+    # Gamification fields
+    badges: List[Dict[str, Any]] = []
+    achievement_points: int = 0
+    level: int = 1
+    experience_points: int = 0
+    title: str = "Beginner"  # e.g., "Savings Champion", "Budget Master"
+    
+    # Community features
+    achievements_shared: int = 0  # Count of achievements shared
+    community_rank: Optional[int] = None
+    campus_rank: Optional[int] = None
     email_verified: bool = False
     is_active: bool = True
     is_admin: bool = False
@@ -69,6 +82,7 @@ class UserCreate(BaseModel):
     full_name: str
     role: str  # MANDATORY
     student_level: str
+    university: Optional[str] = None  # For campus integration
     skills: List[str] = []
     availability_hours: int = 10
     location: str  # MANDATORY
@@ -213,13 +227,6 @@ class UserUpdate(BaseModel):
             return v.strip()
         return v
 
-    @validator('avatar')
-    def validate_avatar(cls, v):
-        if v is not None:
-            allowed_avatars = ["boy", "man", "girl", "woman", "grandfather", "grandmother"]
-            if v not in allowed_avatars:
-                raise ValueError(f'Avatar must be one of: {", ".join(allowed_avatars)}')
-        return v
 
 class EmailVerificationRequest(BaseModel):
     email: EmailStr
@@ -963,3 +970,191 @@ class SuggestionApprovalRequest(BaseModel):
     suggestion_id: str
     approved: bool
     corrections: Optional[Dict[str, Any]] = None  # If user wants to modify before approving
+
+# ===== GAMIFICATION & VIRAL FEATURES MODELS =====
+
+class Badge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: str
+    category: str  # "financial", "behavioral", "social", "side_hustle"
+    icon: str  # emoji or icon code
+    rarity: str  # "bronze", "silver", "gold", "platinum", "legendary"
+    requirement_type: str  # "amount_saved", "streak_days", "goals_completed", "hustles_completed", etc.
+    requirement_value: float  # threshold value to earn badge
+    points_awarded: int  # experience points awarded when badge is earned
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_active: bool = True
+    
+    @validator('category')
+    def validate_category(cls, v):
+        allowed_categories = ["financial", "behavioral", "social", "side_hustle"]
+        if v not in allowed_categories:
+            raise ValueError(f'Badge category must be one of: {", ".join(allowed_categories)}')
+        return v
+    
+    @validator('rarity')
+    def validate_rarity(cls, v):
+        allowed_rarities = ["bronze", "silver", "gold", "platinum", "legendary"]
+        if v not in allowed_rarities:
+            raise ValueError(f'Badge rarity must be one of: {", ".join(allowed_rarities)}')
+        return v
+
+class UserBadge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    badge_id: str
+    earned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    progress_when_earned: Dict[str, Any]  # user stats when badge was earned
+    is_showcased: bool = False  # whether user displays this badge prominently
+    shared_count: int = 0  # how many times user shared this achievement
+
+class Achievement(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    type: str  # "badge_earned", "milestone_reached", "streak_achieved", "goal_completed"
+    title: str
+    description: str
+    icon: str
+    achievement_data: Dict[str, Any]  # specific achievement details
+    points_earned: int
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_shared: bool = False
+    reaction_count: int = 0  # likes/reactions from community
+
+class CommunityPost(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    type: str  # "achievement_share", "tip_share", "milestone_celebration"
+    content: str
+    achievement_id: Optional[str] = None  # if sharing an achievement
+    image_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    like_count: int = 0
+    comment_count: int = 0
+    share_count: int = 0
+    is_featured: bool = False  # admin can feature posts
+
+class CommunityInteraction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # user who made the interaction
+    target_user_id: str  # user who owns the content
+    post_id: Optional[str] = None
+    achievement_id: Optional[str] = None
+    interaction_type: str  # "like", "comment", "share", "congratulate"
+    comment_text: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Leaderboard(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    leaderboard_type: str  # "savings", "streak", "goals", "side_hustles", "points"
+    period: str  # "weekly", "monthly", "all_time"
+    university: Optional[str] = None  # for campus-specific leaderboards
+    rank: int
+    score: float  # the value being ranked on
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('leaderboard_type')
+    def validate_leaderboard_type(cls, v):
+        allowed_types = ["savings", "streak", "goals", "side_hustles", "points"]
+        if v not in allowed_types:
+            raise ValueError(f'Leaderboard type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('period')
+    def validate_period(cls, v):
+        allowed_periods = ["weekly", "monthly", "all_time"]
+        if v not in allowed_periods:
+            raise ValueError(f'Period must be one of: {", ".join(allowed_periods)}')
+        return v
+
+class Challenge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    challenge_type: str  # "savings", "streak", "goals", "community"
+    target_value: float  # e.g., save ₹5000, maintain 30-day streak
+    duration_days: int  # how long the challenge runs
+    start_date: datetime
+    end_date: datetime
+    reward_description: str
+    reward_points: int
+    max_participants: Optional[int] = None
+    is_campus_specific: bool = False
+    university: Optional[str] = None
+    created_by: str  # admin user ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_active: bool = True
+    participant_count: int = 0
+
+class ChallengeParticipant(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    challenge_id: str
+    user_id: str
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    current_progress: float = 0.0
+    is_completed: bool = False
+    completion_date: Optional[datetime] = None
+    rank: Optional[int] = None  # final rank if challenge is completed
+
+class University(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    short_name: str  # e.g., "IIT-B", "DU", "MIT"
+    location: str
+    type: str  # "university", "college", "institute"
+    is_verified: bool = False  # admin-verified institutions
+    student_count: int = 0  # number of registered students
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# Request/Response Models for Gamification
+
+class BadgeCreate(BaseModel):
+    name: str
+    description: str
+    category: str
+    icon: str
+    rarity: str
+    requirement_type: str
+    requirement_value: float
+    points_awarded: int
+    
+    @validator('category')
+    def validate_category(cls, v):
+        allowed_categories = ["financial", "behavioral", "social", "side_hustle"]
+        if v not in allowed_categories:
+            raise ValueError(f'Badge category must be one of: {", ".join(allowed_categories)}')
+        return v
+
+class LeaderboardResponse(BaseModel):
+    leaderboard_type: str
+    period: str
+    university: Optional[str] = None
+    rankings: List[Dict[str, Any]]  # list of user rankings with details
+    user_rank: Optional[int] = None  # current user's rank in this leaderboard
+    total_participants: int
+
+class ChallengeCreate(BaseModel):
+    title: str
+    description: str
+    challenge_type: str
+    target_value: float
+    duration_days: int
+    reward_description: str
+    reward_points: int
+    max_participants: Optional[int] = None
+    is_campus_specific: bool = False
+    university: Optional[str] = None
+
+class CommunityPostCreate(BaseModel):
+    type: str
+    content: str
+    achievement_id: Optional[str] = None
+    image_url: Optional[str] = None
+
+class UniversityCreate(BaseModel):
+    name: str
+    short_name: str
+    location: str
+    type: str = "university"
