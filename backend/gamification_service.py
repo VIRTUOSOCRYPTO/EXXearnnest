@@ -551,9 +551,16 @@ class GamificationService:
                 })
         
         # Get recent achievements
-        recent_achievements = await self.db.achievements.find(
+        raw_achievements = await self.db.achievements.find(
             {"user_id": user_id}
         ).sort("created_at", -1).limit(5).to_list(None)
+        
+        # Convert ObjectIds to strings for JSON serialization
+        recent_achievements = []
+        for achievement in raw_achievements:
+            achievement["id"] = str(achievement["_id"])
+            del achievement["_id"]  # Remove the ObjectId field
+            recent_achievements.append(achievement)
         
         # Get user's ranks in different leaderboards
         ranks = {}
