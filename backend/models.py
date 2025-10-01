@@ -1158,3 +1158,117 @@ class UniversityCreate(BaseModel):
     short_name: str
     location: str
     type: str = "university"
+
+# ===== REFERRAL SYSTEM WITH MONETARY INCENTIVES MODELS =====
+
+class ReferralProgram(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    referrer_id: str
+    referral_code: str  # unique code for sharing
+    total_referrals: int = 0  # total people who signed up
+    successful_referrals: int = 0  # people who stayed active for 30+ days
+    total_earnings: float = 0.0  # total money earned from referrals
+    pending_earnings: float = 0.0  # earnings waiting to be confirmed
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_active: bool = True
+
+class ReferredUser(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    referrer_id: str  # who referred them
+    referred_user_id: str  # the new user
+    referral_code: str
+    status: str = "pending"  # "pending", "completed", "inactive"
+    signed_up_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None  # when they became "active" (30 days)
+    earnings_awarded: float = 0.0  # how much referrer earned from this user
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["pending", "completed", "inactive"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class ReferralEarning(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    referrer_id: str
+    referred_user_id: str
+    earning_type: str  # "signup_bonus", "activity_bonus", "milestone_bonus"
+    amount: float
+    description: str
+    status: str = "pending"  # "pending", "confirmed", "paid"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    confirmed_at: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
+    
+    @validator('earning_type')
+    def validate_earning_type(cls, v):
+        allowed_types = ["signup_bonus", "activity_bonus", "milestone_bonus"]
+        if v not in allowed_types:
+            raise ValueError(f'Earning type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["pending", "confirmed", "paid"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class CampusAmbassador(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    university: str
+    status: str = "active"  # "active", "inactive", "suspended"
+    appointed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    total_referrals: int = 0
+    monthly_target: int = 20  # target referrals per month
+    bonus_rate: float = 0.15  # 15% bonus on referral earnings
+    special_perks: List[str] = []  # ["exclusive_badges", "early_features", "direct_support"]
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["active", "inactive", "suspended"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class ViralChallenge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    challenge_type: str = "referral_based"  # "referral_based", "social_sharing", "campus_competition"
+    target_referrals: int  # number of referrals needed to win
+    reward_amount: float  # monetary reward for winner
+    reward_description: str
+    start_date: datetime
+    end_date: datetime
+    university_specific: bool = False
+    university: Optional[str] = None
+    created_by: str  # admin user ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_active: bool = True
+    participant_count: int = 0
+
+class ViralChallengeParticipant(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    challenge_id: str
+    user_id: str
+    current_referrals: int = 0
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_winner: bool = False
+    reward_claimed: bool = False
+
+# Request Models for Referral System
+class ReferralSignupRequest(BaseModel):
+    referral_code: str
+    new_user_id: str
+
+class EarningClaimRequest(BaseModel):
+    earning_ids: List[str]  # list of earning IDs to claim
+
+class CampusAmbassadorApplicationRequest(BaseModel):
+    university: str
+    motivation: str  # why they want to be an ambassador
+    previous_experience: Optional[str] = None
+    social_media_handles: Optional[Dict[str, str]] = None
