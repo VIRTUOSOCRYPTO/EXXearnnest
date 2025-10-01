@@ -14,6 +14,7 @@ import Profile from './components/Profile';
 import Budget from './components/Budget';
 import FinancialGoals from './components/FinancialGoals';
 import Recommendations from './components/Recommendations';
+import GamificationProfile from './components/GamificationProfile';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 
@@ -157,6 +158,10 @@ function App() {
               <Route 
                 path="/profile" 
                 element={user ? <Profile /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/gamification" 
+                element={user ? <GamificationProfile /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
