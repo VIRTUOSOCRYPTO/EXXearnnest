@@ -25,23 +25,26 @@ const Dashboard = () => {
   });
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [gamificationProfile, setGamificationProfile] = useState(null);
   const [insights, setInsights] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [summaryRes, transactionsRes, leaderboardRes, insightsRes] = await Promise.all([
+        const [summaryRes, transactionsRes, leaderboardRes, insightsRes, gamificationRes] = await Promise.all([
           axios.get(`${API}/transactions/summary`),
           axios.get(`${API}/transactions?limit=5`),
           axios.get(`${API}/analytics/leaderboard`),
-          axios.get(`${API}/analytics/insights`)
+          axios.get(`${API}/analytics/insights`),
+          axios.get(`${API}/gamification/profile`).catch(() => ({ data: null })) // Optional gamification
         ]);
 
         setSummary(summaryRes.data);
         setRecentTransactions(transactionsRes.data);
         setLeaderboard(leaderboardRes.data);
         setInsights(insightsRes.data);
+        setGamificationProfile(gamificationRes.data);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -136,6 +139,63 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Gamification Status Widget */}
+      {gamificationProfile && (
+        <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl shadow-lg p-6 mb-8 text-white slide-up">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center space-x-3 mb-3">
+                <TrophyIcon className="w-8 h-8 text-yellow-300" />
+                <div>
+                  <h2 className="text-xl font-bold">{gamificationProfile.title} • Level {gamificationProfile.level}</h2>
+                  <p className="text-emerald-100">{gamificationProfile.experience_points} XP</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold">{gamificationProfile.total_badges}</div>
+                  <div className="text-sm text-emerald-100">Badges</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold flex items-center justify-center">
+                    <FireIcon className="w-6 h-6 mr-1 text-orange-300" />
+                    {gamificationProfile.current_streak}
+                  </div>
+                  <div className="text-sm text-emerald-100">Day Streak</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">
+                    #{gamificationProfile.ranks?.savings || '--'}
+                  </div>
+                  <div className="text-sm text-emerald-100">Savings Rank</div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-right">
+              <Link 
+                to="/gamification" 
+                className="bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-2 rounded-lg transition-all flex items-center space-x-2"
+              >
+                <span>View Progress</span>
+                <TrophyIcon className="w-4 h-4" />
+              </Link>
+              
+              {gamificationProfile.recent_achievements?.length > 0 && (
+                <div className="mt-3 text-sm">
+                  <p className="text-emerald-100 mb-1">Latest Achievement:</p>
+                  <div className="flex items-center">
+                    <span className="mr-1">{gamificationProfile.recent_achievements[0]?.icon}</span>
+                    <span className="font-semibold">{gamificationProfile.recent_achievements[0]?.title}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
