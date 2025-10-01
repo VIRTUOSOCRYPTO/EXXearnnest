@@ -34,3 +34,4 @@ markupsafe
 httpcore
 regex
 frozenlist
+redis==6.4.0
