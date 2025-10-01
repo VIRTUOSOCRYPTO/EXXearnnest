@@ -763,6 +763,68 @@ async def register_user(request: Request, user_data: UserCreate):
             "university": user_dict.get("university")
         })
         
+        # Check if user was referred (extract from query params if present)
+        referral_code = request.query_params.get("ref")
+        if referral_code:
+            try:
+                # Process referral signup directly
+                db = await get_database()
+                
+                # Find referrer
+                referrer = await db.referral_programs.find_one({"referral_code": referral_code})
+                if referrer:
+                    # Create referred user record
+                    referred_user = {
+                        "referrer_id": referrer["referrer_id"],
+                        "referred_user_id": user_doc["id"],
+                        "referral_code": referral_code,
+                        "status": "pending",  # Will become "completed" after 30 days of activity
+                        "signed_up_at": datetime.now(timezone.utc),
+                        "earnings_awarded": 0.0
+                    }
+                    await db.referred_users.insert_one(referred_user)
+                    
+                    # Update referrer stats
+                    await db.referral_programs.update_one(
+                        {"referrer_id": referrer["referrer_id"]},
+                        {"$inc": {"total_referrals": 1}}
+                    )
+                    
+                    # Add referral info to user document
+                    await db.users.update_one(
+                        {"_id": user_doc["id"]},
+                        {
+                            "$set": {"referred_by": referrer["referrer_id"]},
+                            "$inc": {"experience_points": 50}  # Welcome bonus for referred users
+                        }
+                    )
+                    
+                    # Create ₹50 signup bonus for referrer
+                    signup_earning = {
+                        "referrer_id": referrer["referrer_id"],
+                        "referred_user_id": user_doc["id"],
+                        "earning_type": "signup_bonus",
+                        "amount": 50.0,
+                        "description": f"Signup bonus for referring {user_dict['full_name']}",
+                        "status": "confirmed",  # Instant reward
+                        "created_at": datetime.now(timezone.utc),
+                        "confirmed_at": datetime.now(timezone.utc)
+                    }
+                    await db.referral_earnings.insert_one(signup_earning)
+                    
+                    # Update referrer's earnings
+                    await db.referral_programs.update_one(
+                        {"referrer_id": referrer["referrer_id"]},
+                        {"$inc": {"total_earnings": 50.0}}
+                    )
+                    
+                    logger.info(f"Referral processed successfully: {referral_code} -> {user_doc['id']}")
+                else:
+                    logger.warning(f"Invalid referral code: {referral_code}")
+            except Exception as e:
+                logger.warning(f"Referral processing failed: {str(e)}")
+                # Don't fail registration if referral processing fails
+        
         # Create JWT token immediately - no email verification needed
         token = create_jwt_token(user_doc["id"])
         
@@ -3820,6 +3882,347 @@ async def get_university_suggestions_endpoint(
     except Exception as e:
         logger.error(f"Get university suggestions error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get university suggestions")
+
+# ===== GAMIFICATION & COMMUNITY API ENDPOINTS =====
+
+@api_router.get("/gamification/profile")
+@limiter.limit("10/minute")
+async def get_user_gamification_profile(request: Request, current_user: dict = Depends(get_current_user)):
+    """Get complete gamification profile for current user"""
+    try:
+        gamification = await get_gamification_service()
+        profile = await gamification.get_user_gamification_profile(current_user["id"])
+        return profile
+    except Exception as e:
+        logger.error(f"Get gamification profile error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get gamification profile")
+
+@api_router.get("/gamification/achievements")
+@limiter.limit("10/minute")
+async def get_user_achievements(request: Request, limit: int = 10, current_user: dict = Depends(get_current_user)):
+    """Get user's recent achievements"""
+    try:
+        db = await get_database()
+        achievements = await db.achievements.find(
+            {"user_id": current_user["id"]}
+        ).sort("created_at", -1).limit(limit).to_list(None)
+        
+        # Convert ObjectId to string for JSON serialization
+        for achievement in achievements:
+            achievement["id"] = str(achievement["_id"])
+            del achievement["_id"]
+        
+        return {"achievements": achievements}
+    except Exception as e:
+        logger.error(f"Get achievements error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get achievements")
+
+@api_router.get("/gamification/leaderboards/{leaderboard_type}")
+@limiter.limit("10/minute") 
+async def get_leaderboard(request: Request, leaderboard_type: str, period: str = "all_time", 
+                         university: str = None, limit: int = 10, 
+                         current_user: dict = Depends(get_current_user)):
+    """Get leaderboard rankings (Pan-India by default, university-specific if specified)"""
+    try:
+        gamification = await get_gamification_service()
+        
+        # For Pan-India rankings, don't filter by university
+        leaderboard_data = await gamification.get_leaderboard(
+            leaderboard_type=leaderboard_type,
+            period=period,
+            university=university,  # None for Pan-India
+            limit=limit
+        )
+        
+        # Get current user's rank
+        user_rank = await gamification.get_user_rank(
+            user_id=current_user["id"],
+            leaderboard_type=leaderboard_type,
+            period=period,
+            university=university
+        )
+        
+        leaderboard_data["user_rank"] = user_rank
+        return leaderboard_data
+    except Exception as e:
+        logger.error(f"Get leaderboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+
+@api_router.post("/gamification/achievements/{achievement_id}/share")
+@limiter.limit("5/minute")
+async def share_achievement(request: Request, achievement_id: str, current_user: dict = Depends(get_current_user)):
+    """Share an achievement to community feed"""
+    try:
+        db = await get_database()
+        
+        # Check if achievement belongs to user
+        achievement = await db.achievements.find_one({
+            "_id": achievement_id,
+            "user_id": current_user["id"]
+        })
+        
+        if not achievement:
+            raise HTTPException(status_code=404, detail="Achievement not found")
+        
+        if achievement.get("is_shared", False):
+            raise HTTPException(status_code=400, detail="Achievement already shared")
+        
+        # Mark as shared
+        await db.achievements.update_one(
+            {"_id": achievement_id},
+            {
+                "$set": {
+                    "is_shared": True,
+                    "shared_at": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        # Update user's achievements_shared count
+        await db.users.update_one(
+            {"_id": current_user["id"]},
+            {"$inc": {"achievements_shared": 1}}
+        )
+        
+        # Check for sharing-related badges
+        gamification = await get_gamification_service()
+        await gamification.check_and_award_badges(current_user["id"], "achievement_shared", {
+            "achievement_id": achievement_id
+        })
+        
+        return {"success": True, "message": "Achievement shared successfully"}
+        
+    except Exception as e:
+        logger.error(f"Share achievement error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to share achievement")
+
+@api_router.get("/gamification/community-feed")
+@limiter.limit("10/minute")
+async def get_community_feed(request: Request, limit: int = 20, current_user: dict = Depends(get_current_user)):
+    """Get community achievements feed (Pan-India)"""
+    try:
+        db = await get_database()
+        
+        # Get shared achievements from all users
+        pipeline = [
+            {"$match": {"is_shared": True}},
+            {"$sort": {"shared_at": -1}},
+            {"$limit": limit},
+            {"$lookup": {
+                "from": "users",
+                "localField": "user_id", 
+                "foreignField": "_id",
+                "as": "user_info"
+            }},
+            {"$unwind": "$user_info"},
+            {"$project": {
+                "_id": 1,
+                "type": 1,
+                "title": 1,
+                "description": 1,
+                "icon": 1,
+                "points_earned": 1,
+                "shared_at": 1,
+                "reaction_count": 1,
+                "user_name": "$user_info.full_name",
+                "user_avatar": "$user_info.avatar",
+                "user_level": "$user_info.level",
+                "user_title": "$user_info.title",
+                "university": "$user_info.university"
+            }}
+        ]
+        
+        feed = await db.achievements.aggregate(pipeline).to_list(None)
+        
+        # Convert ObjectId to string
+        for item in feed:
+            item["id"] = str(item["_id"])
+            del item["_id"]
+        
+        return {"feed": feed}
+        
+    except Exception as e:
+        logger.error(f"Get community feed error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get community feed")
+
+@api_router.post("/gamification/achievements/{achievement_id}/react")
+@limiter.limit("10/minute")
+async def react_to_achievement(request: Request, achievement_id: str, current_user: dict = Depends(get_current_user)):
+    """React to a shared achievement"""
+    try:
+        db = await get_database()
+        
+        # Check if user already reacted
+        existing_reaction = await db.achievement_reactions.find_one({
+            "achievement_id": achievement_id,
+            "user_id": current_user["id"]
+        })
+        
+        if existing_reaction:
+            # Remove reaction
+            await db.achievement_reactions.delete_one({
+                "achievement_id": achievement_id,
+                "user_id": current_user["id"]
+            })
+            await db.achievements.update_one(
+                {"_id": achievement_id},
+                {"$inc": {"reaction_count": -1}}
+            )
+            return {"reacted": False, "message": "Reaction removed"}
+        else:
+            # Add reaction
+            await db.achievement_reactions.insert_one({
+                "achievement_id": achievement_id,
+                "user_id": current_user["id"],
+                "created_at": datetime.now(timezone.utc)
+            })
+            await db.achievements.update_one(
+                {"_id": achievement_id},
+                {"$inc": {"reaction_count": 1}}
+            )
+            return {"reacted": True, "message": "Reaction added"}
+            
+    except Exception as e:
+        logger.error(f"React to achievement error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to react to achievement")
+
+# ===== REFERRAL SYSTEM WITH MONETARY INCENTIVES =====
+
+@api_router.get("/referrals/my-link")
+@limiter.limit("5/minute")
+async def get_referral_link(request: Request, current_user: dict = Depends(get_current_user)):
+    """Get user's referral link for direct sharing"""
+    try:
+        db = await get_database()
+        
+        # Check if user already has a referral link
+        referral = await db.referral_programs.find_one({"referrer_id": current_user["id"]})
+        
+        if not referral:
+            # Create new referral record
+            referral_data = {
+                "referrer_id": current_user["id"],
+                "referral_code": current_user["id"][:8] + str(int(datetime.now().timestamp()))[-6:],  # Unique code
+                "total_referrals": 0,
+                "successful_referrals": 0,
+                "total_earnings": 0.0,
+                "pending_earnings": 0.0,
+                "created_at": datetime.now(timezone.utc)
+            }
+            await db.referral_programs.insert_one(referral_data)
+            referral = referral_data
+        
+        # Generate shareable link
+        base_url = "https://earnest.app"  # Replace with actual domain
+        referral_link = f"{base_url}/register?ref={referral['referral_code']}"
+        
+        return {
+            "referral_link": referral_link,
+            "referral_code": referral["referral_code"],
+            "total_referrals": referral["total_referrals"],
+            "successful_referrals": referral["successful_referrals"],
+            "total_earnings": referral["total_earnings"],
+            "pending_earnings": referral["pending_earnings"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Get referral link error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get referral link")
+
+@api_router.get("/referrals/stats")
+@limiter.limit("10/minute")
+async def get_referral_stats(request: Request, current_user: dict = Depends(get_current_user)):
+    """Get detailed referral statistics"""
+    try:
+        db = await get_database()
+        
+        # Get referral record
+        referral = await db.referral_programs.find_one({"referrer_id": current_user["id"]})
+        if not referral:
+            return {
+                "total_referrals": 0,
+                "successful_referrals": 0,
+                "conversion_rate": 0,
+                "total_earnings": 0.0,
+                "pending_earnings": 0.0,
+                "recent_referrals": []
+            }
+        
+        # Get recent successful referrals
+        recent_referrals = await db.referred_users.find({
+            "referrer_id": current_user["id"],
+            "status": "completed"
+        }).sort("completed_at", -1).limit(10).to_list(None)
+        
+        # Get user details for recent referrals
+        referral_details = []
+        for ref in recent_referrals:
+            user = await get_user_by_id(ref["referred_user_id"])
+            if user:
+                referral_details.append({
+                    "user_name": user.get("full_name", "Unknown"),
+                    "joined_at": ref["completed_at"],
+                    "earnings": ref.get("earnings_awarded", 0)
+                })
+        
+        conversion_rate = (referral["successful_referrals"] / max(referral["total_referrals"], 1)) * 100
+        
+        return {
+            "total_referrals": referral["total_referrals"],
+            "successful_referrals": referral["successful_referrals"],
+            "conversion_rate": round(conversion_rate, 1),
+            "total_earnings": referral["total_earnings"],
+            "pending_earnings": referral["pending_earnings"],
+            "recent_referrals": referral_details
+        }
+        
+    except Exception as e:
+        logger.error(f"Get referral stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get referral stats")
+
+@api_router.post("/referrals/process-signup")
+@limiter.limit("10/minute")
+async def process_referral_signup(request: Request, referral_code: str, new_user_id: str):
+    """Process a new user signup through referral (called internally during registration)"""
+    try:
+        db = await get_database()
+        
+        # Find referrer
+        referrer = await db.referral_programs.find_one({"referral_code": referral_code})
+        if not referrer:
+            return {"success": False, "message": "Invalid referral code"}
+        
+        # Create referred user record
+        referred_user = {
+            "referrer_id": referrer["referrer_id"],
+            "referred_user_id": new_user_id,
+            "referral_code": referral_code,
+            "status": "pending",  # Will become "completed" after 30 days of activity
+            "signed_up_at": datetime.now(timezone.utc),
+            "earnings_awarded": 0.0
+        }
+        await db.referred_users.insert_one(referred_user)
+        
+        # Update referrer stats
+        await db.referral_programs.update_one(
+            {"referrer_id": referrer["referrer_id"]},
+            {"$inc": {"total_referrals": 1}}
+        )
+        
+        # Give welcome bonus to new user
+        await db.users.update_one(
+            {"_id": new_user_id},
+            {
+                "$set": {"referred_by": referrer["referrer_id"]},
+                "$inc": {"experience_points": 50}  # Welcome bonus
+            }
+        )
+        
+        return {"success": True, "message": "Referral processed successfully"}
+        
+    except Exception as e:
+        logger.error(f"Process referral signup error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process referral signup")
 
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
