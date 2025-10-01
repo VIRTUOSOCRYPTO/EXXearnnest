@@ -22,11 +22,11 @@ const Register = () => {
     confirmPassword: '',
     full_name: '',
     role: '', // MANDATORY - will be required
+    location: '', // MANDATORY - will be required
     student_level: 'undergraduate',
     university: '', // For campus integration
     skills: [],  // Changed to array for better handling
     availability_hours: 10,
-    location: '', // MANDATORY - will be required
     bio: ''
   });
   const [loading, setLoading] = useState(false);
