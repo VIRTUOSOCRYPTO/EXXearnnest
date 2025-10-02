@@ -35,3 +35,6 @@ httpcore
 regex
 frozenlist
 redis==6.4.0
+pillow==10.2.0
+qrcode==7.4.2
+matplotlib==3.8.2
