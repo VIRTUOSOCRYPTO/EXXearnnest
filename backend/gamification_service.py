@@ -566,9 +566,9 @@ class GamificationService:
         ranks = {}
         university = user.get("university")
         for lb_type in ["savings", "streak", "goals", "points"]:
-            ranks[lb_type] = await self.get_user_rank(user_id, lb_type)
+            ranks[lb_type] = await self.get_user_rank(user_id, lb_type, "all_time")
             if university:
-                ranks[f"{lb_type}_campus"] = await self.get_user_rank(user_id, lb_type, university=university)
+                ranks[f"{lb_type}_campus"] = await self.get_user_rank(user_id, lb_type, "all_time", university)
         
         return {
             "level": user.get("level", 1),
