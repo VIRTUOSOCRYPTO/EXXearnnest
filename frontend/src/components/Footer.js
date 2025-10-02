@@ -23,7 +23,7 @@ const Footer = () => {
   const quickLinks = [
     { 
       name: 'About Us', 
-      onClick: () => openModal(<AboutUsContent />, 'About EarnNest')
+      onClick: () => openModal(<AboutUsContent />, 'About EarnAura')
     },
     { 
       name: 'Support', 
@@ -52,7 +52,7 @@ const Footer = () => {
                   <span className="text-white text-lg font-bold">₹</span>
                 </div>
                 <h3 className="text-xl font-bold text-[#00CC7E]">
-                  EarnNest
+                  EarnAura
                 </h3>
               </div>
               <p className="text-gray-300 text-sm mb-3">
@@ -86,7 +86,7 @@ const Footer = () => {
             <div>
               <h4 className="text-lg font-semibold mb-4 text-[#00CC7E]">Need Help?</h4>
               <a 
-                href="mailto:tortoor8@gmail.com?subject=EarnNest%20Support%20Request"
+                href="mailto:tortoor8@gmail.com?subject=EarnAura%20Support%20Request"
                 className="inline-flex items-center px-4 py-2 bg-[#00CC7E] hover:bg-[#00BB70] text-white rounded-lg transition-colors text-sm font-medium"
               >
                 <EnvelopeIcon className="w-4 h-4 mr-2" />
@@ -100,7 +100,7 @@ const Footer = () => {
             <div className="flex flex-col sm:flex-row justify-between items-center">
               <div className="flex items-center mb-4 sm:mb-0">
                 <p className="text-gray-400 text-sm">
-                  © {currentYear} EarnNest. All rights reserved.
+                  © {currentYear} EarnAura. All rights reserved.
                 </p>
                 <div className="flex items-center ml-4">
                   <span className="text-gray-400 text-sm">Made with</span>
