@@ -2685,11 +2685,18 @@ async def get_city_hospitals_fallback(
         logger.error(f"City hospitals error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get hospitals for {city}")
 
-# Add startup event to initialize cache warming
+# Startup event to initialize all services
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services on startup"""
-    logger.info("🚀 Starting EarnAura with enhanced hospital system...")
+    """Initialize all services on startup"""
+    logger.info("🚀 Starting EarnAura with comprehensive initialization...")
+    
+    # Initialize database and seed data (including universities)
+    try:
+        await init_database()
+        logger.info("✅ Database initialization complete with universities")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {str(e)}")
     
     # Initialize cache warming for popular cities (background task)
     try:
@@ -2698,7 +2705,7 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"⚠️  Cache warming failed: {str(e)}")
     
-    logger.info("✅ EarnAura startup complete with hospital cache system")
+    logger.info("✅ EarnAura startup complete with all systems initialized")
 @limiter.limit("15/minute")
 async def get_emergency_hospitals_endpoint(
     request: Request, 
@@ -4968,11 +4975,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on startup"""
-    await init_database()
-    logger.info("EarnAura Production Server started successfully")
+# Database initialization is now handled in the consolidated startup event above
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
