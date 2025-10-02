@@ -4696,11 +4696,11 @@ async def delete_challenge(request: Request, challenge_id: str, current_user_id:
 
 @api_router.post("/challenges/admin/approve/{challenge_id}")
 @limiter.limit("10/minute")
-async def approve_challenge(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user)):
+async def approve_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
     """Admin endpoint to approve user-created challenges"""
     try:
         # Check if user is admin
-        user = await get_user_by_id(current_user["id"])
+        user = await get_user_by_id(current_user)
         if not user or user.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Admin access required")
         
@@ -4709,7 +4709,7 @@ async def approve_challenge(request: Request, challenge_id: str, current_user: d
         # Update challenge status
         result = await db.challenges.update_one(
             {"id": challenge_id},
-            {"$set": {"is_active": True, "approved_at": datetime.now(timezone.utc), "approved_by": current_user["id"]}}
+            {"$set": {"is_active": True, "approved_at": datetime.now(timezone.utc), "approved_by": current_user}}
         )
         
         if result.modified_count == 0:
@@ -4718,7 +4718,7 @@ async def approve_challenge(request: Request, challenge_id: str, current_user: d
         # Update moderation record
         await db.challenge_moderation.update_one(
             {"challenge_id": challenge_id},
-            {"$set": {"status": "approved", "reviewed_at": datetime.now(timezone.utc), "reviewed_by": current_user["id"]}}
+            {"$set": {"status": "approved", "reviewed_at": datetime.now(timezone.utc), "reviewed_by": current_user}}
         )
         
         return {"message": "Challenge approved successfully"}
@@ -4726,6 +4726,117 @@ async def approve_challenge(request: Request, challenge_id: str, current_user: d
     except Exception as e:
         logger.error(f"Approve challenge error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to approve challenge")
+
+@api_router.post("/challenges/{challenge_id}/reject")
+@limiter.limit("10/minute")
+async def reject_challenge(request: Request, challenge_id: str, reject_data: ChallengeReject, current_user: str = Depends(get_current_user)):
+    """Admin endpoint to reject user-created challenges with reason"""
+    try:
+        # Check if user is admin
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        rejection_reason = reject_data.rejection_reason.strip()
+        
+        db = await get_database()
+        
+        # Check if challenge exists and is not already approved
+        challenge = await db.challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+            
+        if challenge.get("is_active", False):
+            raise HTTPException(status_code=400, detail="Cannot reject an already approved challenge")
+        
+        # Update moderation record with rejection
+        result = await db.challenge_moderation.update_one(
+            {"challenge_id": challenge_id},
+            {
+                "$set": {
+                    "status": "rejected",
+                    "rejection_reason": rejection_reason,
+                    "reviewed_at": datetime.now(timezone.utc),
+                    "reviewed_by": current_user
+                }
+            }
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Challenge moderation record not found")
+        
+        return {"message": "Challenge rejected successfully", "rejection_reason": rejection_reason}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reject challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to reject challenge")
+
+@api_router.get("/challenges/my-created")
+@limiter.limit("20/minute")
+async def get_my_created_challenges(request: Request, current_user: str = Depends(get_current_user)):
+    """Get challenges created by the current user with their moderation status"""
+    try:
+        db = await get_database()
+        
+        # Get challenges created by current user
+        created_challenges = await db.challenges.find({
+            "created_by": current_user
+        }).sort("created_at", -1).to_list(None)
+        
+        challenges_with_status = []
+        for challenge in created_challenges:
+            # Get moderation status if exists
+            moderation = await db.challenge_moderation.find_one({
+                "challenge_id": challenge["id"]
+            })
+            
+            # Determine status
+            if challenge.get("is_active", False):
+                status = "approved"
+                rejection_reason = None
+            elif moderation:
+                status = moderation.get("status", "pending_review")
+                rejection_reason = moderation.get("rejection_reason", None)
+            else:
+                status = "approved"  # Admin challenges are auto-approved
+                rejection_reason = None
+            
+            # Calculate days remaining or days since ended
+            now = datetime.now(timezone.utc)
+            end_date = challenge.get("end_date")
+            if end_date:
+                if isinstance(end_date, str):
+                    end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                days_remaining = (end_date - now).days
+                is_expired = end_date < now
+            else:
+                days_remaining = 0
+                is_expired = True
+            
+            # Get participant count
+            participant_count = await db.challenge_participants.count_documents({
+                "challenge_id": challenge["id"]
+            })
+            
+            challenge_data = {
+                "challenge": challenge,
+                "status": status,
+                "rejection_reason": rejection_reason,
+                "days_remaining": days_remaining,
+                "is_expired": is_expired,
+                "participant_count": participant_count,
+                "reviewed_at": moderation.get("reviewed_at") if moderation else None
+            }
+            
+            challenges_with_status.append(challenge_data)
+        
+        return {"created_challenges": challenges_with_status}
+        
+    except Exception as e:
+        logger.error(f"Get my created challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get created challenges")
 
 # Helper function to update all active challenges for a user
 async def update_user_challenge_progress(user_id: str):
