@@ -34,6 +34,16 @@ except ImportError as e:
     def get_social_sharing_service():
         return None
 
+try:
+    from push_notification_service import get_push_service
+    PUSH_NOTIFICATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Push notification service unavailable due to missing dependencies: {e}")
+    PUSH_NOTIFICATION_AVAILABLE = False
+    
+    def get_push_service():
+        return None
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -1234,9 +1244,9 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 milestone_data = streak_result["milestone_reached"]
                 # Send push notification for milestone
                 try:
-                    from push_notification_service import get_push_service
-                    push_service = await get_push_service()
-                    await push_service.send_milestone_notification(user_id, milestone_data)
+                    if PUSH_NOTIFICATION_AVAILABLE:
+                        push_service = await get_push_service()
+                        await push_service.send_milestone_notification(user_id, milestone_data)
                 except Exception as e:
                     logger.error(f"Failed to send milestone push notification: {e}")
             
@@ -1249,16 +1259,16 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             # Send notifications for new badges
             for badge in newly_earned_badges:
                 try:
-                    from push_notification_service import get_push_service
-                    push_service = await get_push_service()
-                    badge_milestone_data = {
-                        "title": f"Badge Earned: {badge['name']}!",
-                        "message": badge["description"],
-                        "type": "badge",
-                        "icon": badge["icon"],
-                        "achievement_id": badge.get("achievement_id")
-                    }
-                    await push_service.send_milestone_notification(user_id, badge_milestone_data)
+                    if PUSH_NOTIFICATION_AVAILABLE:
+                        push_service = await get_push_service()
+                        badge_milestone_data = {
+                            "title": f"Badge Earned: {badge['name']}!",
+                            "message": badge["description"],
+                            "type": "badge",
+                            "icon": badge["icon"],
+                            "achievement_id": badge.get("achievement_id")
+                        }
+                        await push_service.send_milestone_notification(user_id, badge_milestone_data)
                 except Exception as e:
                     logger.error(f"Failed to send badge push notification: {e}")
             
@@ -1305,9 +1315,9 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 milestone_data = streak_result["milestone_reached"]
                 # Send push notification for milestone
                 try:
-                    from push_notification_service import get_push_service
-                    push_service = await get_push_service()
-                    await push_service.send_milestone_notification(user_id, milestone_data)
+                    if PUSH_NOTIFICATION_AVAILABLE:
+                        push_service = await get_push_service()
+                        await push_service.send_milestone_notification(user_id, milestone_data)
                 except Exception as e:
                     logger.error(f"Failed to send milestone push notification: {e}")
             
@@ -1321,16 +1331,16 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             # Send notifications for new badges
             for badge in newly_earned_badges:
                 try:
-                    from push_notification_service import get_push_service
-                    push_service = await get_push_service()
-                    badge_milestone_data = {
-                        "title": f"Badge Earned: {badge['name']}!",
-                        "message": badge["description"],
-                        "type": "badge",
-                        "icon": badge["icon"],
-                        "achievement_id": badge.get("achievement_id")
-                    }
-                    await push_service.send_milestone_notification(user_id, badge_milestone_data)
+                    if PUSH_NOTIFICATION_AVAILABLE:
+                        push_service = await get_push_service()
+                        badge_milestone_data = {
+                            "title": f"Badge Earned: {badge['name']}!",
+                            "message": badge["description"],
+                            "type": "badge",
+                            "icon": badge["icon"],
+                            "achievement_id": badge.get("achievement_id")
+                        }
+                        await push_service.send_milestone_notification(user_id, badge_milestone_data)
                 except Exception as e:
                     logger.error(f"Failed to send badge push notification: {e}")
             
@@ -4581,7 +4591,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://gamify-milestones.preview.emergentagent.com"
+        base_url = "https://achievement-pulse-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
