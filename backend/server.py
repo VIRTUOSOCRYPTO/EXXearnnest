@@ -1225,13 +1225,43 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             # Update group challenge progress
             await update_group_challenge_progress(user_id)
             
-            # Gamification hooks for expense transactions
+            # Enhanced Gamification hooks for expense transactions - Phase 1
             gamification = await get_gamification_service()
-            await gamification.update_user_streak(user_id)
-            await gamification.check_and_award_badges(user_id, "expense_created", {
+            streak_result = await gamification.update_user_streak(user_id)
+            
+            # Check for milestone achievements and trigger notifications
+            if streak_result and streak_result.get("milestone_reached"):
+                milestone_data = streak_result["milestone_reached"]
+                # Send push notification for milestone
+                try:
+                    from push_notification_service import get_push_service
+                    push_service = await get_push_service()
+                    await push_service.send_milestone_notification(user_id, milestone_data)
+                except Exception as e:
+                    logger.error(f"Failed to send milestone push notification: {e}")
+            
+            # Check and award badges
+            newly_earned_badges = await gamification.check_and_award_badges(user_id, "expense_created", {
                 "amount": transaction_data.amount,
                 "category": transaction_dict["category"]
             })
+            
+            # Send notifications for new badges
+            for badge in newly_earned_badges:
+                try:
+                    from push_notification_service import get_push_service
+                    push_service = await get_push_service()
+                    badge_milestone_data = {
+                        "title": f"Badge Earned: {badge['name']}!",
+                        "message": badge["description"],
+                        "type": "badge",
+                        "icon": badge["icon"],
+                        "achievement_id": badge.get("achievement_id")
+                    }
+                    await push_service.send_milestone_notification(user_id, badge_milestone_data)
+                except Exception as e:
+                    logger.error(f"Failed to send badge push notification: {e}")
+            
             await gamification.update_leaderboards(user_id)
             
         else:
@@ -1266,14 +1296,44 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             # Update group challenge progress
             await update_group_challenge_progress(user_id)
             
-            # Gamification hooks for income transactions
+            # Enhanced Gamification hooks for income transactions - Phase 1
             gamification = await get_gamification_service()
-            await gamification.update_user_streak(user_id)
-            await gamification.check_and_award_badges(user_id, "income_created", {
+            streak_result = await gamification.update_user_streak(user_id)
+            
+            # Check for milestone achievements and trigger notifications
+            if streak_result and streak_result.get("milestone_reached"):
+                milestone_data = streak_result["milestone_reached"]
+                # Send push notification for milestone
+                try:
+                    from push_notification_service import get_push_service
+                    push_service = await get_push_service()
+                    await push_service.send_milestone_notification(user_id, milestone_data)
+                except Exception as e:
+                    logger.error(f"Failed to send milestone push notification: {e}")
+            
+            # Check and award badges
+            newly_earned_badges = await gamification.check_and_award_badges(user_id, "income_created", {
                 "amount": transaction.amount,
                 "source": transaction_dict.get("source"),
                 "total_earnings": user_doc.get("total_earnings", 0) + transaction.amount
             })
+            
+            # Send notifications for new badges
+            for badge in newly_earned_badges:
+                try:
+                    from push_notification_service import get_push_service
+                    push_service = await get_push_service()
+                    badge_milestone_data = {
+                        "title": f"Badge Earned: {badge['name']}!",
+                        "message": badge["description"],
+                        "type": "badge",
+                        "icon": badge["icon"],
+                        "achievement_id": badge.get("achievement_id")
+                    }
+                    await push_service.send_milestone_notification(user_id, badge_milestone_data)
+                except Exception as e:
+                    logger.error(f"Failed to send badge push notification: {e}")
+            
             await gamification.update_leaderboards(user_id)
             
             # Create milestone achievements for first transactions
@@ -3431,12 +3491,20 @@ async def get_learning_feedback_endpoint(
 @limiter.limit("30/minute")
 async def get_gamification_profile_endpoint(
     request: Request,
+    enhanced: bool = False,
     user_id: str = Depends(get_current_user)
 ):
-    """Get user's complete gamification profile"""
+    """Get user's complete gamification profile - Enhanced for Phase 1"""
     try:
         gamification = await get_gamification_service()
-        profile = await gamification.get_user_gamification_profile(user_id)
+        
+        if enhanced:
+            # Return enhanced profile with social proof and celebrations
+            profile = await gamification.get_enhanced_gamification_profile(user_id)
+        else:
+            # Return standard profile for backward compatibility
+            profile = await gamification.get_user_gamification_profile(user_id)
+        
         return profile
         
     except Exception as e:
@@ -3938,6 +4006,172 @@ async def get_university_suggestions_endpoint(
         logger.error(f"Get university suggestions error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get university suggestions")
 
+# ===== PHASE 1 ENHANCED GAMIFICATION ENDPOINTS =====
+
+@api_router.get("/gamification/social-proof")
+@limiter.limit("20/minute")
+async def get_social_proof_stats_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get social proof statistics for enhanced gamification"""
+    try:
+        gamification = await get_gamification_service()
+        stats = await gamification.get_social_proof_stats(user_id)
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Get social proof stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get social proof statistics")
+
+@api_router.get("/gamification/celebrations/pending")
+@limiter.limit("10/minute")
+async def get_pending_celebrations_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get pending celebrations for user login"""
+    try:
+        gamification = await get_gamification_service()
+        celebrations = await gamification.get_pending_celebrations(user_id)
+        return {"celebrations": celebrations}
+        
+    except Exception as e:
+        logger.error(f"Get pending celebrations error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get pending celebrations")
+
+@api_router.post("/gamification/celebrations/queue")
+@limiter.limit("10/minute")
+async def queue_celebration_endpoint(
+    request: Request,
+    celebration_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Queue celebration for offline users"""
+    try:
+        gamification = await get_gamification_service()
+        await gamification.queue_celebration(user_id, celebration_data)
+        return {"message": "Celebration queued successfully"}
+        
+    except Exception as e:
+        logger.error(f"Queue celebration error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to queue celebration")
+
+# ===== PUSH NOTIFICATION ENDPOINTS =====
+
+@api_router.post("/notifications/subscribe")
+@limiter.limit("5/minute")
+async def subscribe_to_push_notifications(
+    request: Request,
+    subscription_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Subscribe user to push notifications"""
+    try:
+        db = await get_database()
+        
+        # Store user's push subscription
+        subscription_doc = {
+            "user_id": user_id,
+            "subscription_data": subscription_data,
+            "created_at": datetime.now(timezone.utc),
+            "is_active": True,
+            "notification_preferences": {
+                "streak_reminders": True,
+                "milestone_achievements": True,
+                "friend_activities": True,
+                "daily_reminders": True,
+                "reminder_time": "19:00"  # 7 PM default
+            }
+        }
+        
+        # Update or insert subscription
+        await db.push_subscriptions.update_one(
+            {"user_id": user_id},
+            {"$set": subscription_doc},
+            upsert=True
+        )
+        
+        return {"message": "Successfully subscribed to push notifications"}
+        
+    except Exception as e:
+        logger.error(f"Push subscription error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to subscribe to push notifications")
+
+@api_router.put("/notifications/preferences")
+@limiter.limit("10/minute")
+async def update_notification_preferences(
+    request: Request,
+    preferences: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Update user's notification preferences"""
+    try:
+        db = await get_database()
+        
+        # Update notification preferences
+        await db.push_subscriptions.update_one(
+            {"user_id": user_id},
+            {"$set": {"notification_preferences": preferences}},
+            upsert=True
+        )
+        
+        return {"message": "Notification preferences updated"}
+        
+    except Exception as e:
+        logger.error(f"Update notification preferences error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update notification preferences")
+
+@api_router.get("/notifications/preferences")
+@limiter.limit("20/minute")
+async def get_notification_preferences(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's notification preferences"""
+    try:
+        db = await get_database()
+        
+        subscription = await db.push_subscriptions.find_one({"user_id": user_id})
+        
+        if subscription:
+            return subscription.get("notification_preferences", {
+                "streak_reminders": True,
+                "milestone_achievements": True,
+                "friend_activities": True,
+                "daily_reminders": True,
+                "reminder_time": "19:00"
+            })
+        
+        # Return default preferences if no subscription exists
+        return {
+            "streak_reminders": True,
+            "milestone_achievements": True,
+            "friend_activities": True,
+            "daily_reminders": True,
+            "reminder_time": "19:00"
+        }
+        
+    except Exception as e:
+        logger.error(f"Get notification preferences error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get notification preferences")
+
+@api_router.post("/gamification/trigger-milestone-check")
+@limiter.limit("30/minute")
+async def trigger_milestone_check_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Manually trigger milestone check for testing"""
+    try:
+        gamification = await get_gamification_service()
+        result = await gamification.update_user_streak(user_id)
+        return {"result": result}
+        
+    except Exception as e:
+        logger.error(f"Trigger milestone check error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to trigger milestone check")
+
 # ===== GAMIFICATION & COMMUNITY API ENDPOINTS =====
 
 @api_router.get("/gamification/achievements")
@@ -4347,7 +4581,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://social-share-debug.preview.emergentagent.com"
+        base_url = "https://gamify-milestones.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
