@@ -1194,6 +1194,9 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             # Update challenge progress for savings challenges
             await update_user_challenge_progress(user_id)
             
+            # Update group challenge progress
+            await update_group_challenge_progress(user_id)
+            
             # Gamification hooks for expense transactions
             gamification = await get_gamification_service()
             await gamification.update_user_streak(user_id)
@@ -1231,6 +1234,9 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             
             # Update challenge progress for savings challenges
             await update_user_challenge_progress(user_id)
+            
+            # Update group challenge progress
+            await update_group_challenge_progress(user_id)
             
             # Gamification hooks for income transactions
             gamification = await get_gamification_service()
@@ -1715,6 +1721,9 @@ async def update_financial_goal_endpoint(request: Request, goal_id: str, goal_up
         # Update challenge progress for goal completion challenges
         if was_completed:
             await update_user_challenge_progress(user_id)
+            
+            # Update group challenge progress
+            await update_group_challenge_progress(user_id)
             
         # Gamification hooks for goal completion
         if was_completed:
@@ -5176,6 +5185,949 @@ async def update_challenge_progress(challenge_id: str, user_id: str):
         
     except Exception as e:
         logger.error(f"Update challenge progress error: {str(e)}")
+
+# ===== FRIEND NETWORK & CAMPUS CHALLENGES SYSTEM =====
+
+@api_router.post("/friends/invite")
+@limiter.limit("10/hour")
+async def invite_friend(request: Request, invite_data: FriendInviteRequest, current_user: str = Depends(get_current_user)):
+    """Send friend invitation via referral code"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Check invitation limits
+        current_date = datetime.now(timezone.utc)
+        current_month = current_date.month
+        current_year = current_date.year
+        
+        # Get or create invitation stats
+        invite_stats = await db.user_invitation_stats.find_one({"user_id": user_id})
+        if not invite_stats:
+            invite_stats = UserInvitationStats(user_id=user_id).dict()
+            await db.user_invitation_stats.insert_one(invite_stats)
+        
+        # Reset monthly count if new month
+        if invite_stats["current_month"] != current_month or invite_stats["current_year"] != current_year:
+            await db.user_invitation_stats.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "monthly_invites_sent": 0,
+                        "current_month": current_month,
+                        "current_year": current_year,
+                        "last_reset_date": current_date
+                    }
+                }
+            )
+            invite_stats["monthly_invites_sent"] = 0
+        
+        # Check if user has reached monthly limit
+        if invite_stats["monthly_invites_sent"] >= invite_stats["monthly_invites_limit"]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Monthly invitation limit reached ({invite_stats['monthly_invites_limit']} invites). Limit resets next month or unlock more through achievements."
+            )
+        
+        # Generate unique referral code
+        referral_code = f"EARN{user_id[:4].upper()}{uuid.uuid4().hex[:6].upper()}"
+        
+        # Create invitation record
+        invitation = FriendInvitation(
+            inviter_id=user_id,
+            invitee_email=invite_data.email,
+            invitee_phone=invite_data.phone,
+            referral_code=referral_code,
+            expires_at=current_date + timedelta(days=30)
+        )
+        
+        await db.friend_invitations.insert_one(invitation.dict())
+        
+        # Update invitation stats
+        await db.user_invitation_stats.update_one(
+            {"user_id": user_id},
+            {"$inc": {"monthly_invites_sent": 1}}
+        )
+        
+        # Create notification for inviter
+        await create_notification(
+            user_id, 
+            "friend_invited",
+            f"Friend invitation sent!",
+            f"You've sent an invitation using code {referral_code}. Share it to earn points when they join!",
+            related_id=invitation.id
+        )
+        
+        return {
+            "message": "Friend invitation sent successfully",
+            "referral_code": referral_code,
+            "invites_left": invite_stats["monthly_invites_limit"] - invite_stats["monthly_invites_sent"] - 1
+        }
+        
+    except Exception as e:
+        logger.error(f"Invite friend error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to send invitation")
+
+@api_router.get("/friends")
+@limiter.limit("20/minute")
+async def get_friends(request: Request, current_user: str = Depends(get_current_user)):
+    """Get user's friends list"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Get all friendships where user is involved
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user1_id": user_id},
+                {"user2_id": user_id}
+            ],
+            "status": "active"
+        }).to_list(None)
+        
+        friends_list = []
+        for friendship in friendships:
+            # Determine friend's ID
+            friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
+            
+            # Get friend's details
+            friend = await db.users.find_one({"id": friend_id})
+            if friend:
+                friends_list.append({
+                    "friend_id": friend_id,
+                    "full_name": friend["full_name"],
+                    "avatar": friend.get("avatar", "boy"),
+                    "university": friend.get("university"),
+                    "current_streak": friend.get("current_streak", 0),
+                    "total_earnings": friend.get("total_earnings", 0.0),
+                    "friendship_points": friendship.get("friendship_points", 0),
+                    "friendship_created": friendship["created_at"],
+                    "level": friend.get("level", 1),
+                    "badges_count": len(friend.get("badges", []))
+                })
+        
+        return {
+            "friends": friends_list,
+            "total_friends": len(friends_list)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get friends error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get friends list")
+
+@api_router.get("/friends/invitations")
+@limiter.limit("20/minute")
+async def get_invitations(request: Request, current_user: str = Depends(get_current_user)):
+    """Get sent and received invitations"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Get sent invitations
+        sent_invitations = await db.friend_invitations.find({
+            "inviter_id": user_id
+        }).sort("invited_at", -1).to_list(None)
+        
+        # Get invitation stats
+        invite_stats = await db.user_invitation_stats.find_one({"user_id": user_id})
+        if not invite_stats:
+            invite_stats = UserInvitationStats(user_id=user_id).dict()
+            await db.user_invitation_stats.insert_one(invite_stats)
+        
+        return {
+            "sent_invitations": sent_invitations,
+            "invitation_stats": {
+                "monthly_sent": invite_stats["monthly_invites_sent"],
+                "monthly_limit": invite_stats["monthly_invites_limit"],
+                "remaining": invite_stats["monthly_invites_limit"] - invite_stats["monthly_invites_sent"],
+                "total_successful": invite_stats["total_successful_invites"],
+                "bonus_points_earned": invite_stats["invitation_bonus_points"]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get invitations error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get invitations")
+
+@api_router.post("/friends/accept-invitation")
+@limiter.limit("5/minute")
+async def accept_friend_invitation(request: Request, referral_code: str, current_user: str = Depends(get_current_user)):
+    """Accept friend invitation using referral code"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Find invitation
+        invitation = await db.friend_invitations.find_one({
+            "referral_code": referral_code,
+            "status": "pending"
+        })
+        
+        if not invitation:
+            raise HTTPException(status_code=404, detail="Invalid or expired invitation code")
+        
+        # Check if invitation is expired
+        if invitation.get("expires_at") and invitation["expires_at"] < datetime.now(timezone.utc):
+            await db.friend_invitations.update_one(
+                {"_id": invitation["_id"]},
+                {"$set": {"status": "expired"}}
+            )
+            raise HTTPException(status_code=400, detail="Invitation has expired")
+        
+        inviter_id = invitation["inviter_id"]
+        
+        # Check if they're not trying to add themselves
+        if inviter_id == user_id:
+            raise HTTPException(status_code=400, detail="Cannot send friend invitation to yourself")
+        
+        # Check if friendship already exists
+        existing_friendship = await db.friendships.find_one({
+            "$or": [
+                {"user1_id": inviter_id, "user2_id": user_id},
+                {"user1_id": user_id, "user2_id": inviter_id}
+            ]
+        })
+        
+        if existing_friendship:
+            raise HTTPException(status_code=400, detail="You're already friends with this user")
+        
+        # Create friendship
+        friendship = Friendship(
+            user1_id=inviter_id,
+            user2_id=user_id
+        )
+        await db.friendships.insert_one(friendship.dict())
+        
+        # Update invitation status
+        await db.friend_invitations.update_one(
+            {"_id": invitation["_id"]},
+            {
+                "$set": {
+                    "status": "accepted",
+                    "accepted_at": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        # Reward points to both users
+        inviter_points = 50  # Points for successful referral
+        invitee_points = 25  # Welcome bonus for new friend
+        
+        await db.users.update_one(
+            {"id": inviter_id},
+            {"$inc": {"experience_points": inviter_points, "achievement_points": inviter_points}}
+        )
+        
+        await db.users.update_one(
+            {"id": user_id},
+            {"$inc": {"experience_points": invitee_points, "achievement_points": invitee_points}}
+        )
+        
+        # Update inviter's successful invitations count
+        await db.user_invitation_stats.update_one(
+            {"user_id": inviter_id},
+            {
+                "$inc": {
+                    "total_successful_invites": 1,
+                    "invitation_bonus_points": inviter_points
+                }
+            }
+        )
+        
+        # Create notifications
+        inviter = await db.users.find_one({"id": inviter_id})
+        await create_notification(
+            inviter_id,
+            "friend_joined",
+            f"{current_user['full_name']} accepted your invitation!",
+            f"You earned {inviter_points} points for successful referral.",
+            related_id=friendship.id
+        )
+        
+        await create_notification(
+            user_id,
+            "friend_joined",
+            f"Welcome to EarnNest friends network!",
+            f"You're now friends with {inviter['full_name']} and earned {invitee_points} welcome points!",
+            related_id=friendship.id
+        )
+        
+        # Check for friendship milestone badges
+        gamification = await get_gamification_service()
+        await gamification.check_and_award_badges(inviter_id, "friend_invited", {
+            "successful_invites": (await db.user_invitation_stats.find_one({"user_id": inviter_id}))["total_successful_invites"]
+        })
+        
+        return {
+            "message": "Friend invitation accepted successfully",
+            "friendship_id": friendship.id,
+            "points_earned": invitee_points
+        }
+        
+    except Exception as e:
+        logger.error(f"Accept invitation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to accept invitation")
+
+@api_router.post("/group-challenges")
+@limiter.limit("5/hour")
+async def create_group_challenge(request: Request, challenge_data: GroupChallengeCreateRequest, current_user: str = Depends(get_current_user)):
+    """Create a new group savings challenge"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        user = current_user
+        
+        # Calculate dates
+        start_date = datetime.now(timezone.utc)
+        end_date = start_date + timedelta(days=challenge_data.duration_days)
+        
+        # Set university restriction if requested
+        university = user.get("university") if challenge_data.university_only else None
+        
+        # Calculate group target
+        group_target = challenge_data.target_amount_per_person * challenge_data.max_participants
+        
+        # Create group challenge
+        group_challenge = GroupChallenge(
+            title=challenge_data.title,
+            description=challenge_data.description,
+            challenge_type=challenge_data.challenge_type,
+            target_amount_per_person=challenge_data.target_amount_per_person,
+            group_target_amount=group_target,
+            duration_days=challenge_data.duration_days,
+            max_participants=challenge_data.max_participants,
+            university=university,
+            created_by=user_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+        
+        await db.group_challenges.insert_one(group_challenge.dict())
+        
+        # Auto-join creator as first participant
+        participant = GroupChallengeParticipant(
+            group_challenge_id=group_challenge.id,
+            user_id=user_id,
+            individual_target=challenge_data.target_amount_per_person
+        )
+        await db.group_challenge_participants.insert_one(participant.dict())
+        
+        # Update participant count
+        await db.group_challenges.update_one(
+            {"id": group_challenge.id},
+            {"$inc": {"current_participants": 1}}
+        )
+        
+        # Create notification
+        await create_notification(
+            user_id,
+            "challenge_created",
+            f"Group Challenge Created: {group_challenge.title}",
+            f"You've created a {challenge_data.duration_days}-day group challenge. Invite friends to join!",
+            action_url=f"/group-challenges/{group_challenge.id}",
+            related_id=group_challenge.id
+        )
+        
+        return {
+            "message": "Group challenge created successfully",
+            "group_challenge": group_challenge.dict(),
+            "participant_id": participant.id
+        }
+        
+    except Exception as e:
+        logger.error(f"Create group challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create group challenge")
+
+@api_router.get("/group-challenges")
+@limiter.limit("20/minute")
+async def get_group_challenges(request: Request, current_user: str = Depends(get_current_user)):
+    """Get available group challenges (campus-specific and open)"""
+    try:
+        db = await get_database()
+        user = current_user
+        user_university = user.get("university")
+        
+        # Build query - include open challenges and user's campus challenges
+        query = {
+            "is_active": True,
+            "end_date": {"$gte": datetime.now(timezone.utc)},
+            "$or": [
+                {"university": None},  # Open to all
+                {"university": user_university}  # Campus specific
+            ]
+        }
+        
+        # Get all active group challenges
+        challenges = await db.group_challenges.find(query).sort("created_at", -1).to_list(None)
+        
+        challenges_with_status = []
+        for challenge in challenges:
+            # Check if user has already joined
+            participation = await db.group_challenge_participants.find_one({
+                "group_challenge_id": challenge["id"],
+                "user_id": user["id"]
+            })
+            
+            # Get creator info
+            creator = await db.users.find_one({"id": challenge["created_by"]})
+            
+            # Calculate progress percentage
+            total_progress = 0
+            participants = await db.group_challenge_participants.find({
+                "group_challenge_id": challenge["id"]
+            }).to_list(None)
+            
+            for participant in participants:
+                total_progress += participant.get("current_progress", 0)
+            
+            progress_percentage = min(100, (total_progress / challenge["group_target_amount"]) * 100) if challenge["group_target_amount"] > 0 else 0
+            
+            challenge_info = {
+                **challenge,
+                "is_joined": participation is not None,
+                "user_progress": participation["current_progress"] if participation else 0.0,
+                "spots_remaining": challenge["max_participants"] - challenge["current_participants"],
+                "progress_percentage": round(progress_percentage, 1),
+                "total_progress_amount": total_progress,
+                "creator_name": creator["full_name"] if creator else "Unknown",
+                "creator_university": creator.get("university") if creator else None,
+                "is_campus_only": challenge.get("university") is not None,
+                "participants_count": len(participants)
+            }
+            
+            challenges_with_status.append(challenge_info)
+        
+        return {
+            "group_challenges": challenges_with_status,
+            "user_university": user_university
+        }
+        
+    except Exception as e:
+        logger.error(f"Get group challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get group challenges")
+
+@api_router.post("/group-challenges/{challenge_id}/join")
+@limiter.limit("10/minute")
+async def join_group_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+    """Join a group challenge"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Check if challenge exists and is active
+        challenge = await db.group_challenges.find_one({
+            "id": challenge_id,
+            "is_active": True,
+            "end_date": {"$gte": datetime.now(timezone.utc)}
+        })
+        
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found or expired")
+        
+        # Check if user already joined
+        existing_participation = await db.group_challenge_participants.find_one({
+            "group_challenge_id": challenge_id,
+            "user_id": user_id
+        })
+        
+        if existing_participation:
+            raise HTTPException(status_code=400, detail="You've already joined this challenge")
+        
+        # Check if challenge is full
+        if challenge["current_participants"] >= challenge["max_participants"]:
+            raise HTTPException(status_code=400, detail="Challenge is full")
+        
+        # Check university restrictions
+        if challenge.get("university") and current_user.get("university") != challenge["university"]:
+            raise HTTPException(status_code=400, detail="This challenge is restricted to specific campus students")
+        
+        # Join the challenge
+        participant = GroupChallengeParticipant(
+            group_challenge_id=challenge_id,
+            user_id=user_id,
+            individual_target=challenge["target_amount_per_person"]
+        )
+        await db.group_challenge_participants.insert_one(participant.dict())
+        
+        # Update participant count
+        await db.group_challenges.update_one(
+            {"id": challenge_id},
+            {"$inc": {"current_participants": 1}}
+        )
+        
+        # Notify all participants about new member
+        participants = await db.group_challenge_participants.find({
+            "group_challenge_id": challenge_id
+        }).to_list(None)
+        
+        for participant_doc in participants:
+            if participant_doc["user_id"] != user_id:  # Don't notify the joiner
+                await create_notification(
+                    participant_doc["user_id"],
+                    "group_progress",
+                    f"New member joined {challenge['title']}!",
+                    f"{current_user['full_name']} joined your group challenge. Group now has {challenge['current_participants'] + 1} members.",
+                    action_url=f"/group-challenges/{challenge_id}",
+                    related_id=challenge_id
+                )
+        
+        # Notify the joiner
+        await create_notification(
+            user_id,
+            "challenge_invite",
+            f"Joined Group Challenge: {challenge['title']}",
+            f"Successfully joined! Target: ₹{challenge['target_amount_per_person']} in {challenge['duration_days']} days.",
+            action_url=f"/group-challenges/{challenge_id}",
+            related_id=challenge_id
+        )
+        
+        return {
+            "message": "Successfully joined group challenge",
+            "participant_id": participant.id,
+            "individual_target": challenge["target_amount_per_person"],
+            "group_size": challenge["current_participants"] + 1
+        }
+        
+    except Exception as e:
+        logger.error(f"Join group challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to join group challenge")
+
+@api_router.get("/group-challenges/{challenge_id}")
+@limiter.limit("20/minute")
+async def get_group_challenge_details(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+    """Get detailed information about a specific group challenge"""
+    try:
+        db = await get_database()
+        
+        # Get challenge details
+        challenge = await db.group_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Get all participants
+        participants = await db.group_challenge_participants.find({
+            "group_challenge_id": challenge_id
+        }).sort("current_progress", -1).to_list(None)
+        
+        # Get participant details
+        participants_info = []
+        total_group_progress = 0
+        
+        for participant in participants:
+            user = await db.users.find_one({"id": participant["user_id"]})
+            if user:
+                progress_percentage = min(100, (participant["current_progress"] / participant["individual_target"]) * 100) if participant["individual_target"] > 0 else 0
+                total_group_progress += participant["current_progress"]
+                
+                participants_info.append({
+                    "user_id": participant["user_id"],
+                    "full_name": user["full_name"],
+                    "avatar": user.get("avatar", "boy"),
+                    "university": user.get("university"),
+                    "individual_target": participant["individual_target"],
+                    "current_progress": participant["current_progress"],
+                    "progress_percentage": round(progress_percentage, 1),
+                    "is_completed": participant["is_completed"],
+                    "joined_at": participant["joined_at"],
+                    "points_earned": participant.get("points_earned", 0)
+                })
+        
+        # Calculate overall progress
+        group_progress_percentage = min(100, (total_group_progress / challenge["group_target_amount"]) * 100) if challenge["group_target_amount"] > 0 else 0
+        
+        # Get creator info
+        creator = await db.users.find_one({"id": challenge["created_by"]})
+        
+        # Check if current user is participant
+        user_participation = next((p for p in participants_info if p["user_id"] == current_user["id"]), None)
+        
+        return {
+            "challenge": challenge,
+            "participants": participants_info,
+            "creator": {
+                "full_name": creator["full_name"] if creator else "Unknown",
+                "avatar": creator.get("avatar", "boy") if creator else "boy"
+            },
+            "progress": {
+                "total_amount": total_group_progress,
+                "target_amount": challenge["group_target_amount"],
+                "percentage": round(group_progress_percentage, 1),
+                "completed_count": sum(1 for p in participants_info if p["is_completed"]),
+                "total_participants": len(participants_info)
+            },
+            "user_participation": user_participation,
+            "spots_remaining": challenge["max_participants"] - challenge["current_participants"],
+            "days_remaining": max(0, (challenge["end_date"] - datetime.now(timezone.utc)).days)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get group challenge details error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenge details")
+
+@api_router.get("/notifications")
+@limiter.limit("30/minute")
+async def get_notifications(request: Request, current_user: str = Depends(get_current_user), limit: int = 20):
+    """Get user's notifications"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Get recent notifications
+        notifications = await db.notifications.find({
+            "user_id": user_id
+        }).sort("created_at", -1).limit(limit).to_list(None)
+        
+        # Count unread notifications
+        unread_count = await db.notifications.count_documents({
+            "user_id": user_id,
+            "is_read": False
+        })
+        
+        return {
+            "notifications": notifications,
+            "unread_count": unread_count,
+            "total_count": len(notifications)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get notifications error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get notifications")
+
+@api_router.put("/notifications/{notification_id}/read")
+@limiter.limit("30/minute")
+async def mark_notification_read(request: Request, notification_id: str, current_user: str = Depends(get_current_user)):
+    """Mark notification as read"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Update notification
+        result = await db.notifications.update_one(
+            {
+                "id": notification_id,
+                "user_id": user_id,
+                "is_read": False
+            },
+            {
+                "$set": {
+                    "is_read": True,
+                    "read_at": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Notification not found or already read")
+        
+        return {"message": "Notification marked as read"}
+        
+    except Exception as e:
+        logger.error(f"Mark notification read error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to mark notification as read")
+
+@api_router.put("/notifications/mark-all-read")
+@limiter.limit("10/minute")
+async def mark_all_notifications_read(request: Request, current_user: str = Depends(get_current_user)):
+    """Mark all notifications as read"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Update all unread notifications
+        result = await db.notifications.update_many(
+            {
+                "user_id": user_id,
+                "is_read": False
+            },
+            {
+                "$set": {
+                    "is_read": True,
+                    "read_at": datetime.now(timezone.utc)
+                }
+            }
+        )
+        
+        return {
+            "message": "All notifications marked as read",
+            "updated_count": result.modified_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Mark all notifications read error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to mark all notifications as read")
+
+@api_router.get("/leaderboards/campus/{leaderboard_type}")
+@limiter.limit("20/minute")
+async def get_campus_leaderboards(
+    request: Request, 
+    leaderboard_type: str, 
+    period: str = "monthly",
+    current_user: str = Depends(get_current_user)
+):
+    """Get campus-specific leaderboards with college vs college comparison"""
+    try:
+        db = await get_database()
+        user_university = current_user.get("university")
+        
+        if not user_university:
+            raise HTTPException(status_code=400, detail="User must select a university to view campus leaderboards")
+        
+        # Get gamification service
+        gamification = await get_gamification_service()
+        
+        # Get campus-specific leaderboard
+        campus_leaderboard = await gamification.get_leaderboard(leaderboard_type, period, university=user_university)
+        
+        # Get top universities for comparison
+        university_comparison = await get_university_comparison(leaderboard_type, period)
+        
+        # Get user's campus rank
+        user_campus_rank = await gamification.get_user_rank(current_user["id"], leaderboard_type, university=user_university)
+        user_global_rank = await gamification.get_user_rank(current_user["id"], leaderboard_type)
+        
+        return {
+            "campus_leaderboard": campus_leaderboard,
+            "university_comparison": university_comparison,
+            "user_campus_rank": user_campus_rank,
+            "user_global_rank": user_global_rank,
+            "user_university": user_university
+        }
+        
+    except Exception as e:
+        logger.error(f"Get campus leaderboards error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get campus leaderboards")
+
+# Helper function to create notifications
+async def create_notification(user_id: str, notification_type: str, title: str, message: str, action_url: str = None, related_id: str = None):
+    """Helper function to create notifications"""
+    try:
+        db = await get_database()
+        
+        notification = InAppNotification(
+            user_id=user_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            action_url=action_url,
+            related_id=related_id
+        )
+        
+        await db.notifications.insert_one(notification.dict())
+        return notification.id
+        
+    except Exception as e:
+        logger.error(f"Create notification error: {str(e)}")
+        return None
+
+# Helper function to update group challenge progress
+async def update_group_challenge_progress(user_id: str):
+    """Update user's progress in all active group challenges"""
+    try:
+        db = await get_database()
+        
+        # Get user's active group challenge participations
+        participations = await db.group_challenge_participants.find({
+            "user_id": user_id,
+            "is_completed": False
+        }).to_list(None)
+        
+        for participation in participations:
+            # Check if challenge is still active
+            challenge = await db.group_challenges.find_one({
+                "id": participation["group_challenge_id"],
+                "is_active": True,
+                "end_date": {"$gte": datetime.now(timezone.utc)}
+            })
+            
+            if not challenge:
+                continue
+            
+            # Calculate new progress based on challenge type
+            new_progress = await calculate_group_challenge_progress(
+                user_id, 
+                challenge["challenge_type"], 
+                challenge["start_date"]
+            )
+            
+            # Check if individual target is completed
+            is_completed = new_progress >= participation["individual_target"]
+            completion_date = datetime.now(timezone.utc) if is_completed and not participation["is_completed"] else participation.get("completion_date")
+            
+            # Update progress
+            await db.group_challenge_participants.update_one(
+                {"_id": participation["_id"]},
+                {
+                    "$set": {
+                        "current_progress": new_progress,
+                        "is_completed": is_completed,
+                        "completion_date": completion_date
+                    }
+                }
+            )
+            
+            # Award points if just completed
+            if is_completed and not participation["is_completed"]:
+                await db.group_challenge_participants.update_one(
+                    {"_id": participation["_id"]},
+                    {"$inc": {"points_earned": challenge["reward_points_per_person"]}}
+                )
+                
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$inc": {"experience_points": challenge["reward_points_per_person"]}}
+                )
+                
+                # Notify group members
+                await notify_group_members_of_completion(challenge["id"], user_id, participation["individual_target"])
+        
+    except Exception as e:
+        logger.error(f"Update group challenge progress error: {str(e)}")
+
+async def calculate_group_challenge_progress(user_id: str, challenge_type: str, start_date: datetime) -> float:
+    """Calculate user's progress for group challenge based on type"""
+    try:
+        db = await get_database()
+        
+        if challenge_type == "group_savings":
+            # Calculate total income since challenge start
+            income_result = await db.transactions.aggregate([
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "type": "income",
+                        "date": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_income": {"$sum": "$amount"}
+                    }
+                }
+            ]).to_list(None)
+            
+            return income_result[0]["total_income"] if income_result else 0.0
+            
+        elif challenge_type == "group_streak":
+            # Use current user streak (simplified)
+            user = await db.users.find_one({"id": user_id})
+            return user.get("current_streak", 0)
+            
+        elif challenge_type == "group_goals":
+            # Count completed goals since challenge start
+            goals_count = await db.financial_goals.count_documents({
+                "user_id": user_id,
+                "is_completed": True,
+                "updated_at": {"$gte": start_date}
+            })
+            return float(goals_count)
+        
+        return 0.0
+        
+    except Exception as e:
+        logger.error(f"Calculate group challenge progress error: {str(e)}")
+        return 0.0
+
+async def notify_group_members_of_completion(group_challenge_id: str, completed_user_id: str, target_amount: float):
+    """Notify group members when someone completes their target"""
+    try:
+        db = await get_database()
+        
+        # Get challenge details
+        challenge = await db.group_challenges.find_one({"id": group_challenge_id})
+        if not challenge:
+            return
+            
+        # Get completed user details
+        completed_user = await db.users.find_one({"id": completed_user_id})
+        if not completed_user:
+            return
+        
+        # Get all other participants
+        participants = await db.group_challenge_participants.find({
+            "group_challenge_id": group_challenge_id,
+            "user_id": {"$ne": completed_user_id}
+        }).to_list(None)
+        
+        # Notify each participant
+        for participant in participants:
+            await create_notification(
+                participant["user_id"],
+                "group_progress",
+                f"🎉 {completed_user['full_name']} completed their target!",
+                f"{completed_user['full_name']} reached ₹{target_amount:,.0f} in '{challenge['title']}'. Keep going!",
+                action_url=f"/group-challenges/{group_challenge_id}",
+                related_id=group_challenge_id
+            )
+        
+    except Exception as e:
+        logger.error(f"Notify group members error: {str(e)}")
+
+async def get_university_comparison(leaderboard_type: str, period: str, limit: int = 10):
+    """Get university comparison for campus leaderboards"""
+    try:
+        db = await get_database()
+        
+        # Get aggregated university data based on leaderboard type
+        if leaderboard_type == "points":
+            pipeline = [
+                {"$match": {"university": {"$ne": None}}},
+                {"$group": {
+                    "_id": "$university",
+                    "total_points": {"$sum": "$experience_points"},
+                    "student_count": {"$sum": 1},
+                    "avg_points": {"$avg": "$experience_points"}
+                }}
+            ]
+        elif leaderboard_type == "savings":
+            pipeline = [
+                {"$match": {"university": {"$ne": None}}},
+                {"$group": {
+                    "_id": "$university",
+                    "total_savings": {"$sum": "$net_savings"},
+                    "student_count": {"$sum": 1},
+                    "avg_savings": {"$avg": "$net_savings"}
+                }}
+            ]
+        elif leaderboard_type == "streak":
+            pipeline = [
+                {"$match": {"university": {"$ne": None}}},
+                {"$group": {
+                    "_id": "$university",
+                    "max_streak": {"$max": "$current_streak"},
+                    "avg_streak": {"$avg": "$current_streak"},
+                    "student_count": {"$sum": 1}
+                }}
+            ]
+        else:
+            return []
+        
+        # Execute aggregation
+        results = await db.users.aggregate(pipeline).to_list(None)
+        
+        # Sort and format results
+        if leaderboard_type == "points":
+            results.sort(key=lambda x: x["total_points"], reverse=True)
+        elif leaderboard_type == "savings":
+            results.sort(key=lambda x: x["total_savings"], reverse=True)
+        elif leaderboard_type == "streak":
+            results.sort(key=lambda x: x["max_streak"], reverse=True)
+        
+        # Format and limit results
+        formatted_results = []
+        for i, result in enumerate(results[:limit]):
+            formatted_results.append({
+                "rank": i + 1,
+                "university": result["_id"],
+                "student_count": result["student_count"],
+                **{k: v for k, v in result.items() if k not in ["_id", "student_count"]}
+            })
+        
+        return formatted_results
+        
+    except Exception as e:
+        logger.error(f"Get university comparison error: {str(e)}")
+        return []
 
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
