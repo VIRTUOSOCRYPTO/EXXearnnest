@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
+import SocialSharing from './SocialSharing';
 import {
   TrophyIcon,
   StarIcon,
@@ -24,6 +25,8 @@ const GamificationProfile = () => {
   const [communityFeed, setCommunityFeed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showSocialSharing, setShowSocialSharing] = useState(false);
+  const [selectedAchievement, setSelectedAchievement] = useState(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -68,16 +71,15 @@ const GamificationProfile = () => {
     }
   };
 
-  const shareAchievement = async (achievementId) => {
-    try {
-      await axios.post(`${API}/gamification/achievements/${achievementId}/share`);
-      // Refresh achievements to show shared status
-      fetchGamificationData();
-      alert('Achievement shared successfully!');
-    } catch (error) {
-      console.error('Error sharing achievement:', error);
-      alert('Failed to share achievement');
-    }
+  const shareAchievement = (achievement) => {
+    setSelectedAchievement({
+      title: achievement.title,
+      description: achievement.description,
+      type: achievement.type || 'achievement',
+      icon: achievement.icon || '🎯',
+      amount: achievement.amount || null
+    });
+    setShowSocialSharing(true);
   };
 
   if (loading) {
@@ -226,7 +228,7 @@ const GamificationProfile = () => {
             {profile?.badges?.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {profile.badges.map((badge, index) => (
-                  <div key={index} className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-colors">
+                  <div key={index} className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-colors relative group">
                     <div className="text-4xl mb-2">{badge.icon || '🏆'}</div>
                     <h4 className="font-semibold text-gray-900 mb-1">{badge.name}</h4>
                     <p className="text-sm text-gray-600">{badge.description}</p>
@@ -235,6 +237,23 @@ const GamificationProfile = () => {
                         Earned: {new Date(badge.earned_at).toLocaleDateString()}
                       </p>
                     )}
+                    
+                    {/* Share Button */}
+                    <button
+                      onClick={() => {
+                        setSelectedAchievement({
+                          title: badge.name,
+                          description: badge.description,
+                          type: 'badge_earned',
+                          icon: badge.icon || '🏆'
+                        });
+                        setShowSocialSharing(true);
+                      }}
+                      className="absolute top-2 right-2 p-1.5 bg-white rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-emerald-50"
+                      title="Share this badge"
+                    >
+                      <ShareIcon className="w-4 h-4 text-emerald-600" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -325,7 +344,7 @@ const GamificationProfile = () => {
                         </div>
                       </div>
                       <button
-                        onClick={() => shareAchievement(achievement.id)}
+                        onClick={() => shareAchievement(achievement)}
                         className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center space-x-2"
                       >
                         <ShareIcon className="w-4 h-4" />
@@ -345,6 +364,17 @@ const GamificationProfile = () => {
           </div>
         )}
       </div>
+
+      {/* Social Sharing Modal */}
+      {showSocialSharing && selectedAchievement && (
+        <SocialSharing 
+          achievement={selectedAchievement}
+          onClose={() => {
+            setShowSocialSharing(false);
+            setSelectedAchievement(null);
+          }}
+        />
+      )}
     </div>
   );
 };
