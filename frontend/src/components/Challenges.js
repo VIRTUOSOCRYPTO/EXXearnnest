@@ -634,12 +634,43 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
     university: ''
   });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.title.trim()) {
+      newErrors.title = 'Title is required';
+    }
+    if (!formData.description.trim()) {
+      newErrors.description = 'Description is required';
+    }
+    if (!formData.target_value || parseFloat(formData.target_value) <= 0) {
+      newErrors.target_value = 'Target value must be greater than 0';
+    }
+    if (!formData.duration_days || parseInt(formData.duration_days) <= 0) {
+      newErrors.duration_days = 'Duration must be at least 1 day';
+    }
+    if (!formData.reward_description.trim()) {
+      newErrors.reward_description = 'Reward description is required';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     setLoading(true);
 
     try {
+      console.log('Submitting challenge with data:', formData);
+      
       const submitData = {
         ...formData,
         target_value: parseFloat(formData.target_value),
@@ -648,11 +679,46 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
         max_participants: formData.max_participants ? parseInt(formData.max_participants) : null
       };
 
-      await axios.post(`${API}/challenges/create`, submitData);
+      console.log('Processed submit data:', submitData);
+
+      const response = await axios.post(`${API}/challenges/create`, submitData);
+      console.log('Challenge creation response:', response.data);
+      
+      alert(response.data.message || 'Challenge created successfully!');
+      
+      // Reset form
+      setFormData({
+        title: '',
+        description: '',
+        challenge_type: 'savings',
+        target_value: '',
+        duration_days: '30',
+        reward_description: '',
+        reward_points: '100',
+        max_participants: '',
+        is_campus_specific: false,
+        university: ''
+      });
+      setErrors({});
+      
       onSuccess();
     } catch (error) {
       console.error('Error creating challenge:', error);
-      alert(error.response?.data?.detail || 'Failed to create challenge');
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      
+      let errorMessage = 'Failed to create challenge';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (error.response?.status === 422) {
+        errorMessage = 'Invalid input data. Please check all fields.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert(`Error: ${errorMessage}`);
     }
     setLoading(false);
   };
@@ -688,11 +754,17 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
               <textarea
                 required
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                onChange={(e) => {
+                  setFormData({ ...formData, description: e.target.value });
+                  if (errors.description) setErrors({ ...errors, description: null });
+                }}
+                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${
+                  errors.description ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                }`}
                 rows="3"
                 placeholder="Describe the challenge and motivation..."
               />
+              {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -717,10 +789,16 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
                   required
                   min="1"
                   value={formData.target_value}
-                  onChange={(e) => setFormData({ ...formData, target_value: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  onChange={(e) => {
+                    setFormData({ ...formData, target_value: e.target.value });
+                    if (errors.target_value) setErrors({ ...errors, target_value: null });
+                  }}
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${
+                    errors.target_value ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                   placeholder={formData.challenge_type === 'savings' ? '5000' : '3'}
                 />
+                {errors.target_value && <p className="text-red-500 text-sm mt-1">{errors.target_value}</p>}
               </div>
             </div>
 
@@ -733,9 +811,15 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
                   min="1"
                   max="365"
                   value={formData.duration_days}
-                  onChange={(e) => setFormData({ ...formData, duration_days: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  onChange={(e) => {
+                    setFormData({ ...formData, duration_days: e.target.value });
+                    if (errors.duration_days) setErrors({ ...errors, duration_days: null });
+                  }}
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${
+                    errors.duration_days ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                 />
+                {errors.duration_days && <p className="text-red-500 text-sm mt-1">{errors.duration_days}</p>}
               </div>
 
               <div>
@@ -757,10 +841,16 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
                 type="text"
                 required
                 value={formData.reward_description}
-                onChange={(e) => setFormData({ ...formData, reward_description: e.target.value })}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                onChange={(e) => {
+                  setFormData({ ...formData, reward_description: e.target.value });
+                  if (errors.reward_description) setErrors({ ...errors, reward_description: null });
+                }}
+                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${
+                  errors.reward_description ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                }`}
                 placeholder="e.g., Savings Master Title + Badge"
               />
+              {errors.reward_description && <p className="text-red-500 text-sm mt-1">{errors.reward_description}</p>}
             </div>
 
             <div className="bg-yellow-50 p-4 rounded-lg">
@@ -808,6 +898,7 @@ const EditChallengeModal = ({ isOpen, challenge, onClose, onSuccess }) => {
     university: ''
   });
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
 
   // Update form data when challenge prop changes
   useEffect(() => {
@@ -884,11 +975,17 @@ const EditChallengeModal = ({ isOpen, challenge, onClose, onSuccess }) => {
               <textarea
                 required
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                onChange={(e) => {
+                  setFormData({ ...formData, description: e.target.value });
+                  if (errors.description) setErrors({ ...errors, description: null });
+                }}
+                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${
+                  errors.description ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                }`}
                 rows="3"
                 placeholder="Describe the challenge and motivation..."
               />
+              {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -913,10 +1010,16 @@ const EditChallengeModal = ({ isOpen, challenge, onClose, onSuccess }) => {
                   required
                   min="1"
                   value={formData.target_value}
-                  onChange={(e) => setFormData({ ...formData, target_value: e.target.value })}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  onChange={(e) => {
+                    setFormData({ ...formData, target_value: e.target.value });
+                    if (errors.target_value) setErrors({ ...errors, target_value: null });
+                  }}
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent ${
+                    errors.target_value ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                  }`}
                   placeholder={formData.challenge_type === 'savings' ? '5000' : '3'}
                 />
+                {errors.target_value && <p className="text-red-500 text-sm mt-1">{errors.target_value}</p>}
               </div>
             </div>
 
