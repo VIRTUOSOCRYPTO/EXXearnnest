@@ -134,6 +134,17 @@ async def init_database():
         await db.learning_feedback.create_index("created_at")
         await db.learning_feedback.create_index([("user_id", 1), ("feedback_type", 1)])
         
+        # Universities collection indexes
+        await db.universities.create_index("name", unique=True)
+        await db.universities.create_index("city")
+        await db.universities.create_index("state")
+        await db.universities.create_index("type")
+        await db.universities.create_index("ranking")
+        await db.universities.create_index("is_verified")
+        await db.universities.create_index([("city", 1), ("state", 1)])
+        await db.universities.create_index([("state", 1), ("ranking", 1)])
+        await db.universities.create_index("student_levels")
+        
         logger.info("Database indexes created successfully")
         
         # Initialize seed data
@@ -237,6 +248,412 @@ async def init_seed_data():
             
             await db.hospitals.insert_many(sample_hospitals)
             logger.info(f"Inserted {len(sample_hospitals)} sample hospitals")
+        
+        # Initialize Universities Database
+        existing_universities = await db.universities.count_documents({})
+        if existing_universities == 0:
+            comprehensive_universities = [
+                # === MAHARASHTRA ===
+                {
+                    "name": "Indian Institute of Technology Bombay",
+                    "short_name": "IIT Bombay",
+                    "location": "Mumbai, Maharashtra",
+                    "city": "Mumbai",
+                    "state": "Maharashtra",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology", "research"],
+                    "ranking": 1,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "University of Mumbai",
+                    "short_name": "Mumbai University",
+                    "location": "Mumbai, Maharashtra",
+                    "city": "Mumbai", 
+                    "state": "Maharashtra",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "commerce", "science", "arts"],
+                    "ranking": 15,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Indian Institute of Technology Pune",
+                    "short_name": "IISER Pune",
+                    "location": "Pune, Maharashtra",
+                    "city": "Pune",
+                    "state": "Maharashtra", 
+                    "type": "science_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["science", "research"],
+                    "ranking": 8,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Pune University",
+                    "short_name": "Pune University",
+                    "location": "Pune, Maharashtra",
+                    "city": "Pune",
+                    "state": "Maharashtra",
+                    "type": "state_university", 
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "engineering", "management"],
+                    "ranking": 18,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === DELHI ===
+                {
+                    "name": "Indian Institute of Technology Delhi",
+                    "short_name": "IIT Delhi",
+                    "location": "New Delhi",
+                    "city": "Delhi",
+                    "state": "Delhi",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology", "research"],
+                    "ranking": 2,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Delhi University",
+                    "short_name": "DU",
+                    "location": "New Delhi",
+                    "city": "Delhi", 
+                    "state": "Delhi",
+                    "type": "central_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "commerce", "science", "arts", "law"],
+                    "ranking": 12,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Jawaharlal Nehru University",
+                    "short_name": "JNU",
+                    "location": "New Delhi",
+                    "city": "Delhi",
+                    "state": "Delhi",
+                    "type": "central_university",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["liberal_arts", "social_sciences", "languages"],
+                    "ranking": 10,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Indian Institute of Management Delhi",
+                    "short_name": "IIM Delhi",
+                    "location": "New Delhi",
+                    "city": "Delhi",
+                    "state": "Delhi", 
+                    "type": "management_institute",
+                    "student_levels": ["graduate"],
+                    "categories": ["management", "business"],
+                    "ranking": 4,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === KARNATAKA ===
+                {
+                    "name": "Indian Institute of Science",
+                    "short_name": "IISc Bangalore",
+                    "location": "Bangalore, Karnataka",
+                    "city": "Bangalore",
+                    "state": "Karnataka",
+                    "type": "science_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["science", "engineering", "research"],
+                    "ranking": 1,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Indian Institute of Management Bangalore",
+                    "short_name": "IIM Bangalore",
+                    "location": "Bangalore, Karnataka",
+                    "city": "Bangalore",
+                    "state": "Karnataka",
+                    "type": "management_institute",
+                    "student_levels": ["graduate"],
+                    "categories": ["management", "business"],
+                    "ranking": 2,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Bangalore University",
+                    "short_name": "Bangalore University",
+                    "location": "Bangalore, Karnataka",
+                    "city": "Bangalore",
+                    "state": "Karnataka",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "commerce", "arts"],
+                    "ranking": 20,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "National Institute of Technology Karnataka",
+                    "short_name": "NIT Surathkal",
+                    "location": "Surathkal, Karnataka",
+                    "city": "Mangalore",
+                    "state": "Karnataka",
+                    "type": "engineering_institute", 
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology"],
+                    "ranking": 13,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === TAMIL NADU ===
+                {
+                    "name": "Indian Institute of Technology Madras",
+                    "short_name": "IIT Madras",
+                    "location": "Chennai, Tamil Nadu",
+                    "city": "Chennai",
+                    "state": "Tamil Nadu",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology", "research"],
+                    "ranking": 3,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Anna University",
+                    "short_name": "Anna University",
+                    "location": "Chennai, Tamil Nadu",
+                    "city": "Chennai",
+                    "state": "Tamil Nadu",
+                    "type": "technical_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["engineering", "technology", "applied_sciences"],
+                    "ranking": 14,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "University of Madras",
+                    "short_name": "Madras University",
+                    "location": "Chennai, Tamil Nadu",
+                    "city": "Chennai",
+                    "state": "Tamil Nadu",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "arts", "commerce"],
+                    "ranking": 22,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === WEST BENGAL ===
+                {
+                    "name": "Indian Institute of Technology Kharagpur",
+                    "short_name": "IIT Kharagpur",
+                    "location": "Kharagpur, West Bengal", 
+                    "city": "Kharagpur",
+                    "state": "West Bengal",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology", "research"],
+                    "ranking": 5,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "University of Calcutta", 
+                    "short_name": "Calcutta University",
+                    "location": "Kolkata, West Bengal",
+                    "city": "Kolkata",
+                    "state": "West Bengal",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "arts", "commerce", "law"],
+                    "ranking": 16,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Jadavpur University",
+                    "short_name": "Jadavpur University",
+                    "location": "Kolkata, West Bengal",
+                    "city": "Kolkata",
+                    "state": "West Bengal",
+                    "type": "state_university",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "science", "arts"],
+                    "ranking": 11,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === RAJASTHAN ===
+                {
+                    "name": "Indian Institute of Technology Jodhpur",
+                    "short_name": "IIT Jodhpur", 
+                    "location": "Jodhpur, Rajasthan",
+                    "city": "Jodhpur",
+                    "state": "Rajasthan",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology"],
+                    "ranking": 17,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "University of Rajasthan",
+                    "short_name": "Rajasthan University",
+                    "location": "Jaipur, Rajasthan",
+                    "city": "Jaipur",
+                    "state": "Rajasthan",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "arts", "commerce"],
+                    "ranking": 25,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === UTTAR PRADESH ===
+                {
+                    "name": "Indian Institute of Technology Kanpur",
+                    "short_name": "IIT Kanpur",
+                    "location": "Kanpur, Uttar Pradesh",
+                    "city": "Kanpur", 
+                    "state": "Uttar Pradesh",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology", "research"],
+                    "ranking": 6,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Banaras Hindu University",
+                    "short_name": "BHU",
+                    "location": "Varanasi, Uttar Pradesh",
+                    "city": "Varanasi",
+                    "state": "Uttar Pradesh", 
+                    "type": "central_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "engineering", "medicine", "arts"],
+                    "ranking": 19,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Lucknow University",
+                    "short_name": "Lucknow University",
+                    "location": "Lucknow, Uttar Pradesh",
+                    "city": "Lucknow",
+                    "state": "Uttar Pradesh",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "arts", "commerce", "law"],
+                    "ranking": 24,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === ANDHRA PRADESH & TELANGANA ===
+                {
+                    "name": "Indian Institute of Technology Hyderabad",
+                    "short_name": "IIT Hyderabad",
+                    "location": "Hyderabad, Telangana",
+                    "city": "Hyderabad",
+                    "state": "Telangana",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"], 
+                    "categories": ["engineering", "technology"],
+                    "ranking": 16,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Osmania University",
+                    "short_name": "Osmania University",
+                    "location": "Hyderabad, Telangana",
+                    "city": "Hyderabad",
+                    "state": "Telangana",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "engineering", "medicine"],
+                    "ranking": 21,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                
+                # === GUJARAT ===
+                {
+                    "name": "Indian Institute of Technology Gandhinagar",
+                    "short_name": "IIT Gandhinagar",
+                    "location": "Gandhinagar, Gujarat",
+                    "city": "Gandhinagar",
+                    "state": "Gujarat",
+                    "type": "engineering_institute",
+                    "student_levels": ["undergraduate", "graduate"],
+                    "categories": ["engineering", "technology"],
+                    "ranking": 18,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                },
+                {
+                    "name": "Gujarat University",
+                    "short_name": "Gujarat University", 
+                    "location": "Ahmedabad, Gujarat",
+                    "city": "Ahmedabad",
+                    "state": "Gujarat",
+                    "type": "state_university",
+                    "student_levels": ["high_school", "undergraduate", "graduate"],
+                    "categories": ["general", "science", "commerce", "arts"],
+                    "ranking": 23,
+                    "is_verified": True,
+                    "student_count": 0,
+                    "created_at": datetime.now(timezone.utc)
+                }
+            ]
+            
+            await db.universities.insert_many(comprehensive_universities)
+            logger.info(f"Initialized {len(comprehensive_universities)} universities in database")
+        else:
+            logger.info(f"Universities already exist ({existing_universities} found), skipping initialization")
         
         logger.info("Seed data initialization completed successfully")
         
