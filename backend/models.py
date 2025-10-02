@@ -1460,7 +1460,7 @@ class FriendInviteRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_contact_info(cls, values):
         email = values.get('email')
         phone = values.get('phone')
