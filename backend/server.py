@@ -34,7 +34,7 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 
 # Create the main app
 app = FastAPI(
-    title="EarnNest - Student Finance & Side Hustle Platform",
+    title="EarnAura - Student Finance & Side Hustle Platform",
     description="Production-ready platform for student financial management and side hustles",
     version="2.0.0",
     docs_url="/api/docs" if os.environ.get("ENVIRONMENT") != "production" else None,
@@ -833,7 +833,7 @@ async def register_user(request: Request, user_data: UserCreate):
         user = User(**user_doc)
         
         return {
-            "message": "Registration successful! Welcome to EarnNest - Your journey to financial success starts now!",
+            "message": "Registration successful! Welcome to EarnAura - Your journey to financial success starts now!",
             "token": token,
             "user": user.dict(),
             "email": user_data.email
@@ -2689,7 +2689,7 @@ async def get_city_hospitals_fallback(
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    logger.info("🚀 Starting EarnNest with enhanced hospital system...")
+    logger.info("🚀 Starting EarnAura with enhanced hospital system...")
     
     # Initialize cache warming for popular cities (background task)
     try:
@@ -2698,7 +2698,7 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"⚠️  Cache warming failed: {str(e)}")
     
-    logger.info("✅ EarnNest startup complete with hospital cache system")
+    logger.info("✅ EarnAura startup complete with hospital cache system")
 @limiter.limit("15/minute")
 async def get_emergency_hospitals_endpoint(
     request: Request, 
@@ -4499,7 +4499,7 @@ async def generate_challenge_share_content(request: Request, challenge_id: str, 
             raise HTTPException(status_code=400, detail="You must join the challenge first")
         
         user = await get_user_by_id(current_user["id"])
-        user_name = user.get("full_name", "EarnNest User")
+        user_name = user.get("full_name", "EarnAura User")
         
         # Calculate progress
         progress_percentage = min(100, (participant["current_progress"] / challenge["target_value"]) * 100) if challenge["target_value"] > 0 else 0
@@ -4519,13 +4519,13 @@ async def generate_challenge_share_content(request: Request, challenge_id: str, 
         
         if share_type == "whatsapp":
             if participant["is_completed"]:
-                message = f"🎉 I just completed the '{challenge['title']}' challenge on EarnNest! 💪\n\n"
+                message = f"🎉 I just completed the '{challenge['title']}' challenge on EarnAura! 💪\n\n"
                 message += f"Target: ₹{challenge['target_value']:,.0f}\n"
                 message += f"My Achievement: ₹{participant['current_progress']:,.0f}\n"
                 message += f"Final Rank: #{user_rank}\n\n"
                 message += f"Join me in building better financial habits! 📱\n{challenge_url}"
             else:
-                message = f"🚀 I'm taking on the '{challenge['title']}' challenge on EarnNest!\n\n"
+                message = f"🚀 I'm taking on the '{challenge['title']}' challenge on EarnAura!\n\n"
                 message += f"Target: ₹{challenge['target_value']:,.0f}\n"
                 message += f"Current Progress: {progress_percentage:.0f}% (₹{participant['current_progress']:,.0f})\n"
                 message += f"Current Rank: #{user_rank}\n\n"
@@ -4539,20 +4539,20 @@ async def generate_challenge_share_content(request: Request, challenge_id: str, 
         
         elif share_type == "instagram":
             if participant["is_completed"]:
-                story_text = f"Challenge Completed! 🎉\n{challenge['title']}\n₹{participant['current_progress']:,.0f} saved\nRank #{user_rank} 🏆\n#EarnNest #FinancialGoals #Savings"
+                story_text = f"Challenge Completed! 🎉\n{challenge['title']}\n₹{participant['current_progress']:,.0f} saved\nRank #{user_rank} 🏆\n#EarnAura #FinancialGoals #Savings"
             else:
-                story_text = f"Challenge Progress 📊\n{challenge['title']}\n{progress_percentage:.0f}% Complete\n₹{participant['current_progress']:,.0f}/₹{challenge['target_value']:,.0f}\nRank #{user_rank} 💪\n#EarnNest #FinancialChallenge"
+                story_text = f"Challenge Progress 📊\n{challenge['title']}\n{progress_percentage:.0f}% Complete\n₹{participant['current_progress']:,.0f}/₹{challenge['target_value']:,.0f}\nRank #{user_rank} 💪\n#EarnAura #FinancialChallenge"
             
             share_content["instagram"] = {
                 "story_text": story_text,
-                "hashtags": ["EarnNest", "FinancialGoals", "Savings", "Challenge", "StudentFinance"]
+                "hashtags": ["EarnAura", "FinancialGoals", "Savings", "Challenge", "StudentFinance"]
             }
         
         elif share_type == "twitter":
             if participant["is_completed"]:
-                tweet = f"🎉 Just completed the '{challenge['title']}' challenge! Saved ₹{participant['current_progress']:,.0f} and ranked #{user_rank}! 💪 Building better financial habits with @EarnNest 📱 {challenge_url} #FinancialGoals #Savings"
+                tweet = f"🎉 Just completed the '{challenge['title']}' challenge! Saved ₹{participant['current_progress']:,.0f} and ranked #{user_rank}! 💪 Building better financial habits with @EarnAura 📱 {challenge_url} #FinancialGoals #Savings"
             else:
-                tweet = f"🚀 {progress_percentage:.0f}% through the '{challenge['title']}' challenge! Currently at ₹{participant['current_progress']:,.0f}/₹{challenge['target_value']:,.0f} (Rank #{user_rank}) 📊 Join me on @EarnNest! 💪 {challenge_url} #FinancialChallenge"
+                tweet = f"🚀 {progress_percentage:.0f}% through the '{challenge['title']}' challenge! Currently at ₹{participant['current_progress']:,.0f}/₹{challenge['target_value']:,.0f} (Rank #{user_rank}) 📊 Join me on @EarnAura! 💪 {challenge_url} #FinancialChallenge"
             
             tweet_text = tweet[:280]  # Twitter character limit
             encoded_tweet = tweet_text.replace(' ', '%20').replace('\n', '%0A')
@@ -4567,15 +4567,15 @@ async def generate_challenge_share_content(request: Request, challenge_id: str, 
                 post += f"✅ Target: ₹{challenge['target_value']:,.0f}\n"
                 post += f"✅ Achieved: ₹{participant['current_progress']:,.0f}\n"
                 post += f"✅ Final Rank: #{user_rank}\n\n"
-                post += f"Building disciplined financial habits is crucial for long-term success. Proud to be part of the EarnNest community that's making financial literacy accessible to students across India! 💪\n\n"
-                post += f"#FinancialLiteracy #StudentFinance #PersonalFinance #Goals #EarnNest"
+                post += f"Building disciplined financial habits is crucial for long-term success. Proud to be part of the EarnAura community that's making financial literacy accessible to students across India! 💪\n\n"
+                post += f"#FinancialLiteracy #StudentFinance #PersonalFinance #Goals #EarnAura"
             else:
                 post = f"Currently {progress_percentage:.0f}% through the '{challenge['title']}' financial challenge! 📊\n\n"
                 post += f"Progress: ₹{participant['current_progress']:,.0f} / ₹{challenge['target_value']:,.0f}\n"
                 post += f"Current Rank: #{user_rank}\n\n"
                 post += f"Consistency in financial habits is key to building wealth. Every small step counts toward achieving bigger goals! 💪\n\n"
                 post += f"Join the challenge: {challenge_url}\n\n"
-                post += f"#FinancialGoals #PersonalFinance #Savings #StudentFinance #EarnNest"
+                post += f"#FinancialGoals #PersonalFinance #Savings #StudentFinance #EarnAura"
             
             share_content["linkedin"] = {
                 "text": post,
@@ -4861,7 +4861,7 @@ logger = logging.getLogger(__name__)
 async def startup_event():
     """Initialize database on startup"""
     await init_database()
-    logger.info("EarnNest Production Server started successfully")
+    logger.info("EarnAura Production Server started successfully")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
