@@ -24,7 +24,15 @@ from slowapi.errors import RateLimitExceeded
 from cache_service import cache_service
 from fallback_hospital_db import fallback_db
 from gamification_service import get_gamification_service
-from social_sharing_service import get_social_sharing_service
+try:
+    from social_sharing_service import get_social_sharing_service
+    SOCIAL_SHARING_AVAILABLE = True
+except ImportError as e:
+    print(f"Social sharing service unavailable due to missing dependencies: {e}")
+    SOCIAL_SHARING_AVAILABLE = False
+    
+    def get_social_sharing_service():
+        return None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -4151,6 +4159,9 @@ async def generate_achievement_image_endpoint(
         
         # Generate achievement image
         social_service = await get_social_sharing_service()
+        if not social_service:
+            raise HTTPException(status_code=503, detail="Social sharing service unavailable")
+        
         image_filename = social_service.generate_achievement_image(
             achievement_type=achievement_type,
             milestone_text=milestone_text,
@@ -4192,6 +4203,9 @@ async def generate_milestone_image_endpoint(
         
         # Generate milestone image
         social_service = await get_social_sharing_service()
+        if not social_service:
+            raise HTTPException(status_code=503, detail="Social sharing service unavailable")
+        
         image_filename = social_service.generate_milestone_celebration_image(
             milestone_type=milestone_type,
             achievement_text=achievement_text,
@@ -4237,6 +4251,9 @@ async def social_share_endpoint(
         
         # Generate platform-specific content
         social_service = await get_social_sharing_service()
+        if not social_service:
+            raise HTTPException(status_code=503, detail="Social sharing service unavailable")
+        
         share_content = social_service.generate_social_share_content(
             platform=platform,
             achievement_type=achievement_type,
