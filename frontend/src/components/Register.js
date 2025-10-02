@@ -321,7 +321,7 @@ const Register = () => {
                 <span className="text-white font-bold text-xl">₹</span>
               </div>
             </div>
-            <h1 className="text-4xl font-bold gradient-text mb-2">Join EarnNest</h1>
+            <h1 className="text-4xl font-bold gradient-text mb-2">Join EarnAura</h1>
             <p className="text-gray-600">Start your journey to financial success</p>
           </div>
 
@@ -517,6 +517,30 @@ const Register = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Location *
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleChange}
+                  className="input-modern"
+                  placeholder="e.g., Mumbai, Maharashtra"
+                  required
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Please include city and state/country
+                </p>
+              </div>
+
+              <div>
+                {/* Empty space for grid alignment */}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   University/College
                 </label>
                 
@@ -615,29 +639,7 @@ const Register = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Location *
-                </label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleChange}
-                  className="input-modern"
-                  placeholder="e.g., Mumbai, Maharashtra"
-                  required
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  Please include city and state/country
-                </p>
-              </div>
-
-              <div>
-                {/* Empty space for grid alignment */}
-              </div>
-            </div>
+            {/* Location field moved above - removed duplicate */}
 
             {/* Skills Selection Section */}
             <div>
