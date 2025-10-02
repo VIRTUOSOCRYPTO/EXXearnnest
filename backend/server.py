@@ -765,6 +765,7 @@ async def register_user(request: Request, user_data: UserCreate):
         # Initialize gamification profile for new user
         gamification = await get_gamification_service()
         await gamification.update_user_streak(user_doc["id"])  # Start with day 1 streak
+        await gamification.update_leaderboards(user_doc["id"])  # Add to leaderboards
         
         # Give welcome achievement and check for first-time badges
         await gamification.create_milestone_achievement(user_doc["id"], "welcome", {
@@ -772,12 +773,14 @@ async def register_user(request: Request, user_data: UserCreate):
             "university": user_dict.get("university")
         })
         
+        # Get database connection for referral processing
+        db = await get_database()
+        
         # Check if user was referred (extract from query params if present)
         referral_code = request.query_params.get("ref")
         if referral_code:
             try:
                 # Process referral signup directly
-                db = await get_database()
                 
                 # Find referrer
                 referrer = await db.referral_programs.find_one({"referral_code": referral_code})
@@ -833,6 +836,23 @@ async def register_user(request: Request, user_data: UserCreate):
             except Exception as e:
                 logger.warning(f"Referral processing failed: {str(e)}")
                 # Don't fail registration if referral processing fails
+        
+        # Create referral program for new user
+        try:
+            referral_data = {
+                "referrer_id": user_doc["id"],
+                "referral_code": user_doc["id"][:8] + str(int(datetime.now().timestamp()))[-6:],  # Unique code
+                "total_referrals": 0,
+                "successful_referrals": 0,
+                "total_earnings": 0.0,
+                "pending_earnings": 0.0,
+                "created_at": datetime.now(timezone.utc)
+            }
+            await db.referral_programs.insert_one(referral_data)
+            logger.info(f"Referral program created for user {user_doc['id']}")
+        except Exception as e:
+            logger.warning(f"Failed to create referral program: {str(e)}")
+            # Don't fail registration if referral program creation fails
         
         # Create JWT token immediately - no email verification needed
         token = create_jwt_token(user_doc["id"])
@@ -3920,18 +3940,6 @@ async def get_university_suggestions_endpoint(
 
 # ===== GAMIFICATION & COMMUNITY API ENDPOINTS =====
 
-@api_router.get("/gamification/profile")
-@limiter.limit("10/minute")
-async def get_user_gamification_profile(request: Request, current_user: dict = Depends(get_current_user)):
-    """Get complete gamification profile for current user"""
-    try:
-        gamification = await get_gamification_service()
-        profile = await gamification.get_user_gamification_profile(current_user["id"])
-        return profile
-    except Exception as e:
-        logger.error(f"Get gamification profile error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get gamification profile")
-
 @api_router.get("/gamification/achievements")
 @limiter.limit("10/minute")
 async def get_user_achievements(request: Request, limit: int = 10, current_user: dict = Depends(get_current_user)):
@@ -3952,36 +3960,7 @@ async def get_user_achievements(request: Request, limit: int = 10, current_user:
         logger.error(f"Get achievements error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get achievements")
 
-@api_router.get("/gamification/leaderboards/{leaderboard_type}")
-@limiter.limit("10/minute") 
-async def get_leaderboard(request: Request, leaderboard_type: str, period: str = "all_time", 
-                         university: str = None, limit: int = 10, 
-                         current_user: dict = Depends(get_current_user)):
-    """Get leaderboard rankings (Pan-India by default, university-specific if specified)"""
-    try:
-        gamification = await get_gamification_service()
-        
-        # For Pan-India rankings, don't filter by university
-        leaderboard_data = await gamification.get_leaderboard(
-            leaderboard_type=leaderboard_type,
-            period=period,
-            university=university,  # None for Pan-India
-            limit=limit
-        )
-        
-        # Get current user's rank
-        user_rank = await gamification.get_user_rank(
-            user_id=current_user["id"],
-            leaderboard_type=leaderboard_type,
-            period=period,
-            university=university
-        )
-        
-        leaderboard_data["user_rank"] = user_rank
-        return leaderboard_data
-    except Exception as e:
-        logger.error(f"Get leaderboard error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+# Removed duplicate leaderboard endpoint
 
 @api_router.post("/gamification/achievements/{achievement_id}/share")
 @limiter.limit("5/minute")
@@ -4368,7 +4347,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://earnest.app"  # Replace with actual domain
+        base_url = "https://social-share-debug.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -4509,6 +4488,49 @@ async def get_active_challenges(request: Request, current_user: str = Depends(ge
     except Exception as e:
         logger.error(f"Get challenges error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get challenges")
+
+@api_router.post("/challenges")
+@limiter.limit("5/minute") 
+async def create_challenge_standard(request: Request, challenge_data: ChallengeCreate, current_user: str = Depends(get_current_user)):
+    """Create a new challenge (standard REST endpoint)"""
+    try:
+        db = await get_database()
+        
+        # Check if user is admin
+        user = await get_user_by_id(current_user)
+        is_admin = user.get("role") == "admin" if user else False
+        
+        # Calculate end date
+        start_date = datetime.now(timezone.utc)
+        end_date = start_date + timedelta(days=challenge_data.duration_days)
+        
+        challenge_dict = challenge_data.dict()
+        challenge_dict.update({
+            "id": str(uuid.uuid4()),
+            "start_date": start_date,
+            "end_date": end_date,
+            "created_by": current_user,
+            "created_at": start_date,
+            "is_active": is_admin,  # Admin challenges are active immediately, user challenges need approval
+            "is_approved": is_admin,
+            "is_featured": is_admin,  # Only admin challenges can be featured
+            "current_participants": 0,
+            "total_prize_pool": challenge_data.prize_amount if hasattr(challenge_data, 'prize_amount') else 0.0,
+            "moderation_status": "approved" if is_admin else "pending"
+        })
+        
+        # Insert challenge
+        await db.challenges.insert_one(challenge_dict)
+        
+        return {
+            "message": "Challenge created successfully!" if is_admin else "Challenge submitted for approval!",
+            "challenge_id": challenge_dict["id"],
+            "is_approved": is_admin
+        }
+        
+    except Exception as e:
+        logger.error(f"Create challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create challenge")
 
 @api_router.post("/challenges/create")
 @limiter.limit("5/minute") 
@@ -5484,6 +5506,98 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
     except Exception as e:
         logger.error(f"Accept invitation error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to accept invitation")
+
+@api_router.get("/friends/suggestions")
+@limiter.limit("20/minute")
+async def get_friend_suggestions(request: Request, current_user: str = Depends(get_current_user)):
+    """Get campus-specific friend suggestions"""
+    try:
+        db = await get_database()
+        user = current_user
+        user_university = user.get("university")
+        
+        if not user_university:
+            return {"suggestions": [], "message": "Add your university to get campus friend suggestions"}
+        
+        # Get existing friends to exclude them
+        existing_friends = await db.friendships.find({
+            "$or": [
+                {"user1_id": user["id"]},
+                {"user2_id": user["id"]}
+            ]
+        }).to_list(None)
+        
+        excluded_user_ids = [user["id"]]  # Exclude self
+        for friendship in existing_friends:
+            friend_id = friendship["user2_id"] if friendship["user1_id"] == user["id"] else friendship["user1_id"]
+            excluded_user_ids.append(friend_id)
+        
+        # Get pending invitations to exclude them too
+        pending_invites = await db.friend_invitations.find({
+            "$or": [
+                {"inviter_id": user["id"], "status": "pending"},
+                {"email": user.get("email"), "status": "pending"},
+                {"phone": user.get("phone"), "status": "pending"}
+            ]
+        }).to_list(None)
+        
+        for invite in pending_invites:
+            if invite.get("invitee_user_id"):
+                excluded_user_ids.append(invite["invitee_user_id"])
+        
+        # Find campus friends with similar activity
+        suggestions = await db.users.find({
+            "university": user_university,
+            "id": {"$nin": excluded_user_ids},
+            "is_active": True
+        }).limit(10).to_list(None)
+        
+        # Enhance suggestions with user stats
+        enhanced_suggestions = []
+        for suggestion in suggestions:
+            # Get user's gamification stats
+            user_stats = await db.users.find_one({"id": suggestion["id"]})
+            if user_stats:
+                enhanced_suggestion = {
+                    "id": suggestion["id"],
+                    "full_name": suggestion.get("full_name", "User"),
+                    "avatar": suggestion.get("avatar", "man"),
+                    "university": suggestion.get("university"),
+                    "skills": suggestion.get("skills", []),
+                    "current_streak": user_stats.get("current_streak", 0),
+                    "experience_points": user_stats.get("experience_points", 0),
+                    "total_savings": user_stats.get("net_savings", 0),
+                    "level": user_stats.get("level", 1),
+                    "title": user_stats.get("title", "Beginner"),
+                    "mutual_skills": len(set(user.get("skills", [])) & set(suggestion.get("skills", []))),
+                    "suggestion_reason": f"Same university ({user_university})"
+                }
+                
+                # Add suggestion reason based on similarities
+                if enhanced_suggestion["mutual_skills"] > 0:
+                    enhanced_suggestion["suggestion_reason"] += f" • {enhanced_suggestion['mutual_skills']} shared skills"
+                
+                if enhanced_suggestion["current_streak"] > 7:
+                    enhanced_suggestion["suggestion_reason"] += f" • Active tracker ({enhanced_suggestion['current_streak']} day streak)"
+                
+                enhanced_suggestions.append(enhanced_suggestion)
+        
+        # Sort by relevance (mutual skills, then streak, then points)
+        enhanced_suggestions.sort(key=lambda x: (
+            x["mutual_skills"],
+            x["current_streak"],
+            x["experience_points"]
+        ), reverse=True)
+        
+        return {
+            "suggestions": enhanced_suggestions,
+            "university": user_university,
+            "total_campus_users": await db.users.count_documents({"university": user_university})
+        }
+        
+    except Exception as e:
+        logger.error(f"Get friend suggestions error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get friend suggestions")
 
 @api_router.post("/group-challenges")
 @limiter.limit("5/hour")
