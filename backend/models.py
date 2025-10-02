@@ -1286,3 +1286,40 @@ class CampusAmbassadorApplicationRequest(BaseModel):
     motivation: str  # why they want to be an ambassador
     previous_experience: Optional[str] = None
     social_media_handles: Optional[Dict[str, str]] = None
+
+# ===== SOCIAL SHARING SYSTEM MODELS =====
+
+class SocialShare(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    platform: str  # "instagram", "whatsapp", "twitter", "facebook"
+    achievement_type: str  # "savings_milestone", "streak_achievement", "badge_earned", etc.
+    milestone_text: str
+    image_filename: str
+    amount: Optional[float] = None
+    shared_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    engagement_count: int = 0  # likes, comments, shares from platform
+    
+    @validator('platform')
+    def validate_platform(cls, v):
+        allowed_platforms = ["instagram", "whatsapp", "twitter", "facebook", "snapchat"]
+        if v not in allowed_platforms:
+            raise ValueError(f'Platform must be one of: {", ".join(allowed_platforms)}')
+        return v
+
+class AchievementImageRequest(BaseModel):
+    achievement_type: str
+    milestone_text: str
+    amount: Optional[float] = None
+
+class MilestoneImageRequest(BaseModel):
+    milestone_type: str  # "savings", "streak", "goal", "budget"
+    achievement_text: str
+    stats: Dict[str, Any]
+
+class SocialShareRequest(BaseModel):
+    platform: str
+    achievement_type: str
+    milestone_text: str
+    image_filename: str
+    amount: Optional[float] = None
