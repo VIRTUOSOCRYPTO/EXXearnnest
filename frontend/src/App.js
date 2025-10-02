@@ -15,10 +15,8 @@ import Budget from './components/Budget';
 import FinancialGoals from './components/FinancialGoals';
 import Recommendations from './components/Recommendations';
 import GamificationProfile from './components/GamificationProfile';
-import Referrals from './components/Referrals';
-import Challenges from './components/Challenges';
-import Friends from './components/Friends';
-import GroupChallenges from './components/GroupChallenges';
+import FriendsAndReferrals from './components/FriendsAndReferrals';
+import AllChallenges from './components/AllChallenges';
 import Notifications from './components/Notifications';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
@@ -169,20 +167,12 @@ function App() {
                 element={user ? <GamificationProfile /> : <Navigate to="/login" />} 
               />
               <Route 
-                path="/referrals" 
-                element={user ? <Referrals /> : <Navigate to="/login" />} 
+                path="/friends-referrals" 
+                element={user ? <FriendsAndReferrals /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/challenges" 
-                element={user ? <Challenges /> : <Navigate to="/login" />} 
-              />
-              <Route 
-                path="/friends" 
-                element={user ? <Friends /> : <Navigate to="/login" />} 
-              />
-              <Route 
-                path="/group-challenges" 
-                element={user ? <GroupChallenges /> : <Navigate to="/login" />} 
+                element={user ? <AllChallenges /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/notifications" 
