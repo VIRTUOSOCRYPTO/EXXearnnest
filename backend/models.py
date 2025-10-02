@@ -1147,6 +1147,17 @@ class ChallengeCreate(BaseModel):
     is_campus_specific: bool = False
     university: Optional[str] = None
 
+class ChallengeUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    target_value: Optional[float] = None
+    duration_days: Optional[int] = None
+    reward_description: Optional[str] = None
+    reward_points: Optional[int] = None
+    max_participants: Optional[int] = None
+    is_campus_specific: Optional[bool] = None
+    university: Optional[str] = None
+
 class CommunityPostCreate(BaseModel):
     type: str
     content: str
