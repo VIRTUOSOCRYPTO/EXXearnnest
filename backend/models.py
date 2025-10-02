@@ -1323,3 +1323,166 @@ class SocialShareRequest(BaseModel):
     milestone_text: str
     image_filename: str
     amount: Optional[float] = None
+
+# ===== FRIEND NETWORK & CAMPUS CHALLENGES SYSTEM MODELS =====
+
+class FriendInvitation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    inviter_id: str
+    invitee_email: Optional[str] = None
+    invitee_phone: Optional[str] = None
+    referral_code: str
+    status: str = "pending"  # "pending", "accepted", "expired"
+    invited_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    accepted_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["pending", "accepted", "expired"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class Friendship(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user1_id: str
+    user2_id: str
+    status: str = "active"  # "active", "blocked", "removed"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    friendship_points: int = 0  # Points earned together through activities
+    
+    @validator('status')
+    def validate_friendship_status(cls, v):
+        allowed_statuses = ["active", "blocked", "removed"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class GroupChallenge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    challenge_type: str = "group_savings"  # "group_savings", "group_streak", "group_goals"
+    target_amount_per_person: float  # Individual target amount
+    group_target_amount: float  # Total group target
+    duration_days: int
+    min_participants: int = 3
+    max_participants: int = 10
+    university: Optional[str] = None  # Campus-specific if set
+    created_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    start_date: datetime
+    end_date: datetime
+    is_active: bool = True
+    current_participants: int = 0
+    reward_points_per_person: int = 100
+    penalty_points: int = 50  # Points deducted if individual fails
+    
+    @validator('challenge_type')
+    def validate_group_challenge_type(cls, v):
+        allowed_types = ["group_savings", "group_streak", "group_goals"]
+        if v not in allowed_types:
+            raise ValueError(f'Group challenge type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class GroupChallengeParticipant(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    group_challenge_id: str
+    user_id: str
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    individual_target: float
+    current_progress: float = 0.0
+    is_completed: bool = False
+    completion_date: Optional[datetime] = None
+    points_earned: int = 0
+    penalty_applied: bool = False
+
+class InAppNotification(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    notification_type: str  # "friend_joined", "challenge_invite", "milestone_achieved", "group_progress"
+    title: str
+    message: str
+    action_url: Optional[str] = None
+    is_read: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    read_at: Optional[datetime] = None
+    related_id: Optional[str] = None  # ID of related entity (friend, challenge, etc.)
+    
+    @validator('notification_type')
+    def validate_notification_type(cls, v):
+        allowed_types = [
+            "friend_joined", "friend_invited", "challenge_invite", "challenge_created",
+            "milestone_achieved", "group_progress", "group_completed", "streak_reminder",
+            "leaderboard_rank", "badge_earned", "welcome"
+        ]
+        if v not in allowed_types:
+            raise ValueError(f'Notification type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class UserInvitationStats(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    monthly_invites_sent: int = 0
+    monthly_invites_limit: int = 15  # Default limit per month
+    current_month: int = Field(default_factory=lambda: datetime.now(timezone.utc).month)
+    current_year: int = Field(default_factory=lambda: datetime.now(timezone.utc).year)
+    total_successful_invites: int = 0
+    invitation_bonus_points: int = 0
+    last_reset_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class StreakNotificationPreference(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    notification_time_hour: int = 19  # Default 7 PM
+    notification_time_minute: int = 0
+    timezone: str = "Asia/Kolkata"
+    is_enabled: bool = True
+    reminder_after_missed_days: int = 1  # Send reminder after X missed days
+    final_nudge_after_days: int = 7  # Send final reactivation after X days
+    
+    @validator('notification_time_hour')
+    def validate_hour(cls, v):
+        if not 0 <= v <= 23:
+            raise ValueError('Hour must be between 0-23')
+        return v
+    
+    @validator('notification_time_minute')
+    def validate_minute(cls, v):
+        if not 0 <= v <= 59:
+            raise ValueError('Minute must be between 0-59')
+        return v
+
+# Request Models for Phase 1 Features
+
+class FriendInviteRequest(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    
+    @root_validator
+    def validate_contact_info(cls, values):
+        email = values.get('email')
+        phone = values.get('phone')
+        if not email and not phone:
+            raise ValueError('Either email or phone must be provided')
+        return values
+
+class GroupChallengeCreateRequest(BaseModel):
+    title: str = Field(..., min_length=5, max_length=100)
+    description: str = Field(..., min_length=10, max_length=500)
+    challenge_type: str = "group_savings"
+    target_amount_per_person: float = Field(..., gt=0, le=100000)  # Max ₹1 lakh per person
+    duration_days: int = Field(..., ge=7, le=90)  # 1 week to 3 months
+    max_participants: int = Field(..., ge=3, le=10)
+    university_only: bool = False  # If true, restrict to user's university
+
+class GroupChallengeJoinRequest(BaseModel):
+    group_challenge_id: str
+
+class NotificationPreferencesRequest(BaseModel):
+    notification_time_hour: int = Field(..., ge=0, le=23)
+    notification_time_minute: int = Field(..., ge=0, le=59)
+    timezone: str = "Asia/Kolkata"
+    reminder_after_missed_days: int = Field(..., ge=1, le=7)
+    final_nudge_after_days: int = Field(..., ge=3, le=14)
