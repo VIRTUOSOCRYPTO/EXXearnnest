@@ -1158,6 +1158,9 @@ class ChallengeUpdate(BaseModel):
     is_campus_specific: Optional[bool] = None
     university: Optional[str] = None
 
+class ChallengeReject(BaseModel):
+    rejection_reason: str = Field(..., min_length=10, max_length=500)
+
 class CommunityPostCreate(BaseModel):
     type: str
     content: str
