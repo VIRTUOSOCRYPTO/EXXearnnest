@@ -14,7 +14,7 @@ import {
   ClockIcon,
   CurrencyRupeeIcon,
 } from '@heroicons/react/24/outline';
-import MilestoneCelebration from './MilestoneCelebration';
+import EnhancedCelebration from './EnhancedCelebration';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -515,7 +515,16 @@ const Transactions = () => {
           }
         }
 
-        await axios.post(`${API}/transactions`, submitData);
+        const response = await axios.post(`${API}/transactions`, submitData);
+        
+        // Check for immediate milestone data from backend
+        if (response.data && response.data.milestone_data) {
+          setCurrentMilestone({
+            ...response.data.milestone_data,
+            celebration_type: 'immediate'
+          });
+          setShowMilestoneCelebration(true);
+        }
         
         // Reset single form
         setFormData({
@@ -531,10 +540,24 @@ const Transactions = () => {
       setShowAddForm(false);
       await fetchTransactions();
       
-      // Check for milestones after successful transaction
-      setTimeout(() => {
+      // Check for additional pending celebrations from backend
+      setTimeout(async () => {
+        try {
+          const celebrationsRes = await axios.get(`${API}/gamification/celebrations/pending`);
+          if (celebrationsRes.data.celebrations.length > 0) {
+            setCurrentMilestone({
+              ...celebrationsRes.data.celebrations[0],
+              celebration_type: 'pending'
+            });
+            setShowMilestoneCelebration(true);
+          }
+        } catch (error) {
+          console.error('Error checking pending celebrations:', error);
+        }
+        
+        // Fallback to legacy milestone check
         checkForMilestones();
-      }, 1000); // Small delay to ensure transaction is processed
+      }, 1000);
       
     } catch (error) {
       console.error('Error creating transaction:', error);
@@ -1303,10 +1326,10 @@ const Transactions = () => {
 
       {/* Voice Command Confirmation Modal removed */}
 
-      {/* Milestone Celebration Modal */}
+      {/* Enhanced Celebration Modal - Phase 1 */}
       {showMilestoneCelebration && currentMilestone && (
-        <MilestoneCelebration
-          milestone={currentMilestone}
+        <EnhancedCelebration
+          celebration={currentMilestone}
           onClose={() => {
             setShowMilestoneCelebration(false);
             setCurrentMilestone(null);
