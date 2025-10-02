@@ -23,6 +23,7 @@ const API = `${BACKEND_URL}/api`;
 const Challenges = () => {
   const [challenges, setChallenges] = useState([]);
   const [myChallenges, setMyChallenges] = useState([]);
+  const [myCreatedChallenges, setMyCreatedChallenges] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -41,13 +42,15 @@ const Challenges = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [challengesRes, myChallengesRes] = await Promise.all([
+      const [challengesRes, myChallengesRes, myCreatedRes] = await Promise.all([
         axios.get(`${API}/challenges`),
-        axios.get(`${API}/challenges/my-challenges`)
+        axios.get(`${API}/challenges/my-challenges`),
+        axios.get(`${API}/challenges/my-created`)
       ]);
       
       setChallenges(challengesRes.data.challenges);
       setMyChallenges(myChallengesRes.data.my_challenges);
+      setMyCreatedChallenges(myCreatedRes.data.created_challenges);
     } catch (error) {
       console.error('Error fetching challenges:', error);
     }
@@ -209,6 +212,17 @@ const Challenges = () => {
           >
             <TrophyIcon className="w-5 h-5 inline mr-2" />
             My Challenges ({myChallenges.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('my-created')}
+            className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+              activeTab === 'my-created'
+                ? 'bg-white text-emerald-600 shadow-sm'
+                : 'text-gray-600 hover:text-emerald-600'
+            }`}
+          >
+            <PlusIcon className="w-5 h-5 inline mr-2" />
+            My Created ({myCreatedChallenges.length})
           </button>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -438,6 +452,186 @@ const Challenges = () => {
                           </button>
                           <button
                             onClick={() => handleDeleteChallenge(challenge.id)}
+                            className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                            title="Delete Challenge"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'my-created' && (
+          <div className="space-y-6">
+            {myCreatedChallenges.length === 0 ? (
+              <div className="text-center py-20">
+                <PlusIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">No Created Challenges</h3>
+                <p className="text-gray-500 mb-4">You haven't created any challenges yet.</p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-emerald-600 text-white py-2 px-6 rounded-lg font-semibold hover:bg-emerald-700 transition-colors"
+                >
+                  Create Your First Challenge
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {myCreatedChallenges.map((challengeData) => (
+                  <div key={challengeData.challenge.id} className="bg-white rounded-xl shadow-lg p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <div className="flex items-center space-x-3 mb-2">
+                          <div className={`p-2 rounded-lg ${getChallengeTypeColor(challengeData.challenge.challenge_type)}`}>
+                            {getChallengeTypeIcon(challengeData.challenge.challenge_type)}
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-xl font-bold text-gray-900">{challengeData.challenge.title}</h3>
+                            <p className="text-gray-600">{challengeData.challenge.description}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        {/* Status Badge */}
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          challengeData.status === 'approved' 
+                            ? 'bg-green-100 text-green-800' 
+                            : challengeData.status === 'rejected' 
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {challengeData.status === 'approved' 
+                            ? '✅ Approved' 
+                            : challengeData.status === 'rejected' 
+                            ? '❌ Rejected'
+                            : '⏳ Pending Review'
+                          }
+                        </div>
+                        <div className="text-right text-sm text-gray-500">
+                          <div className="flex items-center">
+                            <UserGroupIcon className="w-4 h-4 mr-1" />
+                            {challengeData.participant_count}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Challenge Details */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Target</span>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {challengeData.challenge.challenge_type === 'savings' 
+                            ? formatCurrency(challengeData.challenge.target_value) 
+                            : `${challengeData.challenge.target_value} goals`}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Duration</span>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {challengeData.challenge.duration_days} days
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Participants</span>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {challengeData.participant_count}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Status</span>
+                        <p className="text-lg font-semibold">
+                          {challengeData.status === 'approved' && !challengeData.is_expired
+                            ? <span className="text-green-600">Active</span>
+                            : challengeData.status === 'approved' && challengeData.is_expired
+                            ? <span className="text-gray-600">Completed</span>
+                            : challengeData.status === 'rejected'
+                            ? <span className="text-red-600">Rejected</span>
+                            : <span className="text-yellow-600">Under Review</span>
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Rejection Reason */}
+                    {challengeData.status === 'rejected' && challengeData.rejection_reason && (
+                      <div className="mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                        <div className="flex items-start space-x-2">
+                          <XMarkIcon className="w-5 h-5 text-red-600 mt-0.5" />
+                          <div>
+                            <h4 className="font-semibold text-red-800 mb-1">Rejection Reason</h4>
+                            <p className="text-red-700 text-sm">{challengeData.rejection_reason}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Time Info */}
+                    <div className="flex items-center text-sm text-gray-500 mb-4">
+                      <ClockIcon className="w-4 h-4 mr-1" />
+                      {challengeData.status === 'approved' 
+                        ? challengeData.is_expired 
+                          ? 'Challenge ended'
+                          : `${challengeData.days_remaining} days remaining`
+                        : challengeData.reviewed_at
+                        ? `Reviewed ${new Date(challengeData.reviewed_at).toLocaleDateString()}`
+                        : 'Awaiting admin review'
+                      }
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-between items-center">
+                      <div className="flex space-x-3">
+                        {challengeData.status === 'approved' && !challengeData.is_expired && (
+                          <>
+                            <button
+                              onClick={() => fetchLeaderboard(challengeData.challenge.id)}
+                              className="bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                            >
+                              <ChartBarIcon className="w-4 h-4 inline mr-2" />
+                              View Leaderboard
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedChallenge(challengeData.challenge.id);
+                                setShowShareModal(true);
+                              }}
+                              className="bg-emerald-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-emerald-700 transition-colors"
+                            >
+                              <ShareIcon className="w-4 h-4 inline mr-2" />
+                              Share Challenge
+                            </button>
+                          </>
+                        )}
+                        {challengeData.status === 'rejected' && (
+                          <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="bg-emerald-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-emerald-700 transition-colors"
+                          >
+                            <PlusIcon className="w-4 h-4 inline mr-2" />
+                            Create New Challenge
+                          </button>
+                        )}
+                      </div>
+                      
+                      {/* Edit/Delete buttons for approved/pending challenges */}
+                      {(challengeData.status === 'approved' || challengeData.status === 'pending_review') && (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditChallenge(challengeData.challenge)}
+                            className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
+                            title="Edit Challenge"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteChallenge(challengeData.challenge.id)}
                             className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
                             title="Delete Challenge"
                           >
