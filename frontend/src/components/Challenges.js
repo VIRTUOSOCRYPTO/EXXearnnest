@@ -660,8 +660,8 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[9999]" onClick={onClose}>
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit} className="p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-2xl font-bold text-gray-900">Create Challenge</h3>
@@ -857,7 +857,7 @@ const EditChallengeModal = ({ isOpen, challenge, onClose, onSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit} className="p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-2xl font-bold text-gray-900">Edit Challenge</h3>
