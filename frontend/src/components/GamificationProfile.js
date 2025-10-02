@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../App';
 import SocialSharing from './SocialSharing';
+import EnhancedCelebration from './EnhancedCelebration';
+import NotificationSettings from './NotificationSettings';
+import pushNotificationService from '../services/pushNotificationService';
 import {
   TrophyIcon,
   StarIcon,
@@ -12,7 +15,9 @@ import {
   ShareIcon,
   SparklesIcon,
   CalendarIcon,
-  ArrowUpIcon
+  ArrowUpIcon,
+  BellIcon,
+  GiftIcon
 } from '@heroicons/react/24/outline';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -27,21 +32,50 @@ const GamificationProfile = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showSocialSharing, setShowSocialSharing] = useState(false);
   const [selectedAchievement, setSelectedAchievement] = useState(null);
+  const [pendingCelebrations, setPendingCelebrations] = useState([]);
+  const [currentCelebration, setCurrentCelebration] = useState(null);
+  const [celebrationIndex, setCelebrationIndex] = useState(0);
+  const [socialProof, setSocialProof] = useState(null);
   const { user } = useAuth();
 
   useEffect(() => {
     fetchGamificationData();
+    checkPendingCelebrations();
+    initializePushNotifications();
   }, []);
+
+  // Check URL for celebration parameter
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const celebrateId = urlParams.get('celebrate');
+    if (celebrateId && achievements.length > 0) {
+      const achievement = achievements.find(a => a.id === celebrateId);
+      if (achievement) {
+        setCurrentCelebration({
+          ...achievement,
+          type: 'achievement'
+        });
+      }
+    }
+  }, [achievements]);
 
   const fetchGamificationData = async () => {
     try {
-      const [profileRes, achievementsRes] = await Promise.all([
-        axios.get(`${API}/gamification/profile`),
-        axios.get(`${API}/gamification/achievements?limit=10`)
+      const [profileRes, achievementsRes, socialProofRes] = await Promise.all([
+        axios.get(`${API}/gamification/profile?enhanced=true`),
+        axios.get(`${API}/gamification/achievements?limit=10`),
+        axios.get(`${API}/gamification/social-proof`).catch(() => ({ data: null }))
       ]);
 
       setProfile(profileRes.data);
       setAchievements(achievementsRes.data.achievements);
+      setSocialProof(socialProofRes.data);
+      
+      // Check for pending celebrations from enhanced profile
+      if (profileRes.data.pending_celebrations && profileRes.data.pending_celebrations.length > 0) {
+        setPendingCelebrations(profileRes.data.pending_celebrations);
+        setCurrentCelebration(profileRes.data.pending_celebrations[0]);
+      }
       
       // Fetch leaderboards
       await fetchLeaderboards();
@@ -50,6 +84,44 @@ const GamificationProfile = () => {
       console.error('Error fetching gamification data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkPendingCelebrations = async () => {
+    try {
+      const response = await axios.get(`${API}/gamification/celebrations/pending`);
+      const celebrations = response.data.celebrations;
+      
+      if (celebrations.length > 0) {
+        setPendingCelebrations(celebrations);
+        setCurrentCelebration({
+          ...celebrations[0],
+          celebrationIndex: 0,
+          totalCelebrations: celebrations.length
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching pending celebrations:', error);
+    }
+  };
+
+  const initializePushNotifications = async () => {
+    try {
+      await pushNotificationService.initialize();
+      pushNotificationService.setupNotificationHandlers();
+      
+      // Listen for notification clicks
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data.type === 'SHARE_ACHIEVEMENT') {
+            const achievementData = event.data.payload;
+            setSelectedAchievement(achievementData);
+            setShowSocialSharing(true);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to initialize push notifications:', error);
     }
   };
 
@@ -80,6 +152,48 @@ const GamificationProfile = () => {
       amount: achievement.amount || null
     });
     setShowSocialSharing(true);
+  };
+
+  const handleCelebrationNext = () => {
+    const nextIndex = celebrationIndex + 1;
+    
+    if (nextIndex < pendingCelebrations.length) {
+      // Show next celebration
+      setCelebrationIndex(nextIndex);
+      setCurrentCelebration({
+        ...pendingCelebrations[nextIndex],
+        celebrationIndex: nextIndex,
+        totalCelebrations: pendingCelebrations.length
+      });
+    } else {
+      // No more celebrations
+      setCurrentCelebration(null);
+      setPendingCelebrations([]);
+      setCelebrationIndex(0);
+    }
+  };
+
+  const handleCelebrationClose = () => {
+    setCurrentCelebration(null);
+    setPendingCelebrations([]);
+    setCelebrationIndex(0);
+  };
+
+  const formatStreakProgress = (current, target) => {
+    const percentage = Math.min((current / target) * 100, 100);
+    return {
+      percentage,
+      remaining: Math.max(0, target - current)
+    };
+  };
+
+  const getSocialProofMessage = () => {
+    if (!socialProof || !socialProof.social_messages) return null;
+    
+    const messages = socialProof.social_messages;
+    if (messages.length === 0) return null;
+    
+    return messages[Math.floor(Math.random() * messages.length)];
   };
 
   if (loading) {
@@ -147,7 +261,8 @@ const GamificationProfile = () => {
               { id: 'overview', label: 'Overview', icon: ChartBarIcon },
               { id: 'badges', label: 'Badges', icon: TrophyIcon },
               { id: 'leaderboards', label: 'Rankings', icon: UsersIcon },
-              { id: 'achievements', label: 'Achievements', icon: StarIcon }
+              { id: 'achievements', label: 'Achievements', icon: StarIcon },
+              { id: 'notifications', label: 'Notifications', icon: BellIcon }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -166,52 +281,231 @@ const GamificationProfile = () => {
           </div>
         </div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab - Enhanced Phase 1 */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <TrophyIcon className="w-8 h-8 text-yellow-500" />
-                <span className="text-3xl font-bold text-gray-900">
-                  {profile?.total_badges}
-                </span>
+          <div className="space-y-6">
+            {/* Social Proof Messages */}
+            {socialProof && getSocialProofMessage() && (
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-4">
+                <div className="flex items-center">
+                  <GiftIcon className="w-5 h-5 text-blue-600 mr-2" />
+                  <span className="text-blue-800 font-medium">{getSocialProofMessage()}</span>
+                </div>
               </div>
-              <h3 className="font-semibold text-gray-700">Badges Earned</h3>
-              <p className="text-sm text-gray-500">Keep collecting!</p>
+            )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <TrophyIcon className="w-8 h-8 text-yellow-500" />
+                  <span className="text-3xl font-bold text-gray-900">
+                    {profile?.total_badges}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-gray-700">Badges Earned</h3>
+                <p className="text-sm text-gray-500">Keep collecting!</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <FireIcon className="w-8 h-8 text-orange-500" />
+                  <span className="text-3xl font-bold text-gray-900">
+                    {profile?.current_streak}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-gray-700">Day Streak</h3>
+                <p className="text-sm text-gray-500">
+                  {profile?.streak_milestones?.progress_to_next?.days_remaining > 0 
+                    ? `${profile.streak_milestones.progress_to_next.days_remaining} days to next milestone`
+                    : 'At milestone!'
+                  }
+                </p>
+              </div>
+
+              <div className="bg-white rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <StarIcon className="w-8 h-8 text-purple-500" />
+                  <span className="text-3xl font-bold text-gray-900">
+                    {profile?.experience_points}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-gray-700">XP Points</h3>
+                <p className="text-sm text-gray-500">Level up!</p>
+              </div>
+
+              <div className="bg-white rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <ShareIcon className="w-8 h-8 text-blue-500" />
+                  <span className="text-3xl font-bold text-gray-900">
+                    {profile?.achievements_shared}
+                  </span>
+                </div>
+                <h3 className="font-semibold text-gray-700">Achievements Shared</h3>
+                <p className="text-sm text-gray-500">Inspire others!</p>
+              </div>
             </div>
 
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <FireIcon className="w-8 h-8 text-orange-500" />
-                <span className="text-3xl font-bold text-gray-900">
-                  {profile?.current_streak}
-                </span>
+            {/* Streak Progress Card */}
+            {profile?.streak_milestones && (
+              <div className="bg-white rounded-xl p-6 shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                    <FireIcon className="w-6 h-6 text-orange-500 mr-2" />
+                    Streak Progress
+                  </h3>
+                  <span className="text-sm text-gray-500">
+                    Next: {profile.streak_milestones.next_milestone} days
+                  </span>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span>Progress to next milestone</span>
+                    <span className="font-medium">
+                      {profile.streak_milestones.progress_to_next.current} / {profile.streak_milestones.progress_to_next.target} days
+                    </span>
+                  </div>
+                  
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className="bg-gradient-to-r from-orange-500 to-red-500 h-3 rounded-full transition-all duration-700"
+                      style={{ width: `${profile.streak_milestones.progress_to_next.percentage}%` }}
+                    ></div>
+                  </div>
+                  
+                  <div className="text-center">
+                    <span className="text-sm text-gray-600">
+                      {profile.streak_milestones.progress_to_next.days_remaining === 0 
+                        ? "🎉 Milestone reached!" 
+                        : `${profile.streak_milestones.progress_to_next.days_remaining} days to go!`
+                      }
+                    </span>
+                  </div>
+                </div>
               </div>
-              <h3 className="font-semibold text-gray-700">Day Streak</h3>
-              <p className="text-sm text-gray-500">Keep it going!</p>
-            </div>
+            )}
 
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <StarIcon className="w-8 h-8 text-purple-500" />
-                <span className="text-3xl font-bold text-gray-900">
-                  {profile?.experience_points}
-                </span>
-              </div>
-              <h3 className="font-semibold text-gray-700">XP Points</h3>
-              <p className="text-sm text-gray-500">Level up!</p>
-            </div>
+            {/* Social Proof Stats */}
+            {socialProof && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Friends Leaderboard */}
+                {socialProof.friends_leaderboard && socialProof.friends_leaderboard.length > 0 && (
+                  <div className="bg-white rounded-xl p-6 shadow-lg">
+                    <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                      <UsersIcon className="w-6 h-6 text-purple-500 mr-2" />
+                      Friends Leaderboard
+                    </h3>
+                    
+                    <div className="space-y-2">
+                      {socialProof.friends_leaderboard.slice(0, 5).map((friend, index) => (
+                        <div 
+                          key={friend.user_id} 
+                          className={`flex items-center justify-between p-2 rounded-lg ${
+                            friend.is_current_user ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <span className={`text-sm font-bold w-6 h-6 rounded-full flex items-center justify-center ${
+                              index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                              index === 1 ? 'bg-gray-100 text-gray-800' :
+                              index === 2 ? 'bg-orange-100 text-orange-800' :
+                              'bg-gray-50 text-gray-600'
+                            }`}>
+                              {index + 1}
+                            </span>
+                            <span className={`font-medium ${friend.is_current_user ? 'text-blue-900' : 'text-gray-900'}`}>
+                              {friend.name}
+                            </span>
+                          </div>
+                          
+                          <div className="text-right">
+                            <div className="text-sm font-medium text-gray-900">{friend.points} XP</div>
+                            <div className="text-xs text-gray-500">{friend.streak} day streak</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <ShareIcon className="w-8 h-8 text-blue-500" />
-                <span className="text-3xl font-bold text-gray-900">
-                  {profile?.achievements_shared}
-                </span>
+                {/* Achievement Statistics */}
+                <div className="bg-white rounded-xl p-6 shadow-lg">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                    <TrophyIcon className="w-6 h-6 text-yellow-500 mr-2" />
+                    Community Stats
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Today's Achievements</span>
+                      <span className="font-bold text-yellow-600">{socialProof.daily_achievements || 0}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Weekly Milestones</span>
+                      <span className="font-bold text-orange-600">{socialProof.weekly_milestones || 0}</span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Active Friends</span>
+                      <span className="font-bold text-purple-600">{socialProof.friends_achievements?.length || 0}</span>
+                    </div>
+
+                    {/* Popular Achievements */}
+                    {socialProof.popular_achievements && socialProof.popular_achievements.length > 0 && (
+                      <div className="pt-3 border-t">
+                        <p className="text-sm font-medium text-gray-700 mb-2">Trending This Week:</p>
+                        <div className="space-y-1">
+                          {socialProof.popular_achievements.slice(0, 3).map((achievement, index) => (
+                            <div key={index} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600 flex items-center">
+                                <span className="mr-1">{achievement.icon}</span>
+                                {achievement._id}
+                              </span>
+                              <span className="text-gray-500">{achievement.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <h3 className="font-semibold text-gray-700">Achievements Shared</h3>
-              <p className="text-sm text-gray-500">Inspire others!</p>
-            </div>
+            )}
+
+            {/* Special Perks Display */}
+            {profile?.special_perks && profile.special_perks.length > 0 && (
+              <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-6">
+                <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                  <GiftIcon className="w-6 h-6 text-purple-500 mr-2" />
+                  Unlocked Perks
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {profile.special_perks.map((perk, index) => (
+                    <div key={index} className="bg-white rounded-lg p-4 shadow-sm">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                          <span className="text-purple-600 text-sm">✨</span>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900 capitalize">
+                            {perk.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            {perk === 'referral_boost' && 'Extra referral rewards'}
+                            {perk === 'profile_highlight' && 'Featured profile status'}
+                            {perk === 'priority_support' && 'Priority customer support'}
+                            {perk === 'exclusive_features' && 'Access to beta features'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -363,7 +657,21 @@ const GamificationProfile = () => {
             )}
           </div>
         )}
+
+        {/* Notifications Tab - Phase 1 */}
+        {activeTab === 'notifications' && (
+          <NotificationSettings />
+        )}
       </div>
+
+      {/* Enhanced Celebration Modal - Phase 1 */}
+      {currentCelebration && (
+        <EnhancedCelebration
+          celebration={currentCelebration}
+          onClose={handleCelebrationClose}
+          onNext={pendingCelebrations.length > celebrationIndex + 1 ? handleCelebrationNext : null}
+        />
+      )}
 
       {/* Social Sharing Modal */}
       {showSocialSharing && selectedAchievement && (
