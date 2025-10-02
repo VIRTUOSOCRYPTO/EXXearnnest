@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
+import pushNotificationService from './services/pushNotificationService';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -67,6 +68,15 @@ function App() {
         try {
           const response = await axios.get(`${API}/user/profile`);
           setUser(response.data);
+          
+          // Initialize push notifications for authenticated users
+          try {
+            await pushNotificationService.initialize();
+            pushNotificationService.setupNotificationHandlers();
+          } catch (error) {
+            console.error('Push notification initialization failed:', error);
+          }
+          
         } catch (error) {
           console.error('Auth check failed:', error);
           logout();
