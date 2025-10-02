@@ -4603,6 +4603,97 @@ async def generate_challenge_share_content(request: Request, challenge_id: str, 
         logger.error(f"Generate share content error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to generate share content")
 
+@api_router.put("/challenges/{challenge_id}")
+@limiter.limit("5/minute")
+async def update_challenge(request: Request, challenge_id: str, challenge_data: ChallengeUpdate, current_user_id: str = Depends(get_current_user)):
+    """Update a challenge (only creator or admin can edit)"""
+    try:
+        db = await get_database()
+        
+        # Get challenge to check permissions
+        challenge = await db.challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Check if user is creator or admin
+        user = await get_user_by_id(current_user_id)
+        is_creator = challenge["created_by"] == current_user_id
+        is_admin = user.get("role") == "admin" if user else False
+        
+        if not (is_creator or is_admin):
+            raise HTTPException(status_code=403, detail="You can only edit your own challenges")
+        
+        # Prepare update data (only non-None fields)
+        update_data = {}
+        for field, value in challenge_data.dict(exclude_unset=True).items():
+            if value is not None:
+                update_data[field] = value
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        # Add updated timestamp
+        update_data["updated_at"] = datetime.now(timezone.utc)
+        
+        # Update challenge
+        result = await db.challenges.update_one(
+            {"id": challenge_id},
+            {"$set": update_data}
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=404, detail="Challenge not found or no changes made")
+        
+        return {"message": "Challenge updated successfully", "challenge_id": challenge_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update challenge")
+
+@api_router.delete("/challenges/{challenge_id}")
+@limiter.limit("5/minute")
+async def delete_challenge(request: Request, challenge_id: str, current_user_id: str = Depends(get_current_user)):
+    """Delete a challenge (only creator or admin can delete)"""
+    try:
+        db = await get_database()
+        
+        # Get challenge to check permissions
+        challenge = await db.challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Check if user is creator or admin
+        user = await get_user_by_id(current_user_id)
+        is_creator = challenge["created_by"] == current_user_id
+        is_admin = user.get("role") == "admin" if user else False
+        
+        if not (is_creator or is_admin):
+            raise HTTPException(status_code=403, detail="You can only delete your own challenges")
+        
+        # Check if challenge has participants (prevent deletion if people have joined)
+        participant_count = await db.challenge_participants.count_documents({"challenge_id": challenge_id})
+        if participant_count > 0 and not is_admin:
+            raise HTTPException(status_code=400, detail="Cannot delete challenge with participants (admin override required)")
+        
+        # Delete challenge and all related data
+        await db.challenges.delete_one({"id": challenge_id})
+        
+        # Delete all participations
+        await db.challenge_participants.delete_many({"challenge_id": challenge_id})
+        
+        # Delete moderation records if any
+        await db.challenge_moderation.delete_many({"challenge_id": challenge_id})
+        
+        return {"message": "Challenge deleted successfully", "challenge_id": challenge_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete challenge")
+
 @api_router.post("/challenges/admin/approve/{challenge_id}")
 @limiter.limit("10/minute")
 async def approve_challenge(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user)):
