@@ -34,12 +34,10 @@ const Navigation = () => {
     { path: '/transactions', label: 'Transactions', icon: CreditCardIcon },
     { path: '/budget', label: 'Budget', icon: BanknotesIcon },
     { path: '/goals', label: 'Goals', icon: StarIcon },
-    { path: '/friends', label: 'Friends', icon: UsersIcon },
-    { path: '/group-challenges', label: 'Group Challenges', icon: UserGroupIcon },
-    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
+    { path: '/friends-referrals', label: 'Friends & Referrals', icon: UsersIcon },
     { path: '/challenges', label: 'Challenges', icon: FireIcon },
+    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
     { path: '/notifications', label: 'Notifications', icon: BellIcon },
-    { path: '/referrals', label: 'Refer & Earn', icon: GiftIcon },
     { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
     { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
   ];
@@ -88,7 +86,7 @@ const Navigation = () => {
             <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">₹</span>
             </div>
-            <h1 className="text-lg sm:text-2xl font-bold gradient-text truncate">EarnAura</h1>
+            <h1 className="text-lg sm:text-2xl font-bold gradient-text truncate">EarnNest</h1>
           </div>
 
           {/* Navigation Links - Desktop */}
