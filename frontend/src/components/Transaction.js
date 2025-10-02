@@ -14,6 +14,7 @@ import {
   ClockIcon,
   CurrencyRupeeIcon,
 } from '@heroicons/react/24/outline';
+import MilestoneCelebration from './MilestoneCelebration';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -39,6 +40,10 @@ const Transactions = () => {
   const [visitedApp, setVisitedApp] = useState(null);
   const [quickAddData, setQuickAddData] = useState({});
   const [isQuickAdding, setIsQuickAdding] = useState(false);
+  
+  // Milestone celebration states
+  const [showMilestoneCelebration, setShowMilestoneCelebration] = useState(false);
+  const [currentMilestone, setCurrentMilestone] = useState(null);
   
   // Voice Command functionality removed
   
@@ -308,10 +313,111 @@ const Transactions = () => {
     try {
       const response = await axios.get(`${API}/transactions?limit=100`);
       setTransactions(response.data);
+      
+      // Check for milestones after fetching transactions
+      await checkForMilestones();
     } catch (error) {
       console.error('Error fetching transactions:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkForMilestones = async () => {
+    try {
+      // Get user's current financial stats
+      const [analyticsRes, userRes] = await Promise.all([
+        axios.get(`${API}/analytics/summary`),
+        axios.get(`${API}/user/profile`)
+      ]);
+
+      const analytics = analyticsRes.data;
+      const user = userRes.data;
+
+      // Check for savings milestones
+      const totalSavings = analytics.net_amount || 0;
+      const savingsMilestones = [1000, 5000, 10000, 25000, 50000, 100000];
+      
+      for (const milestone of savingsMilestones) {
+        if (totalSavings >= milestone && (!user.last_celebrated_savings || user.last_celebrated_savings < milestone)) {
+          setCurrentMilestone({
+            type: 'savings',
+            title: 'Savings Milestone Reached!',
+            message: `You've successfully saved ₹${milestone.toLocaleString()}! 🎉`,
+            amount: milestone,
+            stats: {
+              'Total Savings': `₹${totalSavings.toLocaleString()}`,
+              'Transactions': analytics.transaction_count,
+              'Current Streak': `${user.current_streak || 0} days`
+            },
+            description: 'Every rupee saved brings you closer to financial freedom!'
+          });
+          setShowMilestoneCelebration(true);
+          
+          // Update user's last celebrated milestone
+          await axios.put(`${API}/user/profile`, {
+            last_celebrated_savings: milestone
+          });
+          break;
+        }
+      }
+
+      // Check for streak milestones
+      const currentStreak = user.current_streak || 0;
+      const streakMilestones = [7, 15, 30, 60, 100];
+      
+      for (const milestone of streakMilestones) {
+        if (currentStreak >= milestone && (!user.last_celebrated_streak || user.last_celebrated_streak < milestone)) {
+          setCurrentMilestone({
+            type: 'streak',
+            title: 'Streak Achievement!',
+            message: `Amazing! You've maintained a ${milestone}-day tracking streak! 🔥`,
+            stats: {
+              'Current Streak': `${currentStreak} days`,
+              'Total Savings': `₹${totalSavings.toLocaleString()}`,
+              'Transactions': analytics.transaction_count
+            },
+            description: 'Consistency is the key to financial success!'
+          });
+          setShowMilestoneCelebration(true);
+          
+          // Update user's last celebrated streak
+          await axios.put(`${API}/user/profile`, {
+            last_celebrated_streak: milestone
+          });
+          break;
+        }
+      }
+
+      // Check for transaction count milestones
+      const transactionCount = analytics.transaction_count || 0;
+      const transactionMilestones = [10, 50, 100, 250, 500, 1000];
+      
+      for (const milestone of transactionMilestones) {
+        if (transactionCount >= milestone && (!user.last_celebrated_transactions || user.last_celebrated_transactions < milestone)) {
+          setCurrentMilestone({
+            type: 'budget',
+            title: 'Tracking Champion!',
+            message: `You've recorded ${milestone} transactions! You're becoming a pro! 📊`,
+            stats: {
+              'Transactions': transactionCount,
+              'Total Savings': `₹${totalSavings.toLocaleString()}`,
+              'Average per Transaction': `₹${Math.round(totalSavings / transactionCount).toLocaleString()}`
+            },
+            description: 'The more you track, the better you manage!'
+          });
+          setShowMilestoneCelebration(true);
+          
+          // Update user's last celebrated transaction milestone
+          await axios.put(`${API}/user/profile`, {
+            last_celebrated_transactions: milestone
+          });
+          break;
+        }
+      }
+
+    } catch (error) {
+      console.error('Error checking milestones:', error);
     }
   };
 
@@ -423,7 +529,12 @@ const Transactions = () => {
       }
 
       setShowAddForm(false);
-      fetchTransactions();
+      await fetchTransactions();
+      
+      // Check for milestones after successful transaction
+      setTimeout(() => {
+        checkForMilestones();
+      }, 1000); // Small delay to ensure transaction is processed
       
     } catch (error) {
       console.error('Error creating transaction:', error);
@@ -1191,6 +1302,17 @@ const Transactions = () => {
       )}
 
       {/* Voice Command Confirmation Modal removed */}
+
+      {/* Milestone Celebration Modal */}
+      {showMilestoneCelebration && currentMilestone && (
+        <MilestoneCelebration
+          milestone={currentMilestone}
+          onClose={() => {
+            setShowMilestoneCelebration(false);
+            setCurrentMilestone(null);
+          }}
+        />
+      )}
     </div>
   );
 };
