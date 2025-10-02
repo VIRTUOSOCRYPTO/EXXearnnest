@@ -39,3 +39,4 @@ pillow==10.2.0
 qrcode==7.4.2
 matplotlib==3.8.2
 pypng==0.20220715.0
+pywebpush==1.14.1
