@@ -12,7 +12,9 @@ import {
   ClockIcon,
   CheckCircleIcon,
   XMarkIcon,
-  ArrowTopRightOnSquareIcon
+  ArrowTopRightOnSquareIcon,
+  PencilIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -24,6 +26,8 @@ const Challenges = () => {
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingChallenge, setEditingChallenge] = useState(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [activeTab, setActiveTab] = useState('discover');
   const [loading, setLoading] = useState(true);
@@ -94,6 +98,32 @@ const Challenges = () => {
     } catch (error) {
       console.error('Error generating share content:', error);
     }
+  };
+
+  const handleEditChallenge = (challenge) => {
+    setEditingChallenge(challenge);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteChallenge = async (challengeId) => {
+    if (!window.confirm('Are you sure you want to delete this challenge? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await axios.delete(`${API}/challenges/${challengeId}`);
+      alert('Challenge deleted successfully!');
+      await fetchData(); // Refresh data
+    } catch (error) {
+      console.error('Error deleting challenge:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to delete challenge';
+      alert(`Error: ${errorMessage}`);
+    }
+  };
+
+  const canEditDelete = (challenge) => {
+    // Check if current user is the creator or admin
+    return challenge.created_by === user?.id || user?.role === 'admin';
   };
 
   const formatCurrency = (amount) => {
@@ -207,10 +237,31 @@ const Challenges = () => {
                       <div className={`p-2 rounded-lg ${getChallengeTypeColor(challenge.challenge_type)}`}>
                         {getChallengeTypeIcon(challenge.challenge_type)}
                       </div>
-                      <div className="text-right text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <UserGroupIcon className="w-4 h-4 mr-1" />
-                          {challenge.participant_count}
+                      <div className="flex items-center space-x-2">
+                        {/* Edit/Delete buttons for challenge creator or admin */}
+                        {canEditDelete(challenge) && (
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={() => handleEditChallenge(challenge)}
+                              className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                              title="Edit Challenge"
+                            >
+                              <PencilIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteChallenge(challenge.id)}
+                              className="p-1 text-gray-400 hover:text-red-600 rounded"
+                              title="Delete Challenge"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                        <div className="text-right text-sm text-gray-500">
+                          <div className="flex items-center">
+                            <UserGroupIcon className="w-4 h-4 mr-1" />
+                            {challenge.participant_count}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -354,24 +405,46 @@ const Challenges = () => {
                     )}
 
                     {/* Actions */}
-                    <div className="flex space-x-3">
-                      <button
-                        onClick={() => fetchLeaderboard(challenge.id)}
-                        className="bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-                      >
-                        <ChartBarIcon className="w-4 h-4 inline mr-2" />
-                        View Leaderboard
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedChallenge(challenge.id);
-                          setShowShareModal(true);
-                        }}
-                        className="bg-emerald-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-emerald-700 transition-colors"
-                      >
-                        <ShareIcon className="w-4 h-4 inline mr-2" />
-                        Share Progress
-                      </button>
+                    <div className="flex justify-between items-center">
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => fetchLeaderboard(challenge.id)}
+                          className="bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                        >
+                          <ChartBarIcon className="w-4 h-4 inline mr-2" />
+                          View Leaderboard
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedChallenge(challenge.id);
+                            setShowShareModal(true);
+                          }}
+                          className="bg-emerald-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-emerald-700 transition-colors"
+                        >
+                          <ShareIcon className="w-4 h-4 inline mr-2" />
+                          Share Progress
+                        </button>
+                      </div>
+                      
+                      {/* Edit/Delete buttons for challenge creator or admin */}
+                      {canEditDelete(challenge) && (
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditChallenge(challenge)}
+                            className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50"
+                            title="Edit Challenge"
+                          >
+                            <PencilIcon className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteChallenge(challenge.id)}
+                            className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                            title="Delete Challenge"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -523,6 +596,21 @@ const Challenges = () => {
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => {
             setShowCreateModal(false);
+            fetchData();
+          }}
+        />
+
+        {/* Edit Challenge Modal */}
+        <EditChallengeModal
+          isOpen={showEditModal}
+          challenge={editingChallenge}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingChallenge(null);
+          }}
+          onSuccess={() => {
+            setShowEditModal(false);
+            setEditingChallenge(null);
             fetchData();
           }}
         />
@@ -697,6 +785,201 @@ const CreateChallengeModal = ({ isOpen, onClose, onSuccess }) => {
               className="flex-1 py-3 px-4 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold transition-colors"
             >
               {loading ? 'Creating...' : 'Create Challenge'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Edit Challenge Modal Component
+const EditChallengeModal = ({ isOpen, challenge, onClose, onSuccess }) => {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    challenge_type: 'savings',
+    target_value: '',
+    duration_days: '30',
+    reward_description: '',
+    reward_points: '100',
+    max_participants: '',
+    is_campus_specific: false,
+    university: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  // Update form data when challenge prop changes
+  useEffect(() => {
+    if (challenge) {
+      setFormData({
+        title: challenge.title || '',
+        description: challenge.description || '',
+        challenge_type: challenge.challenge_type || 'savings',
+        target_value: challenge.target_value?.toString() || '',
+        duration_days: challenge.duration_days?.toString() || '30',
+        reward_description: challenge.reward_description || '',
+        reward_points: challenge.reward_points?.toString() || '100',
+        max_participants: challenge.max_participants?.toString() || '',
+        is_campus_specific: challenge.is_campus_specific || false,
+        university: challenge.university || ''
+      });
+    }
+  }, [challenge]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!challenge) return;
+    
+    setLoading(true);
+
+    try {
+      const submitData = {
+        ...formData,
+        target_value: parseFloat(formData.target_value),
+        duration_days: parseInt(formData.duration_days),
+        reward_points: parseInt(formData.reward_points),
+        max_participants: formData.max_participants ? parseInt(formData.max_participants) : null
+      };
+
+      await axios.put(`${API}/challenges/${challenge.id}`, submitData);
+      alert('Challenge updated successfully!');
+      onSuccess();
+    } catch (error) {
+      console.error('Error updating challenge:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to update challenge';
+      alert(`Error: ${errorMessage}`);
+    }
+    setLoading(false);
+  };
+
+  if (!isOpen || !challenge) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-bold text-gray-900">Edit Challenge</h3>
+            <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">
+              <XMarkIcon className="w-6 h-6" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input
+                type="text"
+                required
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                placeholder="e.g., Save ₹5000 in October"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea
+                required
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                rows="3"
+                placeholder="Describe the challenge and motivation..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Challenge Type</label>
+                <select
+                  value={formData.challenge_type}
+                  onChange={(e) => setFormData({ ...formData, challenge_type: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                >
+                  <option value="savings">Savings Challenge</option>
+                  <option value="goals">Goals Completion</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Target Value {formData.challenge_type === 'savings' ? '(₹)' : '(Goals)'}
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={formData.target_value}
+                  onChange={(e) => setFormData({ ...formData, target_value: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  placeholder={formData.challenge_type === 'savings' ? '5000' : '3'}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (Days)</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="365"
+                  value={formData.duration_days}
+                  onChange={(e) => setFormData({ ...formData, duration_days: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Max Participants (Optional)</label>
+                <input
+                  type="number"
+                  min="2"
+                  value={formData.max_participants}
+                  onChange={(e) => setFormData({ ...formData, max_participants: e.target.value })}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  placeholder="No limit"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reward Description</label>
+              <input
+                type="text"
+                required
+                value={formData.reward_description}
+                onChange={(e) => setFormData({ ...formData, reward_description: e.target.value })}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                placeholder="e.g., Savings Master Title + Badge"
+              />
+            </div>
+
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Editing a challenge will notify all participants about the changes.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex space-x-4 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-semibold transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 px-4 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold transition-colors"
+            >
+              {loading ? 'Updating...' : 'Update Challenge'}
             </button>
           </div>
         </form>
