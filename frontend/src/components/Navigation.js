@@ -15,7 +15,10 @@ import {
   GiftIcon,
   FireIcon,
   Bars3Icon,
-  XMarkIcon
+  XMarkIcon,
+  UsersIcon,
+  BellIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
 
@@ -31,8 +34,11 @@ const Navigation = () => {
     { path: '/transactions', label: 'Transactions', icon: CreditCardIcon },
     { path: '/budget', label: 'Budget', icon: BanknotesIcon },
     { path: '/goals', label: 'Goals', icon: StarIcon },
+    { path: '/friends', label: 'Friends', icon: UsersIcon },
+    { path: '/group-challenges', label: 'Group Challenges', icon: UserGroupIcon },
     { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
     { path: '/challenges', label: 'Challenges', icon: FireIcon },
+    { path: '/notifications', label: 'Notifications', icon: BellIcon },
     { path: '/referrals', label: 'Refer & Earn', icon: GiftIcon },
     { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
     { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
