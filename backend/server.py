@@ -5730,7 +5730,7 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
         await create_notification(
             user_id,
             "friend_joined",
-            f"Welcome to EarnNest friends network!",
+            f"Welcome to EarnAura friends network!",
             f"You're now friends with {inviter['full_name']} and earned {invitee_points} welcome points!",
             related_id=friendship.id
         )
