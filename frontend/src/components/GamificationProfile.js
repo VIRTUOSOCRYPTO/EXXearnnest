@@ -52,15 +52,17 @@ const GamificationProfile = () => {
 
   const fetchLeaderboards = async () => {
     try {
-      const leaderboardTypes = ['savings', 'points', 'streak', 'goals'];
-      const leaderboardData = {};
-      
-      for (const type of leaderboardTypes) {
-        const response = await axios.get(`${API}/gamification/leaderboards/${type}?limit=5`);
-        leaderboardData[type] = response.data;
-      }
-      
-      setLeaderboards(leaderboardData);
+      const [savingsRes, streakRes, pointsRes] = await Promise.all([
+        axios.get(`${API}/gamification/leaderboards/savings?period=weekly&limit=10`),
+        axios.get(`${API}/gamification/leaderboards/streak?period=weekly&limit=10`),
+        axios.get(`${API}/gamification/leaderboards/points?period=weekly&limit=10`)
+      ]);
+
+      setLeaderboards({
+        savings: savingsRes.data.leaderboard,
+        streak: streakRes.data.leaderboard,
+        points: pointsRes.data.leaderboard
+      });
     } catch (error) {
       console.error('Error fetching leaderboards:', error);
     }
@@ -71,279 +73,278 @@ const GamificationProfile = () => {
       await axios.post(`${API}/gamification/achievements/${achievementId}/share`);
       // Refresh achievements to show shared status
       fetchGamificationData();
+      alert('Achievement shared successfully!');
     } catch (error) {
       console.error('Error sharing achievement:', error);
+      alert('Failed to share achievement');
     }
-  };
-
-  const getRarityColor = (rarity) => {
-    const colors = {
-      bronze: 'text-amber-600 bg-amber-50',
-      silver: 'text-gray-600 bg-gray-50',
-      gold: 'text-yellow-600 bg-yellow-50',
-      platinum: 'text-purple-600 bg-purple-50',
-      legendary: 'text-red-600 bg-red-50'
-    };
-    return colors[rarity] || colors.bronze;
-  };
-
-  const getLevelProgress = (level, experience) => {
-    const currentLevelXP = (level - 1) * 100;
-    const nextLevelXP = level * 100;
-    const progress = ((experience - currentLevelXP) / 100) * 100;
-    return Math.min(Math.max(progress, 0), 100);
   };
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="animate-pulse">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-48 bg-gray-200 rounded-xl"></div>
-            ))}
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 flex items-center justify-center">
+        <div className="bg-white rounded-xl p-8 shadow-lg">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
+          <p className="text-center mt-4 text-gray-600">Loading your achievements...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <div className="flex items-center justify-center mb-4">
-          <div className="relative">
-            <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center">
-              <TrophyIcon className="w-8 h-8 text-white" />
-            </div>
-            <div className="absolute -top-2 -right-2 bg-yellow-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-              {profile?.level}
-            </div>
-          </div>
-        </div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Your EarnNest Journey 🚀
-        </h1>
-        <p className="text-xl text-emerald-600 font-semibold mb-2">
-          {profile?.title} • Level {profile?.level}
-        </p>
-        <div className="max-w-md mx-auto bg-gray-200 rounded-full h-3 mb-4">
-          <div 
-            className="bg-gradient-to-r from-emerald-500 to-green-600 h-3 rounded-full transition-all duration-300"
-            style={{ width: `${getLevelProgress(profile?.level, profile?.experience_points)}%` }}
-          ></div>
-        </div>
-        <p className="text-sm text-gray-600">
-          {profile?.experience_points} XP • {100 - (profile?.experience_points % 100)} XP to next level
-        </p>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="flex justify-center mb-8">
-        <div className="bg-white rounded-xl p-1 shadow-lg">
-          {[
-            { id: 'overview', label: 'Overview', icon: ChartBarIcon },
-            { id: 'badges', label: 'Badges', icon: TrophyIcon },
-            { id: 'leaderboards', label: 'Rankings', icon: UsersIcon },
-            { id: 'achievements', label: 'Achievements', icon: StarIcon }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center space-x-2 ${
-                activeTab === tab.id
-                  ? 'bg-emerald-500 text-white shadow-md'
-                  : 'text-gray-600 hover:text-emerald-600'
-              }`}
-            >
-              <tab.icon className="w-5 h-5" />
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Overview Tab */}
-      {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <TrophyIcon className="w-8 h-8 text-yellow-500" />
-              <span className="text-2xl font-bold text-gray-900">
-                {profile?.total_badges}
-              </span>
-            </div>
-            <h3 className="font-semibold text-gray-700">Badges Earned</h3>
-            <p className="text-sm text-gray-500">Keep collecting!</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <FireIcon className="w-8 h-8 text-red-500" />
-              <span className="text-2xl font-bold text-gray-900">
-                {profile?.current_streak}
-              </span>
-            </div>
-            <h3 className="font-semibold text-gray-700">Day Streak</h3>
-            <p className="text-sm text-gray-500">Keep it going!</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <SparklesIcon className="w-8 h-8 text-purple-500" />
-              <span className="text-2xl font-bold text-gray-900">
-                {profile?.experience_points}
-              </span>
-            </div>
-            <h3 className="font-semibold text-gray-700">Experience Points</h3>
-            <p className="text-sm text-gray-500">Level {profile?.level}</p>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <ShareIcon className="w-8 h-8 text-blue-500" />
-              <span className="text-2xl font-bold text-gray-900">
-                {profile?.achievements_shared}
-              </span>
-            </div>
-            <h3 className="font-semibold text-gray-700">Achievements Shared</h3>
-            <p className="text-sm text-gray-500">Community engagement</p>
-          </div>
-        </div>
-      )}
-
-      {/* Badges Tab */}
-      {activeTab === 'badges' && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Your Badge Collection</h2>
-            <div className="text-sm text-gray-600">
-              {profile?.total_badges} badges earned
-            </div>
-          </div>
-          
-          {profile?.badges?.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {profile.badges.map((badge, index) => (
-                <div key={index} className="bg-gray-50 rounded-xl p-6 text-center">
-                  <div className="text-4xl mb-3">{badge.icon}</div>
-                  <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-3 ${getRarityColor(badge.rarity)}`}>
-                    {badge.rarity.toUpperCase()}
-                  </div>
-                  <h3 className="font-bold text-gray-900 mb-2">{badge.name}</h3>
-                  <p className="text-sm text-gray-600 mb-3">{badge.description}</p>
-                  <div className="text-xs text-gray-500">
-                    Earned {new Date(badge.earned_at).toLocaleDateString()}
-                  </div>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50">
+      <div className="max-w-6xl mx-auto p-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-6">
+            <div className="flex items-center justify-center mb-4">
+              <div className="relative">
+                <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center shadow-xl">
+                  <TrophyIcon className="w-12 h-12 text-white" />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <TrophyIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No badges yet!</h3>
-              <p className="text-gray-600">Start saving money and tracking expenses to earn your first badges.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Leaderboards Tab */}
-      {activeTab === 'leaderboards' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {Object.entries(leaderboards).map(([type, data]) => (
-            <div key={type} className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-gray-900 capitalize">
-                  {type} Leaderboard
-                </h3>
-                <div className="text-sm text-gray-600">
-                  Your rank: #{data.user_rank || 'Unranked'}
-                </div>
+                {profile?.current_streak > 0 && (
+                  <div className="absolute -top-2 -right-2 bg-orange-500 text-white text-sm font-bold rounded-full w-8 h-8 flex items-center justify-center">
+                    {profile.current_streak}
+                  </div>
+                )}
               </div>
-              
-              <div className="space-y-4">
-                {data.rankings?.map((ranking, index) => (
+            </div>
+            
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {user?.full_name || 'User'}
+            </h1>
+            
+            <div className="flex items-center justify-center mb-4">
+              <SparklesIcon className="w-5 h-5 text-emerald-500 mr-2" />
+              <span className="text-emerald-600 font-semibold">
+                {profile?.level_name || 'Saver'} • Level {profile?.level || 1}
+              </span>
+            </div>
+
+            <p className="text-xl text-gray-700 font-medium mb-4">
+              Your EarnAura Journey 🚀
+            </p>
+
+            {/* Progress Bar */}
+            <div className="bg-gray-200 rounded-full h-3 mb-2 max-w-md mx-auto">
+              <div 
+                className="bg-gradient-to-r from-emerald-500 to-green-600 h-3 rounded-full transition-all duration-700"
+                style={{ width: `${Math.min(((profile?.experience_points || 0) % 100), 100)}%` }}
+              ></div>
+            </div>
+            <p className="text-sm text-gray-600">
+              {profile?.experience_points || 0} XP • {Math.max(0, 100 - ((profile?.experience_points || 0) % 100))} XP to next level
+            </p>
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-white rounded-xl p-1 shadow-lg flex flex-row">
+            {[
+              { id: 'overview', label: 'Overview', icon: ChartBarIcon },
+              { id: 'badges', label: 'Badges', icon: TrophyIcon },
+              { id: 'leaderboards', label: 'Rankings', icon: UsersIcon },
+              { id: 'achievements', label: 'Achievements', icon: StarIcon }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center space-x-2 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-emerald-500 text-white shadow-md'
+                    : 'text-gray-600 hover:text-emerald-600'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.label.substring(0, 4)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <TrophyIcon className="w-8 h-8 text-yellow-500" />
+                <span className="text-3xl font-bold text-gray-900">
+                  {profile?.total_badges}
+                </span>
+              </div>
+              <h3 className="font-semibold text-gray-700">Badges Earned</h3>
+              <p className="text-sm text-gray-500">Keep collecting!</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <FireIcon className="w-8 h-8 text-orange-500" />
+                <span className="text-3xl font-bold text-gray-900">
+                  {profile?.current_streak}
+                </span>
+              </div>
+              <h3 className="font-semibold text-gray-700">Day Streak</h3>
+              <p className="text-sm text-gray-500">Keep it going!</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <StarIcon className="w-8 h-8 text-purple-500" />
+                <span className="text-3xl font-bold text-gray-900">
+                  {profile?.experience_points}
+                </span>
+              </div>
+              <h3 className="font-semibold text-gray-700">XP Points</h3>
+              <p className="text-sm text-gray-500">Level up!</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <ShareIcon className="w-8 h-8 text-blue-500" />
+                <span className="text-3xl font-bold text-gray-900">
+                  {profile?.achievements_shared}
+                </span>
+              </div>
+              <h3 className="font-semibold text-gray-700">Achievements Shared</h3>
+              <p className="text-sm text-gray-500">Inspire others!</p>
+            </div>
+          </div>
+        )}
+
+        {/* Badges Tab */}
+        {activeTab === 'badges' && (
+          <div className="bg-white rounded-xl p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Your Badges</h2>
+              <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-sm font-medium">
+                {profile?.total_badges} badges earned
+              </span>
+            </div>
+
+            {profile?.badges?.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {profile.badges.map((badge, index) => (
+                  <div key={index} className="bg-gray-50 rounded-xl p-4 text-center hover:bg-gray-100 transition-colors">
+                    <div className="text-4xl mb-2">{badge.icon || '🏆'}</div>
+                    <h4 className="font-semibold text-gray-900 mb-1">{badge.name}</h4>
+                    <p className="text-sm text-gray-600">{badge.description}</p>
+                    {badge.earned_at && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        Earned: {new Date(badge.earned_at).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <TrophyIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No badges yet!</h3>
+                <p className="text-gray-600">Start tracking your finances to earn your first badge.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Leaderboards Tab */}
+        {activeTab === 'leaderboards' && (
+          <div className="space-y-6">
+            {/* Savings Leaderboard */}
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                <TrophyIcon className="w-6 h-6 text-yellow-500 mr-2" />
+                Top Savers This Week
+              </h3>
+              <div className="space-y-3">
+                {leaderboards.savings?.slice(0, 5).map((user, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        index === 0 ? 'bg-yellow-100 text-yellow-800' :
-                        index === 1 ? 'bg-gray-100 text-gray-800' :
-                        index === 2 ? 'bg-amber-100 text-amber-800' :
-                        'bg-gray-50 text-gray-700'
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-gray-300'
                       }`}>
-                        {ranking.rank}
+                        {index + 1}
                       </div>
-                      <div>
-                        <div className="font-semibold text-gray-900">{ranking.full_name}</div>
-                        <div className="text-xs text-gray-500">{ranking.title} • Level {ranking.level}</div>
-                      </div>
+                      <span className="font-medium text-gray-900">{user.full_name}</span>
                     </div>
-                    <div className="text-right">
-                      <div className="font-bold text-gray-900">
-                        {type === 'savings' ? `₹${ranking.score.toLocaleString()}` : ranking.score}
-                      </div>
-                    </div>
+                    <span className="font-bold text-emerald-600">₹{user.total_saved?.toLocaleString()}</span>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
-        </div>
-      )}
 
-      {/* Achievements Tab */}
-      {activeTab === 'achievements' && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Recent Achievements</h2>
-            <div className="text-sm text-gray-600">
-              {achievements.length} achievements
+            {/* Streak Leaderboard */}
+            <div className="bg-white rounded-xl p-6 shadow-lg">
+              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                <FireIcon className="w-6 h-6 text-orange-500 mr-2" />
+                Longest Streaks
+              </h3>
+              <div className="space-y-3">
+                {leaderboards.streak?.slice(0, 5).map((user, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
+                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-gray-300'
+                      }`}>
+                        {index + 1}
+                      </div>
+                      <span className="font-medium text-gray-900">{user.full_name}</span>
+                    </div>
+                    <span className="font-bold text-orange-600">{user.current_streak} days</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          
-          {achievements.length > 0 ? (
-            <div className="space-y-4">
-              {achievements.map((achievement, index) => (
-                <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="text-3xl">{achievement.icon}</div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{achievement.title}</h3>
-                      <p className="text-sm text-gray-600">{achievement.description}</p>
-                      <div className="flex items-center space-x-2 mt-2">
-                        <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">
-                          +{achievement.points_earned} XP
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(achievement.created_at).toLocaleDateString()}
-                        </span>
+        )}
+
+        {/* Achievements Tab */}
+        {activeTab === 'achievements' && (
+          <div className="bg-white rounded-xl p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Recent Achievements</h2>
+              <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">
+                {achievements.length} unlocked
+              </span>
+            </div>
+
+            {achievements.length > 0 ? (
+              <div className="space-y-4">
+                {achievements.map((achievement, index) => (
+                  <div key={index} className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="text-3xl">{achievement.icon || '🎯'}</div>
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{achievement.title}</h4>
+                          <p className="text-gray-600">{achievement.description}</p>
+                          <p className="text-sm text-gray-400">
+                            Unlocked: {new Date(achievement.unlocked_at).toLocaleDateString()}
+                          </p>
+                        </div>
                       </div>
+                      <button
+                        onClick={() => shareAchievement(achievement.id)}
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center space-x-2"
+                      >
+                        <ShareIcon className="w-4 h-4" />
+                        <span>Share</span>
+                      </button>
                     </div>
                   </div>
-                  
-                  {!achievement.is_shared && (
-                    <button
-                      onClick={() => shareAchievement(achievement.id)}
-                      className="px-4 py-2 bg-emerald-500 text-white text-sm rounded-lg hover:bg-emerald-600 transition-colors flex items-center space-x-2"
-                    >
-                      <ShareIcon className="w-4 h-4" />
-                      <span>Share</span>
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <StarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No achievements yet!</h3>
-              <p className="text-gray-600">Start your financial journey to unlock achievements.</p>
-            </div>
-          )}
-        </div>
-      )}
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <StarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">No achievements yet!</h3>
+                <p className="text-gray-600">Complete challenges and track your finances to unlock achievements.</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
