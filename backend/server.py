@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 from cache_service import cache_service
 from fallback_hospital_db import fallback_db
 from gamification_service import get_gamification_service
+from social_sharing_service import get_social_sharing_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -4102,6 +4103,217 @@ async def react_to_achievement(request: Request, achievement_id: str, current_us
     except Exception as e:
         logger.error(f"React to achievement error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to react to achievement")
+
+# ===== SOCIAL SHARING SYSTEM =====
+
+@api_router.post("/social/generate-achievement-image")
+@limiter.limit("10/minute")
+async def generate_achievement_image_endpoint(
+    request: Request,
+    achievement_type: str,
+    milestone_text: str,
+    amount: Optional[float] = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Generate branded achievement image for social sharing"""
+    try:
+        db = await get_database()
+        user = await get_user_by_id(user_id)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get user's badge info if achievement type is badge
+        badge_info = None
+        if achievement_type == "badge_earned":
+            # Get user's latest badge
+            latest_badge = await db.user_badges.find_one(
+                {"user_id": user_id},
+                sort=[("earned_at", -1)]
+            )
+            if latest_badge:
+                badge = await db.badges.find_one({"_id": latest_badge["badge_id"]})
+                if badge:
+                    badge_info = {
+                        "icon": badge.get("icon", "🏆"),
+                        "name": badge.get("name", "Achievement"),
+                        "rarity": badge.get("rarity", "bronze")
+                    }
+        
+        # Generate achievement image
+        social_service = await get_social_sharing_service()
+        image_filename = social_service.generate_achievement_image(
+            achievement_type=achievement_type,
+            milestone_text=milestone_text,
+            amount=amount,
+            user_name=user.get("full_name", "User"),
+            badge_info=badge_info
+        )
+        
+        if not image_filename:
+            raise HTTPException(status_code=500, detail="Failed to generate image")
+        
+        return {
+            "image_filename": image_filename,
+            "image_url": f"/uploads/achievements/{image_filename}",
+            "achievement_type": achievement_type,
+            "milestone_text": milestone_text
+        }
+        
+    except Exception as e:
+        logger.error(f"Generate achievement image error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate achievement image")
+
+@api_router.post("/social/generate-milestone-image")
+@limiter.limit("10/minute")
+async def generate_milestone_image_endpoint(
+    request: Request,
+    milestone_type: str,
+    achievement_text: str,
+    stats: Dict[str, Any],
+    user_id: str = Depends(get_current_user)
+):
+    """Generate milestone celebration image"""
+    try:
+        db = await get_database()
+        user = await get_user_by_id(user_id)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Generate milestone image
+        social_service = await get_social_sharing_service()
+        image_filename = social_service.generate_milestone_celebration_image(
+            milestone_type=milestone_type,
+            achievement_text=achievement_text,
+            stats=stats,
+            user_name=user.get("full_name", "User")
+        )
+        
+        if not image_filename:
+            raise HTTPException(status_code=500, detail="Failed to generate milestone image")
+        
+        return {
+            "image_filename": image_filename,
+            "image_url": f"/uploads/achievements/{image_filename}",
+            "milestone_type": milestone_type,
+            "achievement_text": achievement_text
+        }
+        
+    except Exception as e:
+        logger.error(f"Generate milestone image error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate milestone image")
+
+@api_router.post("/social/share/{platform}")
+@limiter.limit("20/minute")
+async def social_share_endpoint(
+    request: Request,
+    platform: str,
+    achievement_type: str,
+    milestone_text: str,
+    image_filename: str,
+    amount: Optional[float] = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Generate platform-specific share content"""
+    try:
+        db = await get_database()
+        user = await get_user_by_id(user_id)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if platform not in ["instagram", "whatsapp"]:
+            raise HTTPException(status_code=400, detail="Platform must be 'instagram' or 'whatsapp'")
+        
+        # Generate platform-specific content
+        social_service = await get_social_sharing_service()
+        share_content = social_service.generate_social_share_content(
+            platform=platform,
+            achievement_type=achievement_type,
+            milestone_text=milestone_text,
+            image_filename=image_filename,
+            user_name=user.get("full_name", "User")
+        )
+        
+        # Track sharing activity
+        sharing_record = {
+            "user_id": user_id,
+            "platform": platform,
+            "achievement_type": achievement_type,
+            "milestone_text": milestone_text,
+            "image_filename": image_filename,
+            "shared_at": datetime.now(timezone.utc)
+        }
+        await db.social_shares.insert_one(sharing_record)
+        
+        # Update user achievements_shared count
+        await db.users.update_one(
+            {"id": user_id},
+            {"$inc": {"achievements_shared": 1}}
+        )
+        
+        # Check for social sharing badges
+        gamification = await get_gamification_service()
+        await gamification.check_and_award_badges(user_id, "achievement_shared", {
+            "shared_count": user.get("achievements_shared", 0) + 1
+        })
+        
+        return share_content
+        
+    except Exception as e:
+        logger.error(f"Social share error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate share content")
+
+@api_router.get("/social/share-stats")
+@limiter.limit("10/minute") 
+async def get_share_stats_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's social sharing statistics"""
+    try:
+        db = await get_database()
+        
+        # Get total shares by platform
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {"$group": {
+                "_id": "$platform",
+                "count": {"$sum": 1}
+            }}
+        ]
+        
+        platform_stats = await db.social_shares.aggregate(pipeline).to_list(None)
+        
+        # Get recent shares
+        recent_shares = await db.social_shares.find(
+            {"user_id": user_id}
+        ).sort("shared_at", -1).limit(10).to_list(None)
+        
+        # Format results
+        stats_by_platform = {}
+        for stat in platform_stats:
+            stats_by_platform[stat["_id"]] = stat["count"]
+        
+        return {
+            "total_shares": sum(stats_by_platform.values()),
+            "instagram_shares": stats_by_platform.get("instagram", 0),
+            "whatsapp_shares": stats_by_platform.get("whatsapp", 0),
+            "recent_shares": [
+                {
+                    "platform": share["platform"],
+                    "achievement_type": share["achievement_type"],
+                    "milestone_text": share["milestone_text"],
+                    "shared_at": share["shared_at"]
+                }
+                for share in recent_shares
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Get share stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get share statistics")
 
 # ===== REFERRAL SYSTEM WITH MONETARY INCENTIVES =====
 
