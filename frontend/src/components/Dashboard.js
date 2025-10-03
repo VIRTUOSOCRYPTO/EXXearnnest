@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { useAuth, formatCurrency } from '../App';
+import DailyTips from './DailyTips';
+import LimitedOffers from './LimitedOffers';
+import Timeline from './Timeline';
 import { 
   BanknotesIcon, 
   ArrowTrendingUpIcon, 
@@ -493,6 +496,24 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Engagement Features Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+        {/* Daily Tips */}
+        <div>
+          <DailyTips userId={user?.id} />
+        </div>
+
+        {/* Limited Offers */}
+        <div>
+          <LimitedOffers userId={user?.id} />
+        </div>
+      </div>
+
+      {/* Timeline Section */}
+      <div className="mt-8">
+        <Timeline userId={user?.id} />
       </div>
     </div>
   );
