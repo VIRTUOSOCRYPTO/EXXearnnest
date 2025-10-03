@@ -17,7 +17,7 @@ const FooterModal = ({ isOpen, onClose, title, children }) => {
               <h2 className="text-xl font-bold text-[#00CC7E]">
                 {title}
               </h2>
-              <p className="text-sm text-gray-600">EarnNest - Your Financial Companion</p>
+              <p className="text-sm text-gray-600">EarnAura - Your Financial Companion</p>
             </div>
           </div>
           <button
@@ -45,7 +45,7 @@ const AboutUsContent = () => (
           <span className="text-white text-3xl font-bold">₹</span>
         </div>
         <h1 className="text-3xl font-bold text-[#00CC7E]">
-          EarnNest
+          EarnAura
         </h1>
       </div>
       <p className="text-xl text-gray-600">Your Trusted Companion for Financial Success</p>
@@ -55,7 +55,7 @@ const AboutUsContent = () => (
       <div>
         <h3 className="text-xl font-semibold text-gray-800 mb-4">Our Mission</h3>
         <p className="text-gray-600 leading-relaxed">
-          EarnNest is dedicated to empowering students and professionals to take control of their financial future. 
+          EarnAura is dedicated to empowering students and professionals to take control of their financial future. 
           We believe that financial literacy and smart money management should be accessible to everyone, regardless 
           of their background or experience level.
         </p>
@@ -100,7 +100,7 @@ const AboutUsContent = () => (
     <div>
       <h3 className="text-xl font-semibold text-gray-800 mb-4">Our Story</h3>
       <p className="text-gray-600 leading-relaxed">
-        Founded with the belief that financial empowerment should be accessible to everyone, EarnNest was created 
+        Founded with the belief that financial empowerment should be accessible to everyone, EarnAura was created 
         to bridge the gap between financial education and practical money management. We understand the unique 
         challenges faced by students and young professionals in today's economy, and we've built a platform that 
         grows with you on your financial journey.
@@ -109,7 +109,7 @@ const AboutUsContent = () => (
 
     <div className="text-center bg-gray-50 p-6 rounded-lg">
       <h3 className="text-lg font-semibold text-gray-800 mb-2">Ready to Start Your Financial Journey?</h3>
-      <p className="text-gray-600 mb-4">Join thousands of users who are already building their financial future with EarnNest.</p>
+      <p className="text-gray-600 mb-4">Join thousands of users who are already building their financial future with EarnAura.</p>
       <a href="mailto:tortoor8@gmail.com" className="inline-flex items-center px-6 py-3 bg-[#00CC7E] text-white rounded-lg hover:bg-[#00BB70] transition-colors font-medium">
         Get in Touch
       </a>
@@ -232,7 +232,7 @@ const SupportContent = () => (
   <div className="space-y-6">
     <div className="text-center mb-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-2">Support Center</h1>
-      <p className="text-gray-600">We're here to help you succeed with EarnNest</p>
+      <p className="text-gray-600">We're here to help you succeed with EarnAura</p>
     </div>
 
     <div className="grid md:grid-cols-2 gap-6">
@@ -295,7 +295,7 @@ const SupportContent = () => (
       <div className="space-y-4">
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold text-gray-800 mb-2">How do I set up my first budget?</h4>
-          <p className="text-gray-600">Navigate to the Budget section, enter your monthly income, and allocate amounts to different categories like Food, Transportation, Entertainment, etc. EarnNest will help you track spending against these allocations.</p>
+          <p className="text-gray-600">Navigate to the Budget section, enter your monthly income, and allocate amounts to different categories like Food, Transportation, Entertainment, etc. EarnAura will help you track spending against these allocations.</p>
         </div>
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold text-gray-800 mb-2">Are my financial data secure?</h4>
@@ -303,7 +303,7 @@ const SupportContent = () => (
         </div>
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold text-gray-800 mb-2">How do I find relevant side hustles?</h4>
-          <p className="text-gray-600">Based on the skills you select during registration, EarnNest provides personalized side hustle recommendations. You can also browse opportunities posted by other users and apply directly through the platform.</p>
+          <p className="text-gray-600">Based on the skills you select during registration, EarnAura provides personalized side hustle recommendations. You can also browse opportunities posted by other users and apply directly through the platform.</p>
         </div>
         <div className="border border-gray-200 rounded-lg p-4">
           <h4 className="font-semibold text-gray-800 mb-2">Can I export my financial data?</h4>
@@ -316,7 +316,7 @@ const SupportContent = () => (
       <h3 className="text-lg font-semibold text-gray-800 mb-2">Still Need Help?</h3>
       <p className="text-gray-600 mb-4">Our support team is always ready to assist you with any questions or concerns.</p>
       <a 
-        href="mailto:tortoor8@gmail.com?subject=EarnNest%20Support%20Request"
+        href="mailto:tortoor8@gmail.com?subject=EarnAura%20Support%20Request"
         className="inline-flex items-center px-6 py-3 bg-[#00CC7E] text-white rounded-lg hover:bg-[#00BB70] transition-colors font-medium"
       >
         Contact Support Team
@@ -336,7 +336,7 @@ const TermsContent = () => (
       <section>
         <h3 className="text-xl font-semibold text-gray-800 mb-3">Acceptance of Terms</h3>
         <p className="text-gray-600 leading-relaxed">
-          By accessing and using EarnNest ("the Service"), you accept and agree to be bound by the terms 
+          By accessing and using EarnAura ("the Service"), you accept and agree to be bound by the terms 
           and provision of this agreement. If you do not agree to abide by the above, please do not use this service.
         </p>
       </section>
@@ -344,7 +344,7 @@ const TermsContent = () => (
       <section>
         <h3 className="text-xl font-semibold text-gray-800 mb-3">Service Description</h3>
         <div className="bg-gradient-to-r from-emerald-50 to-blue-50 p-4 rounded-lg">
-          <p className="text-gray-700 mb-3">EarnNest provides:</p>
+          <p className="text-gray-700 mb-3">EarnAura provides:</p>
           <div className="grid md:grid-cols-2 gap-4">
             <ul className="list-disc list-inside text-gray-600 space-y-1">
               <li>Personal budget tracking and management tools</li>
@@ -388,7 +388,7 @@ const TermsContent = () => (
             <div>
               <h4 className="font-semibold text-amber-800 mb-2">Important Notice</h4>
               <p className="text-amber-700 text-sm leading-relaxed">
-                EarnNest provides tools and information for educational and organizational purposes only. 
+                EarnAura provides tools and information for educational and organizational purposes only. 
                 We do not provide financial advice, investment recommendations, or guarantee any financial outcomes. 
                 Always consult with qualified financial professionals for personalized advice.
               </p>
@@ -424,7 +424,7 @@ const TermsContent = () => (
       <section>
         <h3 className="text-xl font-semibold text-gray-800 mb-3">Service Availability</h3>
         <p className="text-gray-600 leading-relaxed">
-          While we strive to provide continuous service availability, EarnNest reserves the right to modify, 
+          While we strive to provide continuous service availability, EarnAura reserves the right to modify, 
           suspend, or discontinue any part of the service with or without notice. We are not liable for any 
           modification, suspension, or discontinuation of the service.
         </p>
@@ -434,7 +434,7 @@ const TermsContent = () => (
         <h3 className="text-xl font-semibold text-gray-800 mb-3">Changes to Terms</h3>
         <div className="bg-gray-50 p-4 rounded-lg">
           <p className="text-gray-600 leading-relaxed">
-            EarnNest reserves the right to update these Terms of Service at any time. We will notify users of 
+            EarnAura reserves the right to update these Terms of Service at any time. We will notify users of 
             significant changes via email or through the platform. Continued use of the service after changes 
             constitutes acceptance of the updated terms.
           </p>
