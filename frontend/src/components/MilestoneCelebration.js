@@ -149,10 +149,10 @@ const MilestoneCelebration = ({ milestone, onClose }) => {
             </div>
           </div>
           
-          {/* EarnNest Branding */}
+          {/* EarnAura Branding */}
           <div className="bg-gray-50 px-6 py-3 text-center">
             <p className="text-sm text-gray-600">
-              Keep crushing your goals with <span className="font-semibold text-emerald-600">EarnNest</span>! 💪
+              Keep crushing your goals with <span className="font-semibold text-emerald-600">EarnAura</span>! 💪
             </p>
           </div>
         </div>
