@@ -3,12 +3,22 @@ import axios from 'axios';
 
 const SocialFeed = () => {
   const [activities, setActivities] = useState([]);
+  const [peerComparison, setPeerComparison] = useState(null);
+  const [peerMessages, setPeerMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchFriendActivities();
+    fetchAllFeedData();
   }, []);
+
+  const fetchAllFeedData = async () => {
+    await Promise.all([
+      fetchFriendActivities(),
+      fetchPeerComparison(),
+      fetchPeerMessages()
+    ]);
+  };
 
   const fetchFriendActivities = async () => {
     try {
@@ -25,6 +35,36 @@ const SocialFeed = () => {
       console.error('Social feed error:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPeerComparison = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `${process.env.REACT_APP_BACKEND_URL}/api/social/peer-comparison`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      setPeerComparison(response.data);
+    } catch (error) {
+      console.error('Peer comparison error:', error);
+    }
+  };
+
+  const fetchPeerMessages = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `${process.env.REACT_APP_BACKEND_URL}/api/social/peer-messages`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      setPeerMessages(response.data.notifications || []);
+    } catch (error) {
+      console.error('Peer messages error:', error);
     }
   };
 
@@ -96,6 +136,99 @@ const SocialFeed = () => {
           <p className="text-gray-600 mt-2">See what your friends are up to!</p>
         </div>
 
+        {/* Peer Comparison Section */}
+        {peerComparison && (
+          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              📊 How You Compare to Your Peers
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Your Savings Rate</p>
+                    <p className="text-2xl font-bold text-blue-600">{peerComparison.user_savings_rate}%</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-600">Peer Average</p>
+                    <p className="text-lg font-semibold text-gray-700">{peerComparison.peer_average_rate}%</p>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        peerComparison.user_savings_rate >= peerComparison.peer_average_rate 
+                          ? 'bg-green-500' 
+                          : 'bg-orange-500'
+                      }`}
+                      style={{ 
+                        width: `${Math.min(100, Math.max(10, peerComparison.user_savings_rate))}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">
+                    {peerComparison.status === 'leading' ? '🚀' : 
+                     peerComparison.status === 'catching_up' ? '📈' : '⚡'}
+                  </span>
+                  <div>
+                    <p className="font-semibold text-gray-900">{peerComparison.comparison_message}</p>
+                    <p className="text-sm text-gray-600">{peerComparison.motivation_level} motivation</p>
+                  </div>
+                </div>
+                {peerComparison.university_context && (
+                  <p className="text-xs text-blue-600 mt-2">{peerComparison.university_context}</p>
+                )}
+              </div>
+            </div>
+
+            {peerComparison.actionable_tips && peerComparison.actionable_tips.length > 0 && (
+              <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
+                <p className="text-sm font-medium text-gray-900 mb-2">💡 Quick Tips for You:</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {peerComparison.actionable_tips.slice(0, 2).map((tip, index) => (
+                    <p key={index} className="text-xs text-gray-600 bg-blue-50 px-2 py-1 rounded">
+                      {tip}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Peer Messages Section */}
+        {peerMessages.length > 0 && (
+          <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+              🔥 Social Pressure Alerts
+            </h3>
+            <div className="space-y-3">
+              {peerMessages.slice(0, 3).map((message, index) => (
+                <div key={index} className="bg-white rounded-lg p-4 border border-green-200 flex items-center gap-3">
+                  <span className="text-2xl">{message.icon}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{message.message}</p>
+                    {message.action_text && (
+                      <button 
+                        className="text-xs text-green-600 hover:text-green-700 font-medium mt-1"
+                        onClick={() => message.action_url && (window.location.href = message.action_url)}
+                      >
+                        {message.action_text} →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="divide-y divide-gray-200">
           {activities.length === 0 ? (
             <div className="p-8 text-center">
@@ -140,7 +273,7 @@ const SocialFeed = () => {
         {activities.length > 0 && (
           <div className="p-4 bg-gray-50 text-center">
             <button 
-              onClick={fetchFriendActivities}
+              onClick={fetchAllFeedData}
               className="text-green-600 hover:text-green-700 font-medium"
             >
               🔄 Refresh Feed
