@@ -8,7 +8,13 @@ import {
   ArrowTrendingDownIcon,
   PlusIcon,
   TrophyIcon,
-  FireIcon
+  FireIcon,
+  LightBulbIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  SparklesIcon,
+  BoltIcon,
+  GiftIcon
 } from '@heroicons/react/24/outline';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -27,17 +33,27 @@ const Dashboard = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [gamificationProfile, setGamificationProfile] = useState(null);
   const [insights, setInsights] = useState({});
+  const [dailyTip, setDailyTip] = useState(null);
+  const [countdownAlerts, setCountdownAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [summaryRes, transactionsRes, leaderboardRes, insightsRes, gamificationRes] = await Promise.all([
-          axios.get(`${API}/transactions/summary`),
-          axios.get(`${API}/transactions?limit=5`),
-          axios.get(`${API}/analytics/leaderboard`),
-          axios.get(`${API}/analytics/insights`),
-          axios.get(`${API}/gamification/profile`).catch(() => ({ data: null })) // Optional gamification
+        const token = localStorage.getItem('token');
+        const headers = { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        };
+
+        const [summaryRes, transactionsRes, leaderboardRes, insightsRes, gamificationRes, dailyTipRes, countdownRes] = await Promise.all([
+          axios.get(`${API}/transactions/summary`, { headers }),
+          axios.get(`${API}/transactions?limit=5`, { headers }),
+          axios.get(`${API}/analytics/leaderboard`, { headers }),
+          axios.get(`${API}/analytics/insights`, { headers }),
+          axios.get(`${API}/gamification/profile`, { headers }).catch(() => ({ data: null })),
+          axios.get(`${API}/engagement/daily-tip`, { headers }).catch(() => ({ data: null })),
+          axios.get(`${API}/engagement/countdown-alerts`, { headers }).catch(() => ({ data: [] }))
         ]);
 
         setSummary(summaryRes.data);
@@ -45,6 +61,8 @@ const Dashboard = () => {
         setLeaderboard(leaderboardRes.data);
         setInsights(insightsRes.data);
         setGamificationProfile(gamificationRes.data);
+        setDailyTip(dailyTipRes.data);
+        setCountdownAlerts(countdownRes.data || []);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -362,6 +380,118 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Daily Tips & Countdown Alerts Section - Bottom Placement */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+        {/* Daily Tips Widget */}
+        {dailyTip && (
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200 p-6 slide-up">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <LightBulbIcon className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-blue-900">💡 Daily Financial Tip</h3>
+                <p className="text-sm text-blue-600">
+                  {dailyTip.is_new ? 'New tip today!' : 'Today\'s tip'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-blue-200/50">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">{dailyTip.tip.icon}</span>
+                <div>
+                  <h4 className="font-semibold text-blue-900 mb-2">{dailyTip.tip.title}</h4>
+                  <p className="text-blue-800 text-sm leading-relaxed">{dailyTip.tip.content}</p>
+                  <div className="flex items-center gap-2 mt-3 text-xs text-blue-600">
+                    <SparklesIcon className="w-4 h-4" />
+                    <span>{dailyTip.streak_info}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Countdown Alerts Widget */}
+        <div className="bg-gradient-to-br from-orange-50 to-red-100 rounded-xl border border-orange-200 p-6 slide-up">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-orange-500 rounded-lg">
+              <ClockIcon className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-orange-900">⏰ Active Alerts</h3>
+              <p className="text-sm text-orange-600">Time-sensitive opportunities</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {countdownAlerts && countdownAlerts.length > 0 ? (
+              countdownAlerts.slice(0, 2).map((alert) => (
+                <div key={alert.id} className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-orange-200/50">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        {alert.urgency === 'critical' && <ExclamationTriangleIcon className="w-4 h-4 text-red-500" />}
+                        {alert.urgency === 'high' && <BoltIcon className="w-4 h-4 text-orange-500" />}
+                        {alert.urgency === 'medium' && <ClockIcon className="w-4 h-4 text-yellow-500" />}
+                        <span className="font-semibold text-sm text-gray-900">{alert.title}</span>
+                      </div>
+                      <p className="text-xs text-gray-700 mb-2">{alert.message}</p>
+                      
+                      {alert.seconds_remaining && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <ClockIcon className="w-3 h-3 text-orange-500" />
+                          <span className="font-mono bg-orange-100 px-2 py-0.5 rounded text-orange-800">
+                            {Math.floor(alert.seconds_remaining / 3600)}h {Math.floor((alert.seconds_remaining % 3600) / 60)}m left
+                          </span>
+                        </div>
+                      )}
+                      
+                      {alert.reward && (
+                        <div className="flex items-center gap-1 mt-1 text-xs text-green-700">
+                          <GiftIcon className="w-3 h-3" />
+                          <span>{alert.reward}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {alert.action_url && (
+                      <Link 
+                        to={alert.action_url}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                          alert.urgency === 'critical' 
+                            ? 'bg-red-500 hover:bg-red-600 text-white' 
+                            : alert.urgency === 'high'
+                            ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                            : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                        }`}
+                      >
+                        {alert.action}
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-orange-200/50 text-center">
+                <ClockIcon className="w-8 h-8 mx-auto mb-2 text-orange-300" />
+                <p className="text-sm text-orange-600">No urgent alerts right now</p>
+                <p className="text-xs text-orange-500">Keep checking for opportunities!</p>
+              </div>
+            )}
+          </div>
+
+          {countdownAlerts && countdownAlerts.length > 2 && (
+            <div className="mt-3 text-center">
+              <button className="text-xs text-orange-600 hover:text-orange-700 font-medium">
+                View {countdownAlerts.length - 2} more alerts
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
