@@ -592,7 +592,7 @@ const Hustles = () => {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Featured Opportunities</h2>
-                  <p className="text-gray-600">Curated by EarnNest team</p>
+                  <p className="text-gray-600">Curated by EarnAura team</p>
                 </div>
               </div>
 
