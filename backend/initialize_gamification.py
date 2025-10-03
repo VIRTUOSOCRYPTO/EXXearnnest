@@ -120,5 +120,5 @@ async def initialize_universities():
     print(f"\n🏆 Gamification badges initialized!")
 
 if __name__ == "__main__":
-    print("🚀 Initializing EarnNest gamification system...")
+    print("🚀 Initializing EarnAura gamification system...")
     asyncio.run(initialize_universities())
