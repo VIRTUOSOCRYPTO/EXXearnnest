@@ -1486,3 +1486,103 @@ class NotificationPreferencesRequest(BaseModel):
     timezone: str = "Asia/Kolkata"
     reminder_after_missed_days: int = Field(..., ge=1, le=7)
     final_nudge_after_days: int = Field(..., ge=3, le=14)
+
+# ===== PHASE 1: CORE ENGAGEMENT & FOMO MODELS =====
+
+class IndividualChallenge(BaseModel):
+    challenge_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    challenger_id: str
+    challenged_id: str
+    challenge_type: str  # "savings_race", "streak_battle", "expense_limit"
+    title: str = Field(..., min_length=5, max_length=100)
+    description: str = Field(..., max_length=500)
+    target_amount: float = Field(default=0, ge=0)
+    duration_days: int = Field(..., ge=1, le=30)  # 1 day to 1 month
+    start_date: datetime
+    end_date: datetime
+    status: str = "pending"  # "pending", "active", "completed", "declined"
+    challenger_progress: float = 0
+    challenged_progress: float = 0
+    winner: Optional[str] = None  # user_id of winner or "tie"
+    stakes: str = "Bragging rights!"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('challenge_type')
+    def validate_challenge_type(cls, v):
+        allowed_types = ["savings_race", "streak_battle", "expense_limit"]
+        if v not in allowed_types:
+            raise ValueError(f'Challenge type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class IndividualChallengeCreateRequest(BaseModel):
+    friend_id: str
+    challenge_type: str = "savings_race"
+    title: str = Field(..., min_length=5, max_length=100)
+    description: str = Field(..., max_length=500)
+    target_amount: float = Field(default=1000, ge=0, le=50000)
+    duration_days: int = Field(default=7, ge=1, le=30)
+    stakes: str = "Bragging rights!"
+
+class NotificationSchedule(BaseModel):
+    schedule_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    notification_type: str  # "daily_tip", "streak_reminder", "challenge_update"
+    scheduled_time: str  # "09:00" format
+    timezone: str = "Asia/Kolkata"
+    is_active: bool = True
+    last_sent: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('notification_type')
+    def validate_notification_type(cls, v):
+        allowed_types = ["daily_tip", "streak_reminder", "challenge_update", "peer_comparison"]
+        if v not in allowed_types:
+            raise ValueError(f'Notification type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class CountdownAlert(BaseModel):
+    alert_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    alert_type: str  # "flash_challenge", "daily_deadline", "weekend_special"
+    title: str
+    message: str
+    deadline: datetime
+    urgency: str  # "critical", "high", "medium", "low"
+    reward: Optional[str] = None
+    action: str
+    action_url: str
+    countdown_display: str = "live"  # "live", "slots", "progress"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('urgency')
+    def validate_urgency(cls, v):
+        allowed_urgencies = ["critical", "high", "medium", "low"]
+        if v not in allowed_urgencies:
+            raise ValueError(f'Urgency must be one of: {", ".join(allowed_urgencies)}')
+        return v
+
+class PeerComparisonMessage(BaseModel):
+    message_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    message_type: str  # "friend_outperforming", "university_activity", "streak_pressure"
+    urgency: str  # "critical", "high", "medium", "low"
+    title: str
+    message: str
+    call_to_action: str
+    action_url: str
+    social_pressure: int = Field(..., ge=0, le=10)  # 0-10 scale
+    expires_at: datetime
+    is_dismissed: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class DailyTipNotification(BaseModel):
+    tip_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    date: str  # YYYY-MM-DD format
+    tip_title: str
+    tip_content: str
+    tip_type: str = "tip"  # "tip" or "quote"
+    icon: str = "💡"
+    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    viewed_at: Optional[datetime] = None
+    notification_method: str = "push"  # "push", "in_app", "both"
