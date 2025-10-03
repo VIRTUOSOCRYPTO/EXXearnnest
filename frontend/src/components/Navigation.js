@@ -46,6 +46,9 @@ const Navigation = () => {
     { path: '/limited-offers', label: 'Limited Offers', icon: GiftIcon },
     { path: '/feature-unlock', label: 'Feature Unlock', icon: LightBulbIcon },
     { path: '/financial-journey', label: 'Financial Journey', icon: ChartBarIcon },
+    { path: '/daily-tips', label: 'Daily Tips', icon: LightBulbIcon },
+    { path: '/timeline', label: 'Timeline', icon: FireIcon },
+    { path: '/photo-sharing', label: 'Photo Sharing', icon: UserCircleIcon },
     { path: '/notifications', label: 'Notifications', icon: BellIcon },
   ];
 
