@@ -4591,7 +4591,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://thrift-hub-3.preview.emergentagent.com"
+        base_url = "https://wealth-buddy-25.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -9319,6 +9319,381 @@ async def get_financial_journey_timeline(
     except Exception as e:
         logger.error(f"Financial journey error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get financial journey")
+
+# ==================== ENGAGEMENT FEATURES API ENDPOINTS ====================
+
+# Daily Tips Endpoints
+@api_router.get("/daily-tips")
+@limiter.limit("20/minute")
+async def get_daily_tip_endpoint(request: Request, user_id: str = Depends(get_current_user)):
+    """Get today's personalized daily tip"""
+    try:
+        from daily_tips_service import get_daily_tips_service
+        
+        tips_service = await get_daily_tips_service()
+        tip = await tips_service.generate_personalized_tip(user_id)
+        
+        return {"tip": tip}
+        
+    except Exception as e:
+        logger.error(f"Get daily tip error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get daily tip")
+
+@api_router.post("/daily-tips/{tip_id}/interact")
+@limiter.limit("50/minute")
+async def record_tip_interaction_endpoint(
+    request: Request,
+    tip_id: str,
+    interaction_type: str,
+    interaction_data: Optional[Dict[str, Any]] = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Record user interaction with daily tip"""
+    try:
+        from daily_tips_service import get_daily_tips_service
+        
+        tips_service = await get_daily_tips_service()
+        success = await tips_service.record_tip_interaction(
+            user_id, tip_id, interaction_type, interaction_data or {}
+        )
+        
+        return {"success": success}
+        
+    except Exception as e:
+        logger.error(f"Record tip interaction error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to record interaction")
+
+@api_router.get("/daily-tips/history")
+@limiter.limit("10/minute")
+async def get_tip_history_endpoint(
+    request: Request,
+    limit: int = 30,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's daily tip history"""
+    try:
+        db = await get_database()
+        tips = await db.daily_tip_notifications.find({
+            "user_id": user_id
+        }).sort("sent_at", -1).limit(limit).to_list(None)
+        
+        return {"tips": tips}
+        
+    except Exception as e:
+        logger.error(f"Get tip history error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get tip history")
+
+# Limited Offers Endpoints
+@api_router.get("/offers")
+@limiter.limit("20/minute")
+async def get_active_offers_endpoint(request: Request, user_id: str = Depends(get_current_user)):
+    """Get active limited-time offers for user"""
+    try:
+        from limited_offers_service import get_limited_offers_service
+        
+        offers_service = await get_limited_offers_service()
+        offers = await offers_service.get_active_offers_for_user(user_id)
+        
+        return {"offers": offers}
+        
+    except Exception as e:
+        logger.error(f"Get active offers error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get offers")
+
+@api_router.post("/offers/{offer_id}/participate")
+@limiter.limit("20/minute")
+async def participate_in_offer_endpoint(
+    request: Request,
+    offer_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Participate in a limited-time offer"""
+    try:
+        from limited_offers_service import get_limited_offers_service
+        
+        offers_service = await get_limited_offers_service()
+        result = await offers_service.participate_in_offer(user_id, offer_id)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Participate in offer error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to participate in offer")
+
+@api_router.get("/offers/history")
+@limiter.limit("10/minute")
+async def get_offer_history_endpoint(request: Request, user_id: str = Depends(get_current_user)):
+    """Get user's offer participation history"""
+    try:
+        from limited_offers_service import get_limited_offers_service
+        
+        offers_service = await get_limited_offers_service()
+        history = await offers_service.get_user_participation_history(user_id)
+        
+        return {"history": history}
+        
+    except Exception as e:
+        logger.error(f"Get offer history error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get offer history")
+
+@api_router.post("/offers/create-challenge")
+@limiter.limit("5/minute")
+async def create_challenge_offer_endpoint(
+    request: Request,
+    challenge_data: Dict[str, Any],
+    user_id: str = Depends(get_current_user)
+):
+    """Create a financial challenge offer (admin or high-level users)"""
+    try:
+        # Check if user has permission (admin or level 5+)
+        user = await get_user_by_id(user_id)
+        if not (user.get("is_admin") or user.get("level", 1) >= 5):
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        
+        from limited_offers_service import get_limited_offers_service
+        
+        offers_service = await get_limited_offers_service()
+        offer = await offers_service.create_financial_challenge_offer(challenge_data)
+        
+        return {"offer": offer}
+        
+    except Exception as e:
+        logger.error(f"Create challenge offer error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create challenge")
+
+# Timeline/Story Endpoints
+@api_router.get("/timeline")
+@limiter.limit("30/minute")
+async def get_timeline_endpoint(
+    request: Request,
+    timeline_type: str = "combined",  # "personal", "social", "combined"
+    limit: int = 20,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's timeline (personal, social, or combined)"""
+    try:
+        from timeline_service import get_timeline_service
+        
+        timeline_service = await get_timeline_service()
+        timeline = await timeline_service.get_user_timeline(user_id, timeline_type, limit, offset)
+        
+        return {"timeline": timeline}
+        
+    except Exception as e:
+        logger.error(f"Get timeline error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get timeline")
+
+@api_router.get("/timeline/friends")
+@limiter.limit("20/minute")
+async def get_friend_timeline_endpoint(
+    request: Request,
+    limit: int = 15,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get friend activities timeline"""
+    try:
+        from timeline_service import get_timeline_service
+        
+        timeline_service = await get_timeline_service()
+        activities = await timeline_service.get_friend_activities_timeline(user_id, limit, offset)
+        
+        return {"activities": activities}
+        
+    except Exception as e:
+        logger.error(f"Get friend timeline error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get friend activities")
+
+@api_router.post("/timeline/events/{event_id}/react")
+@limiter.limit("50/minute")
+async def react_to_timeline_event_endpoint(
+    request: Request,
+    event_id: str,
+    reaction_type: str,
+    user_id: str = Depends(get_current_user)
+):
+    """React to a timeline event"""
+    try:
+        from timeline_service import get_timeline_service
+        
+        timeline_service = await get_timeline_service()
+        success = await timeline_service.add_reaction_to_event(user_id, event_id, reaction_type)
+        
+        return {"success": success}
+        
+    except Exception as e:
+        logger.error(f"React to timeline event error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to react to event")
+
+@api_router.get("/timeline/stats")
+@limiter.limit("10/minute")
+async def get_timeline_stats_endpoint(request: Request, user_id: str = Depends(get_current_user)):
+    """Get timeline statistics for user"""
+    try:
+        from timeline_service import get_timeline_service
+        
+        timeline_service = await get_timeline_service()
+        stats = await timeline_service.get_timeline_stats(user_id)
+        
+        return {"stats": stats}
+        
+    except Exception as e:
+        logger.error(f"Get timeline stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get timeline stats")
+
+# Enhanced Photo Sharing Endpoints
+@api_router.post("/photos/achievements/upload")
+@limiter.limit("10/minute")
+async def upload_achievement_photo_endpoint(
+    request: Request,
+    file: UploadFile = File(...),
+    achievement_id: str = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Upload custom photo for achievement"""
+    try:
+        from enhanced_photo_service import get_enhanced_photo_service
+        
+        # Validate file
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Read file content
+        file_content = await file.read()
+        
+        photo_service = await get_enhanced_photo_service()
+        result = await photo_service.upload_custom_achievement_photo(
+            user_id, achievement_id or "general", file_content, file.filename
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Upload achievement photo error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload photo")
+
+@api_router.post("/photos/achievements/generate-branded")
+@limiter.limit("10/minute")
+async def generate_branded_photo_endpoint(
+    request: Request,
+    achievement_data: Dict[str, Any],
+    user_id: str = Depends(get_current_user)
+):
+    """Generate branded achievement photo"""
+    try:
+        from enhanced_photo_service import get_enhanced_photo_service
+        
+        photo_service = await get_enhanced_photo_service()
+        result = await photo_service.generate_branded_achievement_photo(user_id, achievement_data)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Generate branded photo error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate branded photo")
+
+@api_router.get("/photos/achievements")
+@limiter.limit("20/minute")
+async def get_achievement_photos_endpoint(
+    request: Request,
+    limit: int = 20,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's achievement photos"""
+    try:
+        from enhanced_photo_service import get_enhanced_photo_service
+        
+        photo_service = await get_enhanced_photo_service()
+        photos = await photo_service.get_user_achievement_photos(user_id, limit)
+        
+        return {"photos": photos}
+        
+    except Exception as e:
+        logger.error(f"Get achievement photos error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get photos")
+
+@api_router.post("/photos/{photo_id}/like")
+@limiter.limit("100/minute")
+async def like_photo_endpoint(
+    request: Request,
+    photo_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Like or unlike an achievement photo"""
+    try:
+        from enhanced_photo_service import get_enhanced_photo_service
+        
+        photo_service = await get_enhanced_photo_service()
+        result = await photo_service.like_achievement_photo(user_id, photo_id)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Like photo error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to like photo")
+
+# Push Notification Subscription Management
+@api_router.post("/notifications/subscribe")
+@limiter.limit("10/minute")
+async def create_push_subscription_endpoint(
+    request: Request,
+    subscription_data: Dict[str, Any],
+    user_id: str = Depends(get_current_user)
+):
+    """Create or update push notification subscription"""
+    try:
+        push_service = await get_push_service()
+        if not push_service:
+            raise HTTPException(status_code=503, detail="Push notification service unavailable")
+        
+        result = await push_service.create_push_subscription(user_id, subscription_data)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Create push subscription error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create subscription")
+
+@api_router.get("/notifications/preferences")
+@limiter.limit("20/minute")
+async def get_notification_preferences_endpoint(request: Request, user_id: str = Depends(get_current_user)):
+    """Get user's notification preferences"""
+    try:
+        push_service = await get_push_service()
+        if not push_service:
+            return {"preferences": {}}
+        
+        preferences = await push_service.get_user_notification_preferences(user_id)
+        
+        return {"preferences": preferences}
+        
+    except Exception as e:
+        logger.error(f"Get notification preferences error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get preferences")
+
+@api_router.put("/notifications/preferences")
+@limiter.limit("20/minute")
+async def update_notification_preferences_endpoint(
+    request: Request,
+    preferences: Dict[str, bool],
+    user_id: str = Depends(get_current_user)
+):
+    """Update user's notification preferences"""
+    try:
+        push_service = await get_push_service()
+        if not push_service:
+            raise HTTPException(status_code=503, detail="Push notification service unavailable")
+        
+        success = await push_service.update_notification_preferences(user_id, preferences)
+        
+        return {"success": success}
+        
+    except Exception as e:
+        logger.error(f"Update notification preferences error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update preferences")
+
+# ==================== END ENGAGEMENT FEATURES ====================
 
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
