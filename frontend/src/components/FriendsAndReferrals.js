@@ -289,14 +289,14 @@ const FriendsAndReferrals = () => {
   };
 
   const shareViaWhatsApp = () => {
-    const message = `Hey! Join me on EarnNest and start earning money while managing your finances. Use my referral link: ${referralData.referral_link}`;
+    const message = `Hey! Join me on EarnAura and start earning money while managing your finances. Use my referral link: ${referralData.referral_link}`;
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
 
   const shareViaEmail = () => {
-    const subject = 'Join EarnNest - Start Earning Today!';
-    const body = `Hi there!\n\nI've been using EarnNest to manage my finances and earn money, and I think you'd love it too!\n\nJoin me using this referral link: ${referralData.referral_link}\n\nYou'll get rewards for signing up, and I'll get rewarded too when you join. It's a win-win!\n\nBest regards,\n${user?.full_name}`;
+    const subject = 'Join EarnAura - Start Earning Today!';
+    const body = `Hi there!\n\nI've been using EarnAura to manage my finances and earn money, and I think you'd love it too!\n\nJoin me using this referral link: ${referralData.referral_link}\n\nYou'll get rewards for signing up, and I'll get rewarded too when you join. It's a win-win!\n\nBest regards,\n${user?.full_name}`;
     
     const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailtoUrl;
@@ -475,7 +475,7 @@ const FriendsAndReferrals = () => {
           <Card>
             <CardHeader>
               <CardTitle>Your Friends</CardTitle>
-              <CardDescription>Connected friends on EarnNest</CardDescription>
+              <CardDescription>Connected friends on EarnAura</CardDescription>
             </CardHeader>
             <CardContent>
               {friends.length === 0 ? (
@@ -743,7 +743,7 @@ const FriendsAndReferrals = () => {
                   </div>
                   <h3 className="font-semibold mb-2">2. Friend Joins</h3>
                   <p className="text-sm text-gray-600">
-                    Your friend signs up using your link and starts using EarnNest
+                    Your friend signs up using your link and starts using EarnAura
                   </p>
                 </div>
                 
