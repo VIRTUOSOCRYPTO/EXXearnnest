@@ -27,6 +27,9 @@ import LimitedOffers from './components/LimitedOffers';
 import SharingHub from './components/SharingHub';
 import FeatureUnlock from './components/FeatureUnlock';
 import FinancialJourney from './components/FinancialJourney';
+import DailyTips from './components/DailyTips';
+import Timeline from './components/Timeline';
+import EnhancedPhotoSharing from './components/EnhancedPhotoSharing';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -217,6 +220,18 @@ function App() {
               <Route 
                 path="/financial-journey" 
                 element={user ? <FinancialJourney /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/daily-tips" 
+                element={user ? <DailyTips userId={user?.id} /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/timeline" 
+                element={user ? <Timeline userId={user?.id} /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/photo-sharing" 
+                element={user ? <EnhancedPhotoSharing userId={user?.id} /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
