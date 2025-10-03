@@ -106,7 +106,7 @@ const Dashboard = () => {
                   <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 bg-clip-text text-transparent mb-1">
                     Welcome back, {user?.full_name?.split(' ')[0]}! 👋
                   </h1>
-                  <p className="text-gray-600 font-medium">Your EarnNest financial overview</p>
+                  <p className="text-gray-600 font-medium">Your EarnAura financial overview</p>
                 </div>
               </div>
               
