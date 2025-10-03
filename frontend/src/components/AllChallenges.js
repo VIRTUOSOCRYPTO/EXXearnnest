@@ -69,6 +69,20 @@ const AllChallenges = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [joining, setJoining] = useState(null);
 
+  // Individual Friend Challenges State (NEW)
+  const [friendChallenges, setFriendChallenges] = useState([]);
+  const [showFriendChallengeModal, setShowFriendChallengeModal] = useState(false);
+  const [friends, setFriends] = useState([]);
+  const [friendChallengeData, setFriendChallengeData] = useState({
+    friend_id: '',
+    challenge_type: 'savings_race',
+    target_amount: '',
+    duration_days: 7,
+    title: '',
+    description: '',
+    stakes: 'Bragging rights!'
+  });
+
   // Group Challenges State
   const [groupChallenges, setGroupChallenges] = useState([]);
   const [showGroupCreateModal, setShowGroupCreateModal] = useState(false);
@@ -77,7 +91,7 @@ const AllChallenges = () => {
   
   // General State
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('individual'); // individual, group
+  const [activeTab, setActiveTab] = useState('individual'); // individual, group, friend_challenges
   const { user } = useAuth();
 
   // Individual Challenge Form Data
@@ -111,7 +125,9 @@ const AllChallenges = () => {
     try {
       await Promise.all([
         fetchIndividualChallenges(),
-        fetchGroupChallenges()
+        fetchGroupChallenges(),
+        fetchFriendChallenges(),
+        fetchFriends()
       ]);
     } catch (error) {
       console.error('Error fetching challenges:', error);
@@ -233,6 +249,126 @@ const AllChallenges = () => {
       });
     } finally {
       setJoining(null);
+    }
+  };
+
+  // Individual Friend Challenges Functions (NEW)
+  const fetchFriendChallenges = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API}/individual-challenges/my-challenges`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFriendChallenges(data.challenges || []);
+      }
+    } catch (error) {
+      console.error('Error fetching friend challenges:', error);
+    }
+  };
+
+  const fetchFriends = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API}/friends`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setFriends(data.friends || []);
+      }
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+    }
+  };
+
+  const createFriendChallenge = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API}/individual-challenges/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...friendChallengeData,
+          target_amount: parseFloat(friendChallengeData.target_amount)
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: "Challenge Sent!",
+          description: result.message || "Friend challenge created successfully!"
+        });
+        setShowFriendChallengeModal(false);
+        setFriendChallengeData({
+          friend_id: '',
+          challenge_type: 'savings_race',
+          target_amount: '',
+          duration_days: 7,
+          title: '',
+          description: '',
+          stakes: 'Bragging rights!'
+        });
+        fetchFriendChallenges();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.detail || "Failed to create friend challenge",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error creating friend challenge:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create friend challenge",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const respondToFriendChallenge = async (challengeId, action) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API}/individual-challenges/${challengeId}/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ action }) // 'accept' or 'decline'
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast({
+          title: action === 'accept' ? "Challenge Accepted!" : "Challenge Declined",
+          description: result.message || `You have ${action}ed the challenge.`
+        });
+        fetchFriendChallenges();
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Error",
+          description: error.detail || `Failed to ${action} challenge`,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing challenge:`, error);
+      toast({
+        title: "Error",
+        description: `Failed to ${action} challenge`,
+        variant: "destructive"
+      });
     }
   };
 
@@ -364,6 +500,14 @@ const AllChallenges = () => {
         >
           <Trophy className="w-4 h-4 mr-2" />
           Individual Challenges
+        </Button>
+        <Button
+          onClick={() => setActiveTab('friend_challenges')}
+          variant={activeTab === 'friend_challenges' ? 'default' : 'ghost'}
+          className="px-6"
+        >
+          <Star className="w-4 h-4 mr-2" />
+          Friend Challenges
         </Button>
         <Button
           onClick={() => setActiveTab('group')}
@@ -775,6 +919,253 @@ const AllChallenges = () => {
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* Friend Challenges Tab */}
+      {activeTab === 'friend_challenges' && (
+        <div className="space-y-6">
+          {/* Action Button */}
+          <div className="flex justify-end">
+            <Dialog open={showFriendChallengeModal} onOpenChange={setShowFriendChallengeModal}>
+              <DialogTrigger asChild>
+                <Button className="flex items-center gap-2">
+                  <Star className="w-4 h-4" />
+                  Challenge a Friend
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Challenge a Friend</DialogTitle>
+                  <DialogDescription>
+                    Send a 1-on-1 challenge to one of your friends
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="friend_select">Select Friend</Label>
+                    <Select 
+                      value={friendChallengeData.friend_id} 
+                      onValueChange={(value) => setFriendChallengeData({ ...friendChallengeData, friend_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a friend to challenge" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {friends.map((friend) => (
+                          <SelectItem key={friend.user_id} value={friend.user_id}>
+                            <div className="flex items-center gap-2">
+                              <span>{friend.full_name}</span>
+                              {friend.university && (
+                                <span className="text-xs text-gray-500">• {friend.university}</span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="challenge_title">Challenge Title</Label>
+                    <Input
+                      id="challenge_title"
+                      placeholder="e.g., Save ₹5,000 in 7 days"
+                      value={friendChallengeData.title}
+                      onChange={(e) => setFriendChallengeData({ ...friendChallengeData, title: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="challenge_type">Challenge Type</Label>
+                      <Select 
+                        value={friendChallengeData.challenge_type} 
+                        onValueChange={(value) => setFriendChallengeData({ ...friendChallengeData, challenge_type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="savings_race">💰 Savings Race</SelectItem>
+                          <SelectItem value="streak_battle">🔥 Streak Battle</SelectItem>
+                          <SelectItem value="expense_limit">📊 Expense Limit</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="target_amount">Target Amount (₹)</Label>
+                      <Input
+                        id="target_amount"
+                        type="number"
+                        placeholder="5000"
+                        value={friendChallengeData.target_amount}
+                        onChange={(e) => setFriendChallengeData({ ...friendChallengeData, target_amount: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="duration_days">Duration (Days)</Label>
+                    <Select 
+                      value={friendChallengeData.duration_days.toString()} 
+                      onValueChange={(value) => setFriendChallengeData({ ...friendChallengeData, duration_days: parseInt(value) })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select duration" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="3">3 Days</SelectItem>
+                        <SelectItem value="7">1 Week</SelectItem>
+                        <SelectItem value="14">2 Weeks</SelectItem>
+                        <SelectItem value="30">1 Month</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Add some motivation or details about the challenge..."
+                      value={friendChallengeData.description}
+                      onChange={(e) => setFriendChallengeData({ ...friendChallengeData, description: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="stakes">Stakes</Label>
+                    <Input
+                      id="stakes"
+                      placeholder="e.g., Loser buys coffee!"
+                      value={friendChallengeData.stakes}
+                      onChange={(e) => setFriendChallengeData({ ...friendChallengeData, stakes: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button variant="outline" onClick={() => setShowFriendChallengeModal(false)} className="flex-1">
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={createFriendChallenge} 
+                      className="flex-1"
+                      disabled={!friendChallengeData.friend_id || !friendChallengeData.title}
+                    >
+                      Send Challenge
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Friend Challenges List */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {friendChallenges.length > 0 ? (
+              friendChallenges.map((challenge) => (
+                <Card key={challenge.challenge_id} className="border-l-4 border-l-yellow-400">
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-semibold">{challenge.title}</h3>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Clock className="w-3 h-3" />
+                            <span>{challenge.duration_days} days</span>
+                          </div>
+                        </div>
+                        <Badge 
+                          variant={
+                            challenge.status === 'pending' ? 'secondary' : 
+                            challenge.status === 'active' ? 'default' : 
+                            challenge.status === 'completed' ? 'outline' : 'destructive'
+                          }
+                        >
+                          {challenge.status}
+                        </Badge>
+                      </div>
+
+                      {challenge.description && (
+                        <p className="text-sm text-gray-600">{challenge.description}</p>
+                      )}
+
+                      <div className="flex justify-between text-sm">
+                        <span>Target: ₹{challenge.target_amount?.toLocaleString()}</span>
+                        <span>Stakes: {challenge.stakes}</span>
+                      </div>
+
+                      {challenge.status === 'active' && (
+                        <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                          <div className="text-center">
+                            <p className="text-lg font-semibold">{challenge.challenger_progress}%</p>
+                            <p className="text-xs text-gray-500">You</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-lg font-semibold">{challenge.challenged_progress}%</p>
+                            <p className="text-xs text-gray-500">Friend</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {challenge.status === 'pending' && challenge.challenged_id === user?.user_id && (
+                        <div className="flex gap-2 pt-2">
+                          <Button 
+                            size="sm" 
+                            onClick={() => respondToFriendChallenge(challenge.challenge_id, 'accept')}
+                            className="flex-1"
+                          >
+                            Accept
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => respondToFriendChallenge(challenge.challenge_id, 'decline')}
+                            className="flex-1"
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )}
+
+                      {challenge.winner && (
+                        <div className="pt-2 border-t text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Trophy className="w-4 h-4 text-yellow-500" />
+                            <span className="font-semibold text-yellow-700">
+                              {challenge.winner === user?.user_id ? 'You Won!' : 'Friend Won!'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <div className="col-span-full text-center py-12">
+                <Star className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-500 mb-2">No Friend Challenges Yet</h3>
+                <p className="text-gray-400 mb-4">Challenge your friends to make saving more fun!</p>
+                <Button onClick={() => setShowFriendChallengeModal(true)}>
+                  <Star className="w-4 h-4 mr-2" />
+                  Send Your First Challenge
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {friends.length === 0 && (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
+              <Users className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+              <h3 className="text-lg font-semibold text-gray-500 mb-2">No Friends Yet</h3>
+              <p className="text-gray-400 mb-4">Add friends first to start challenging them!</p>
+              <Button variant="outline" onClick={() => window.location.href = '/friends'}>
+                <Users className="w-4 h-4 mr-2" />
+                Manage Friends
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
