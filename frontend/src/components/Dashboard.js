@@ -82,12 +82,68 @@ const Dashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Welcome Section */}
-      <div className="mb-8 fade-in">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Welcome back, {user?.full_name?.split(' ')[0]}! 👋
-        </h1>
-        <p className="text-gray-600">Here's your financial overview for this month</p>
+      {/* Enhanced Welcome Section with Visual Polish */}
+      <div className="mb-8 relative overflow-hidden">
+        {/* Background Illustrations */}
+        <div 
+          className="absolute top-0 right-0 w-1/3 h-full opacity-5 bg-cover bg-center"
+          style={{
+            backgroundImage: "url('https://images.unsplash.com/photo-1660020619062-70b16c44bf0f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwyfHxmaW5hbmNlJTIwYXBwfGVufDB8fHxibHVlfDE3NTk0ODgwOTJ8MA&ixlib=rb-4.1.0&q=85')"
+          }}
+        />
+        
+        <div className="relative bg-gradient-to-br from-emerald-50 via-green-50 to-blue-50 rounded-2xl p-6 border border-emerald-100/60 backdrop-blur-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="relative">
+                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 via-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <span className="text-white font-bold text-xl">₹</span>
+                  </div>
+                  <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-green-400 rounded-xl opacity-20 blur"></div>
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-700 bg-clip-text text-transparent mb-1">
+                    Welcome back, {user?.full_name?.split(' ')[0]}! 👋
+                  </h1>
+                  <p className="text-gray-600 font-medium">Your EarnNest financial overview</p>
+                </div>
+              </div>
+              
+              {gamificationProfile && (
+                <div className="flex flex-wrap items-center gap-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-white/40">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 rounded-lg border border-yellow-200">
+                    <TrophyIcon className="w-5 h-5 text-yellow-600" />
+                    <span className="text-sm font-semibold text-yellow-800">
+                      Level {gamificationProfile.level}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 rounded-lg border border-orange-200">
+                    <FireIcon className="w-5 h-5 text-orange-600" />
+                    <span className="text-sm font-semibold text-orange-800">
+                      {gamificationProfile.current_streak} day streak
+                    </span>
+                  </div>
+                  <div className="px-3 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                    <span className="text-sm font-semibold text-emerald-800">
+                      {gamificationProfile.experience_points} XP
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="hidden lg:flex items-center gap-3">
+              <Link 
+                to="/transactions" 
+                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-500 text-white rounded-xl hover:from-emerald-600 hover:to-green-600 transition-all font-medium flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                <PlusIcon className="w-5 h-5" />
+                Add Transaction
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
