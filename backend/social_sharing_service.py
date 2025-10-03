@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class SocialSharingService:
     def __init__(self):
         self.brand_colors = {
-            "primary": "#10B981",  # EarnNest Green
+            "primary": "#10B981",  # EarnAura Green
             "secondary": "#059669", 
             "accent": "#F59E0B",   # Gold for achievements
             "text_primary": "#1F2937",
@@ -58,8 +58,8 @@ class SocialSharingService:
                 overlay = Image.new('RGBA', (width, height), color)
                 img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
             
-            # Draw EarnNest logo/branding at top
-            self._draw_centered_text(draw, "EarnNest", title_font, 
+            # Draw EarnAura logo/branding at top
+            self._draw_centered_text(draw, "EarnAura", title_font, 
                                    width // 2, 150, self.brand_colors["primary"])
             
             # Draw achievement badge/icon
@@ -95,7 +95,7 @@ class SocialSharingService:
                                    width // 2, height - 180, self.brand_colors["primary"])
             
             # Draw app branding at bottom
-            self._draw_centered_text(draw, "Track your finances with EarnNest", small_font,
+            self._draw_centered_text(draw, "Track your finances with EarnAura", small_font,
                                    width // 2, height - 100, self.brand_colors["text_secondary"])
             
             # Save image
@@ -155,8 +155,8 @@ class SocialSharingService:
                                        width // 2, y_offset, self.brand_colors["text_secondary"])
                 y_offset += 50
             
-            # EarnNest branding
-            self._draw_centered_text(draw, "EarnNest - Smart Finance Tracking", subtitle_font,
+            # EarnAura branding
+            self._draw_centered_text(draw, "EarnAura - Smart Finance Tracking", subtitle_font,
                                    width // 2, height - 60, self.brand_colors["primary"])
             
             # Save image
@@ -181,11 +181,11 @@ class SocialSharingService:
         
         image_url = f"/uploads/achievements/{image_filename}"
         
-        base_text = f"{milestone_text} 💪\n\nTracking my finances with EarnNest! 📱💰"
+        base_text = f"{milestone_text} 💪\n\nTracking my finances with EarnAura! 📱💰"
         
         if platform == "instagram":
             return {
-                "story_text": base_text + "\n\n#EarnNest #FinanceGoals #StudentFinance #MoneyManagement",
+                "story_text": base_text + "\n\n#EarnAura #FinanceGoals #StudentFinance #MoneyManagement",
                 "image_url": image_url,
                 "action_text": "Copy text and share on Instagram Stories",
                 "instructions": "1. Copy this text\n2. Open Instagram\n3. Create new story\n4. Add this image\n5. Paste the text as caption"
