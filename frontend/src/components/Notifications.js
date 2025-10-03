@@ -1,329 +1,258 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { toast } from '../hooks/use-toast';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../App';
 import { 
-  Bell, 
-  Check, 
-  CheckCheck, 
-  Users, 
-  Target, 
-  Trophy, 
-  UserPlus,
-  TrendingUp,
-  Gift,
-  Star,
-  Calendar
-} from 'lucide-react';
+  HomeIcon, 
+  CreditCardIcon,
+  BanknotesIcon,
+  BriefcaseIcon, 
+  ChartBarIcon, 
+  ArrowRightOnRectangleIcon,
+  UserCircleIcon,
+  StarIcon,
+  LightBulbIcon,
+  TrophyIcon,
+  GiftIcon,
+  FireIcon,
+  Bars3Icon,
+  XMarkIcon,
+  UsersIcon,
+  BellIcon,
+  UserGroupIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  ShareIcon,
+  LockClosedIcon,
+  BookOpenIcon
+} from '@heroicons/react/24/outline';
+import { formatCurrency } from '../App';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL;
+const Navigation = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const navRef = useRef(null);
 
-const Notifications = () => {
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const navItems = [
+    { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
+    { path: '/transactions', label: 'Transactions', icon: CreditCardIcon },
+    { path: '/budget', label: 'Budget', icon: BanknotesIcon },
+    { path: '/goals', label: 'Goals', icon: StarIcon },
+    { path: '/friends-referrals', label: 'Friends & Referrals', icon: UsersIcon },
+    { path: '/challenges', label: 'Challenges', icon: FireIcon },
+    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
+    { path: '/social-feed', label: 'Social Feed', icon: UserGroupIcon },
+    { path: '/daily-checkin', label: 'Daily Check-in', icon: CalendarDaysIcon },
+    { path: '/limited-offers', label: 'Limited Offers', icon: ClockIcon },
+    { path: '/sharing-hub', label: 'Sharing Hub', icon: ShareIcon },
+    { path: '/feature-unlock', label: 'Feature Unlock', icon: LockClosedIcon },
+    { path: '/financial-journey', label: 'My Journey', icon: BookOpenIcon },
+    { path: '/notifications', label: 'Notifications', icon: BellIcon },
+    { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
+    { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
+  ];
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
+  // Close mobile menu when clicking outside
   useEffect(() => {
-    fetchNotifications();
-  }, []);
-
-  const fetchNotifications = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${BACKEND_URL}/api/notifications?limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.notifications);
-        setUnreadCount(data.unread_count);
+    const handleClickOutside = (event) => {
+      if (navRef.current && !navRef.current.contains(event.target)) {
+        setIsMobileMenuOpen(false);
       }
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
-      setLoading(false);
+    };
+
+    if (isMobileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
     }
-  };
 
-  const markAsRead = async (notificationId) => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${BACKEND_URL}/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMobileMenuOpen]);
 
-      if (response.ok) {
-        setNotifications(notifications.map(notif => 
-          notif.id === notificationId ? { ...notif, is_read: true } : notif
-        ));
-        setUnreadCount(Math.max(0, unreadCount - 1));
-      }
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      toast({
-        title: "Error",
-        description: "Failed to mark notification as read",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${BACKEND_URL}/api/notifications/mark-all-read`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(notifications.map(notif => ({ ...notif, is_read: true })));
-        setUnreadCount(0);
-        toast({
-          title: "Success",
-          description: `${data.updated_count} notifications marked as read`
-        });
-      }
-    } catch (error) {
-      console.error('Error marking all notifications as read:', error);
-      toast({
-        title: "Error",
-        description: "Failed to mark all notifications as read",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case 'friend_joined':
-      case 'friend_invited':
-        return <UserPlus className="w-5 h-5 text-blue-600" />;
-      case 'challenge_invite':
-      case 'challenge_created':
-        return <Target className="w-5 h-5 text-green-600" />;
-      case 'milestone_achieved':
-        return <Trophy className="w-5 h-5 text-yellow-600" />;
-      case 'group_progress':
-      case 'group_completed':
-        return <Users className="w-5 h-5 text-purple-600" />;
-      case 'streak_reminder':
-        return <TrendingUp className="w-5 h-5 text-orange-600" />;
-      case 'leaderboard_rank':
-        return <Star className="w-5 h-5 text-pink-600" />;
-      case 'badge_earned':
-        return <Gift className="w-5 h-5 text-indigo-600" />;
-      case 'welcome':
-        return <Bell className="w-5 h-5 text-gray-600" />;
-      default:
-        return <Bell className="w-5 h-5 text-gray-600" />;
-    }
-  };
-
-  const getNotificationColor = (type) => {
-    switch (type) {
-      case 'friend_joined':
-      case 'friend_invited':
-        return 'border-l-blue-500 bg-blue-50';
-      case 'challenge_invite':
-      case 'challenge_created':
-        return 'border-l-green-500 bg-green-50';
-      case 'milestone_achieved':
-        return 'border-l-yellow-500 bg-yellow-50';
-      case 'group_progress':
-      case 'group_completed':
-        return 'border-l-purple-500 bg-purple-50';
-      case 'streak_reminder':
-        return 'border-l-orange-500 bg-orange-50';
-      case 'leaderboard_rank':
-        return 'border-l-pink-500 bg-pink-50';
-      case 'badge_earned':
-        return 'border-l-indigo-500 bg-indigo-50';
-      case 'welcome':
-        return 'border-l-gray-500 bg-gray-50';
-      default:
-        return 'border-l-gray-500 bg-gray-50';
-    }
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) {
-      return 'Just now';
-    } else if (diffMins < 60) {
-      return `${diffMins}m ago`;
-    } else if (diffHours < 24) {
-      return `${diffHours}h ago`;
-    } else if (diffDays < 7) {
-      return `${diffDays}d ago`;
-    } else {
-      return date.toLocaleDateString('en-IN', {
-        month: 'short',
-        day: 'numeric',
-        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-      });
-    }
-  };
-
-  const handleNotificationClick = (notification) => {
-    if (!notification.is_read) {
-      markAsRead(notification.id);
-    }
-    
-    // Handle navigation based on action_url
-    if (notification.action_url) {
-      // You can implement navigation logic here
-      // For now, just show a toast with the action URL
-      toast({
-        title: "Navigation",
-        description: `Would navigate to: ${notification.action_url}`
-      });
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded mb-4 w-1/3"></div>
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-20 bg-gray-200 rounded-lg"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Close mobile menu on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Notifications</h1>
-            <p className="text-gray-600">
-              Stay updated with your friends and challenges
-              {unreadCount > 0 && (
-                <Badge variant="destructive" className="ml-2">
-                  {unreadCount} new
-                </Badge>
-              )}
-            </p>
+    <nav ref={navRef} className="bg-white shadow-sm border-b border-gray-100 relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          {/* Logo */}
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">₹</span>
+            </div>
+            <h1 className="text-lg sm:text-2xl font-bold gradient-text truncate">EarnNest</h1>
           </div>
-          {unreadCount > 0 && (
-            <Button onClick={markAllAsRead} variant="outline">
-              <CheckCheck className="w-4 h-4 mr-2" />
-              Mark All Read
-            </Button>
-          )}
+
+          {/* Navigation Links - Desktop */}
+          <div className="hidden lg:flex items-center space-x-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = location.pathname === item.path;
+              
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    isActive
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* User Menu */}
+          <div className="flex items-center space-x-2 sm:space-x-4">
+            {/* Hamburger Menu Button - Show only on mobile/tablet */}
+            <div className="lg:hidden">
+              <button
+                onClick={toggleMobileMenu}
+                className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                aria-label="Toggle menu"
+              >
+                {isMobileMenuOpen ? (
+                  <XMarkIcon className="w-6 h-6" />
+                ) : (
+                  <Bars3Icon className="w-6 h-6" />
+                )}
+              </button>
+            </div>
+
+            {/* Mobile Profile Icon - Show only on mobile when menu is closed */}
+            <div className="md:hidden lg:hidden">
+              {!isMobileMenuOpen && (
+                <Link to="/profile" onClick={closeMobileMenu} className="flex items-center hover:bg-gray-50 rounded-lg p-2 transition-colors">
+                  {user?.profile_photo ? (
+                    <img 
+                      src={`${process.env.REACT_APP_BACKEND_URL}${user.profile_photo}`}
+                      alt="Profile"
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <UserCircleIcon className="w-8 h-8 text-gray-400" />
+                  )}
+                </Link>
+              )}
+            </div>
+
+            {/* Desktop Profile - Show full info on desktop */}
+            <div className="hidden lg:flex items-center space-x-3">
+              <Link to="/profile" className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg p-2 transition-colors max-w-48">
+                {user?.profile_photo ? (
+                  <img 
+                    src={`${process.env.REACT_APP_BACKEND_URL}${user.profile_photo}`}
+                    alt="Profile"
+                    className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <UserCircleIcon className="w-8 h-8 text-gray-400 flex-shrink-0" />
+                )}
+                <div className="text-sm min-w-0 flex-1">
+                  <p className="font-semibold text-gray-900 truncate">{user?.full_name}</p>
+                  <p className="text-gray-500 truncate">{formatCurrency(user?.total_earnings || 0)} earned</p>
+                </div>
+              </Link>
+            </div>
+            
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-2 sm:px-3 py-2 text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
+              title="Logout"
+            >
+              <ArrowRightOnRectangleIcon className="w-5 h-5" />
+              <span className="hidden lg:inline">Logout</span>
+            </button>
+          </div>
         </div>
 
-        {/* Notifications List */}
-        {notifications.length === 0 ? (
-          <Card className="text-center py-12">
-            <CardContent>
-              <Bell className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-xl font-medium text-gray-900 mb-2">No Notifications Yet</h3>
-              <p className="text-gray-600">
-                You'll receive notifications here when friends join, challenges update, or you achieve milestones
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-2">
-            {notifications.map((notification) => (
-              <Card 
-                key={notification.id}
-                className={`cursor-pointer transition-all hover:shadow-md border-l-4 ${
-                  !notification.is_read 
-                    ? getNotificationColor(notification.notification_type)
-                    : 'border-l-gray-200 bg-white hover:bg-gray-50'
-                }`}
-                onClick={() => handleNotificationClick(notification)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-1">
-                      {getNotificationIcon(notification.notification_type)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className={`font-medium ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
-                            {notification.title}
-                          </h4>
-                          <p className={`text-sm mt-1 ${!notification.is_read ? 'text-gray-700' : 'text-gray-500'}`}>
-                            {notification.message}
-                          </p>
-                          <div className="flex items-center gap-3 mt-2">
-                            <span className="text-xs text-gray-500">
-                              {formatDate(notification.created_at)}
-                            </span>
-                            <Badge 
-                              variant="outline" 
-                              className="text-xs capitalize"
-                            >
-                              {notification.notification_type.replace('_', ' ')}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 ml-3">
-                          {!notification.is_read && (
-                            <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                          )}
-                          {!notification.is_read && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                markAsRead(notification.id);
-                              }}
-                              className="text-gray-500 hover:text-gray-700"
-                            >
-                              <Check className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+        {/* Mobile/Tablet Dropdown Navigation */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden border-t border-gray-100 bg-white shadow-lg">
+            {/* Navigation Items */}
+            <div className="px-4 py-4 space-y-2">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={closeMobileMenu}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+              
+              {/* Profile Section */}
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <Link
+                  to="/profile"
+                  onClick={closeMobileMenu}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-600 hover:text-emerald-600 hover:bg-gray-50 transition-all duration-200"
+                >
+                  {user?.profile_photo ? (
+                    <img 
+                      src={`${process.env.REACT_APP_BACKEND_URL}${user.profile_photo}`}
+                      alt="Profile"
+                      className="w-5 h-5 rounded-full object-cover"
+                    />
+                  ) : (
+                    <UserCircleIcon className="w-5 h-5" />
+                  )}
+                  <div>
+                    <div className="font-semibold">{user?.full_name}</div>
+                    <div className="text-xs text-gray-500">View Profile</div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-
-            {notifications.length >= 50 && (
-              <Card className="text-center py-6">
-                <CardContent>
-                  <p className="text-gray-600">
-                    Showing last 50 notifications. Older notifications are automatically archived.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+                </Link>
+                
+                {/* Logout Button */}
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    closeMobileMenu();
+                  }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 transition-all duration-200 w-full text-left mt-2"
+                >
+                  <ArrowRightOnRectangleIcon className="w-5 h-5" />
+                  Logout
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-    </div>
+    </nav>
   );
 };
 
-export default Notifications;
+export default Navigation;
