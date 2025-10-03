@@ -28,7 +28,7 @@ class EmailService:
         self.smtp_port = int(os.environ.get("SMTP_PORT", "587"))
         self.smtp_username = os.environ.get("SMTP_USERNAME", "")
         self.smtp_password = os.environ.get("SMTP_PASSWORD", "")
-        self.from_email = os.environ.get("FROM_EMAIL", "noreply@earnwise.app")
+        self.from_email = os.environ.get("FROM_EMAIL", "tortoor8@gmail.com")
         
         # Get OTP configuration from environment
         self.otp_expiry_minutes = int(os.environ.get('OTP_EXPIRY_MINUTES', '5'))
@@ -68,7 +68,7 @@ class EmailService:
             # Log email sending attempt
             email_logger.info(f"Sending verification email to {masked_email} from IP: {client_ip or 'Unknown'}")
             
-            subject = "🔐 Verify Your EarnWise Account - Secure OTP Code"
+            subject = "🔐 Verify Your EarnAura Account - Secure OTP Code"
             
             # Enhanced HTML template with security features
             html_body = f"""
@@ -77,7 +77,7 @@ class EmailService:
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Verify Your EarnWise Account</title>
+                <title>Verify Your EarnAura Account</title>
                 <style>
                     .security-warning {{ background: #fef3c7; padding: 15px; border-radius: 6px; border-left: 4px solid #f59e0b; margin: 20px 0; }}
                     .otp-code {{ font-size: 32px; font-weight: bold; color: #10b981; margin: 0; letter-spacing: 3px; font-family: 'Courier New', monospace; }}
@@ -86,12 +86,12 @@ class EmailService:
             </head>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
                 <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                    <h1 style="color: white; margin: 0; font-size: 28px;">🔐 EarnWise Security</h1>
+                    <h1 style="color: white; margin: 0; font-size: 28px;">🔐 EarnAura Security</h1>
                     <p style="color: #d1fae5; margin: 10px 0 0 0;">Secure Email Verification</p>
                 </div>
                 
                 <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                    <h2 style="color: #1f2937; margin-top: 0;">🎉 Welcome to EarnWise!</h2>
+                    <h2 style="color: #1f2937; margin-top: 0;">🎉 Welcome to EarnAura!</h2>
                     
                     <p style="font-size: 16px;">Thank you for joining our community of successful students. To complete your registration and start exploring side hustle opportunities, please verify your email address.</p>
                     
@@ -106,7 +106,7 @@ class EmailService:
                     <div class="security-warning">
                         <p style="margin: 0; color: #92400e; font-size: 14px;">
                             <strong>🚨 Security Alert:</strong> This code expires in exactly <strong>{self.otp_expiry_minutes} minutes</strong> for your security. 
-                            Never share this code with anyone. EarnWise will never ask for your verification code via phone, SMS, or email.
+                            Never share this code with anyone. EarnAura will never ask for your verification code via phone, SMS, or email.
                         </p>
                     </div>
                     
@@ -130,7 +130,7 @@ class EmailService:
                     
                     <div style="text-align: center;">
                         <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                            © {datetime.now().year} EarnWise. All rights reserved.<br>
+                            © {datetime.now().year} EarnAura. All rights reserved.<br>
                             Empowering students to achieve financial success.<br>
                             <span style="color: #10b981;">🔒 This is an automated security email</span>
                         </p>
@@ -186,7 +186,7 @@ class EmailService:
             # Log password reset attempt
             email_logger.info(f"Sending password reset email to {masked_email} from IP: {client_ip or 'Unknown'}")
             
-            subject = "🔐 Reset Your EarnWise Password - Secure Code"
+            subject = "🔐 Reset Your EarnAura Password - Secure Code"
             
             html_body = f"""
             <!DOCTYPE html>
@@ -194,7 +194,7 @@ class EmailService:
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Reset Your EarnWise Password</title>
+                <title>Reset Your EarnAura Password</title>
                 <style>
                     .security-warning {{ background: #fef3c7; padding: 15px; border-radius: 6px; border-left: 4px solid #f59e0b; margin: 20px 0; }}
                     .otp-code {{ font-size: 32px; font-weight: bold; color: #ef4444; margin: 0; letter-spacing: 3px; font-family: 'Courier New', monospace; }}
@@ -203,14 +203,14 @@ class EmailService:
             </head>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
                 <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                    <h1 style="color: white; margin: 0; font-size: 28px;">🔐 EarnWise Security</h1>
+                    <h1 style="color: white; margin: 0; font-size: 28px;">🔐 EarnAura Security</h1>
                     <p style="color: #fecaca; margin: 10px 0 0 0;">Password Reset Request</p>
                 </div>
                 
                 <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
                     <h2 style="color: #1f2937; margin-top: 0;">🚨 Password Reset Request</h2>
                     
-                    <p style="font-size: 16px;">We received a request to reset your EarnWise account password. Use the code below to set a new secure password.</p>
+                    <p style="font-size: 16px;">We received a request to reset your EarnAura account password. Use the code below to set a new secure password.</p>
                     
                     <div style="background: #fef2f2; padding: 20px; border-radius: 8px; border: 2px solid #ef4444; text-align: center; margin: 25px 0;">
                         <p style="margin: 0 0 10px 0; font-size: 16px; color: #6b7280;">Your {self.otp_length}-digit reset code is:</p>
@@ -256,7 +256,7 @@ class EmailService:
                     
                     <div style="text-align: center;">
                         <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                            © {datetime.now().year} EarnWise. All rights reserved.<br>
+                            © {datetime.now().year} EarnAura. All rights reserved.<br>
                             This is an automated security email - please do not reply.<br>
                             <span style="color: #ef4444;">🔒 Secure password reset system</span>
                         </p>
@@ -290,7 +290,7 @@ class EmailService:
     async def send_welcome_email(self, to_email: str, full_name: str) -> bool:
         """Send welcome email after successful verification"""
         try:
-            subject = "Welcome to EarnWise - Your Journey Begins!"
+            subject = "Welcome to EarnAura - Your Journey Begins!"
             
             html_body = f"""
             <!DOCTYPE html>
@@ -298,18 +298,18 @@ class EmailService:
             <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>Welcome to EarnWise</title>
+                <title>Welcome to EarnAura</title>
             </head>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
                 <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                    <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Welcome to EarnWise!</h1>
+                    <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Welcome to EarnAura!</h1>
                     <p style="color: #d1fae5; margin: 10px 0 0 0;">Your Financial Success Journey Starts Now</p>
                 </div>
                 
                 <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e5e7eb;">
                     <h2 style="color: #1f2937; margin-top: 0;">Hi {full_name}!</h2>
                     
-                    <p>Congratulations! Your EarnWise account is now verified and ready to use. You're now part of a community dedicated to student financial success.</p>
+                    <p>Congratulations! Your EarnAura account is now verified and ready to use. You're now part of a community dedicated to student financial success.</p>
                     
                     <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #d1d5db; margin: 20px 0;">
                         <h3 style="color: #10b981; margin-top: 0;">What's Next?</h3>
@@ -332,7 +332,7 @@ class EmailService:
                     <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
                     
                     <p style="color: #6b7280; font-size: 14px; text-align: center;">
-                        © 2024 EarnWise. All rights reserved.<br>
+                        © 2024 EarnAura. All rights reserved.<br>
                         Empowering students to achieve financial success.
                     </p>
                 </div>
