@@ -355,7 +355,7 @@ const Recommendations = () => {
           const url = service.url(addressFormat);
           const response = await fetch(url, {
             headers: {
-              'User-Agent': 'EarnNest-Emergency-Finder/1.0',
+              'User-Agent': 'EarnAura-Emergency-Finder/1.0',
               'Accept': 'application/json'
             }
           });
