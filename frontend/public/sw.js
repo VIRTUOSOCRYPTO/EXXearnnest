@@ -1,5 +1,5 @@
-// Service Worker for Push Notifications - EarnNest App
-const CACHE_NAME = 'earnest-push-v1';
+// Service Worker for Push Notifications - EarnAura App
+const CACHE_NAME = 'earnaura-push-v1';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
@@ -66,7 +66,7 @@ self.addEventListener('push', (event) => {
   } catch (error) {
     console.error('Failed to parse notification data:', error);
     notificationData = {
-      title: 'EarnNest',
+      title: 'EarnAura',
       body: 'You have a new achievement!',
       ...defaultOptions
     };
@@ -80,7 +80,7 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil(
     self.registration.showNotification(
-      notificationData.title || 'EarnNest Achievement',
+      notificationData.title || 'EarnAura Achievement',
       options
     )
   );
