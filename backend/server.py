@@ -4591,7 +4591,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://earnest-ui-boost.preview.emergentagent.com"
+        base_url = "https://running-smoothly.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -6503,6 +6503,1773 @@ async def get_university_comparison(leaderboard_type: str, period: str, limit: i
     except Exception as e:
         logger.error(f"Get university comparison error: {str(e)}")
         return []
+
+# Helper functions for feature unlocks and calculations
+async def get_user_total_income(user_id: str) -> float:
+    """Calculate user's total income"""
+    try:
+        income_transactions = await db.transactions.find({
+            "user_id": user_id,
+            "type": "income"
+        }).to_list(None)
+        return sum(tx["amount"] for tx in income_transactions)
+    except:
+        return 0
+
+async def get_user_total_savings(user_id: str) -> float:
+    """Calculate user's total savings (income - expenses)"""
+    try:
+        income = await get_user_total_income(user_id)
+        expense_transactions = await db.transactions.find({
+            "user_id": user_id,
+            "type": "expense"
+        }).to_list(None)
+        expenses = sum(tx["amount"] for tx in expense_transactions)
+        return income - expenses
+    except:
+        return 0
+
+# ================================================================================================
+# PHASE 1: SOCIAL FEATURES IMPLEMENTATION
+# ================================================================================================
+
+# Real-time friend activity feed
+@api_router.get("/social/friend-activity-feed")
+@limiter.limit("30/minute")
+async def get_friend_activity_feed(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get real-time activity feed from friends"""
+    try:
+        # Get user's friends
+        friends = await db.friends.find({
+            "$or": [
+                {"user_id": user_id},
+                {"friend_id": user_id}
+            ],
+            "status": "accepted"
+        }).to_list(None)
+        
+        friend_ids = []
+        for friend in friends:
+            friend_id = friend["friend_id"] if friend["user_id"] == user_id else friend["user_id"]
+            friend_ids.append(friend_id)
+        
+        if not friend_ids:
+            return {"activities": [], "total": 0}
+        
+        # Get recent activities from friends
+        activities = []
+        
+        # Recent transactions
+        recent_transactions = await db.transactions.find({
+            "user_id": {"$in": friend_ids},
+            "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=7)}
+        }).sort("created_at", -1).limit(50).to_list(None)
+        
+        for tx in recent_transactions:
+            user_info = await db.users.find_one({"user_id": tx["user_id"]})
+            activities.append({
+                "type": "transaction",
+                "user_name": user_info.get("name", "Friend"),
+                "user_avatar": user_info.get("avatar", "man"),
+                "action": f"{'earned' if tx['type'] == 'income' else 'spent'} ₹{tx['amount']}",
+                "details": f"on {tx['category']}",
+                "timestamp": tx["created_at"],
+                "amount": tx["amount"],
+                "category": tx["category"]
+            })
+        
+        # Recent achievements
+        recent_achievements = await db.user_achievements.find({
+            "user_id": {"$in": friend_ids},
+            "earned_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=7)}
+        }).sort("earned_at", -1).limit(30).to_list(None)
+        
+        for ach in recent_achievements:
+            user_info = await db.users.find_one({"user_id": ach["user_id"]})
+            activities.append({
+                "type": "achievement",
+                "user_name": user_info.get("name", "Friend"),
+                "user_avatar": user_info.get("avatar", "man"),
+                "action": f"unlocked achievement",
+                "details": ach["achievement_name"],
+                "timestamp": ach["earned_at"],
+                "badge_icon": "🏆"
+            })
+        
+        # Recent milestones
+        recent_milestones = await db.user_milestones.find({
+            "user_id": {"$in": friend_ids},
+            "achieved_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=7)}
+        }).sort("achieved_at", -1).limit(20).to_list(None)
+        
+        for milestone in recent_milestones:
+            user_info = await db.users.find_one({"user_id": milestone["user_id"]})
+            activities.append({
+                "type": "milestone",
+                "user_name": user_info.get("name", "Friend"),
+                "user_avatar": user_info.get("avatar", "man"),
+                "action": f"reached milestone",
+                "details": f"{milestone['milestone_type']} of ₹{milestone.get('amount', 0)}",
+                "timestamp": milestone["achieved_at"],
+                "milestone_icon": "🎯"
+            })
+        
+        # Sort by timestamp and paginate
+        activities.sort(key=lambda x: x["timestamp"], reverse=True)
+        paginated_activities = activities[offset:offset + limit]
+        
+        return {
+            "activities": paginated_activities,
+            "total": len(activities),
+            "has_more": offset + limit < len(activities)
+        }
+        
+    except Exception as e:
+        logger.error(f"Friend activity feed error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get friend activity feed")
+
+# Challenge friends to individual savings goals
+@api_router.post("/social/challenge-friend")
+@limiter.limit("10/minute")
+async def challenge_friend_to_goal(
+    request: Request,
+    challenge_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Challenge a friend to an individual savings goal"""
+    try:
+        friend_id = challenge_data.get("friend_id")
+        goal_amount = challenge_data.get("goal_amount")
+        goal_title = challenge_data.get("goal_title")
+        duration_days = challenge_data.get("duration_days", 30)
+        
+        # Verify friendship
+        friendship = await db.friends.find_one({
+            "$or": [
+                {"user_id": user_id, "friend_id": friend_id},
+                {"user_id": friend_id, "friend_id": user_id}
+            ],
+            "status": "accepted"
+        })
+        
+        if not friendship:
+            raise HTTPException(status_code=400, detail="You are not friends with this user")
+        
+        # Create challenge
+        challenge = {
+            "challenge_id": str(uuid.uuid4()),
+            "challenger_id": user_id,
+            "challenged_id": friend_id,
+            "goal_title": goal_title,
+            "goal_amount": goal_amount,
+            "duration_days": duration_days,
+            "start_date": datetime.now(timezone.utc),
+            "end_date": datetime.now(timezone.utc) + timedelta(days=duration_days),
+            "status": "pending",
+            "challenger_progress": 0,
+            "challenged_progress": 0,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        await db.friend_challenges.insert_one(challenge)
+        
+        # Create notification for challenged friend
+        notification = {
+            "notification_id": str(uuid.uuid4()),
+            "user_id": friend_id,
+            "type": "friend_challenge",
+            "title": "New Savings Challenge!",
+            "message": f"Your friend challenged you to save ₹{goal_amount} in {duration_days} days!",
+            "data": {"challenge_id": challenge["challenge_id"]},
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        await db.notifications.insert_one(notification)
+        
+        return {"success": True, "challenge_id": challenge["challenge_id"]}
+        
+    except Exception as e:
+        logger.error(f"Challenge friend error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create friend challenge")
+
+# Peer comparison features
+@api_router.get("/social/peer-comparison")
+@limiter.limit("10/minute")
+async def get_peer_comparison(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get peer comparison data for social pressure"""
+    try:
+        # Get current user data
+        current_user = await db.users.find_one({"user_id": user_id})
+        if not current_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        university = current_user.get("university", "")
+        role = current_user.get("role", "Student")
+        
+        # Get user's savings rate (last 30 days)
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        user_transactions = await db.transactions.find({
+            "user_id": user_id,
+            "created_at": {"$gte": thirty_days_ago}
+        }).to_list(None)
+        
+        user_income = sum(tx["amount"] for tx in user_transactions if tx["type"] == "income")
+        user_savings = user_income - sum(tx["amount"] for tx in user_transactions if tx["type"] == "expense")
+        user_savings_rate = (user_savings / user_income * 100) if user_income > 0 else 0
+        
+        # Get peer data (same university and role)
+        peer_users = await db.users.find({
+            "university": university,
+            "role": role,
+            "user_id": {"$ne": user_id}
+        }).to_list(None)
+        
+        peer_savings_rates = []
+        for peer in peer_users[:50]:  # Limit to 50 peers for performance
+            peer_transactions = await db.transactions.find({
+                "user_id": peer["user_id"],
+                "created_at": {"$gte": thirty_days_ago}
+            }).to_list(None)
+            
+            peer_income = sum(tx["amount"] for tx in peer_transactions if tx["type"] == "income")
+            peer_savings = peer_income - sum(tx["amount"] for tx in peer_transactions if tx["type"] == "expense")
+            peer_rate = (peer_savings / peer_income * 100) if peer_income > 0 else 0
+            peer_savings_rates.append(peer_rate)
+        
+        if peer_savings_rates:
+            avg_peer_rate = sum(peer_savings_rates) / len(peer_savings_rates)
+            comparison_percentage = ((user_savings_rate - avg_peer_rate) / avg_peer_rate * 100) if avg_peer_rate > 0 else 0
+            
+            if comparison_percentage > 0:
+                message = f"You save {comparison_percentage:.1f}% more than similar students! 🎉"
+                status = "above_average"
+            else:
+                message = f"You save {abs(comparison_percentage):.1f}% less than similar students"
+                status = "below_average"
+        else:
+            message = "No peer data available for comparison"
+            status = "no_data"
+        
+        return {
+            "user_savings_rate": round(user_savings_rate, 1),
+            "peer_average_rate": round(avg_peer_rate if peer_savings_rates else 0, 1),
+            "comparison_message": message,
+            "status": status,
+            "peer_count": len(peer_savings_rates),
+            "university": university,
+            "role": role
+        }
+        
+    except Exception as e:
+        logger.error(f"Peer comparison error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get peer comparison")
+
+# Social proof notifications
+@api_router.get("/social/social-proof")
+@limiter.limit("20/minute")
+async def get_social_proof_notifications(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get social proof notifications to encourage engagement"""
+    try:
+        notifications = []
+        
+        # Friends joined this week
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        new_friends_count = await db.friends.count_documents({
+            "$or": [{"user_id": user_id}, {"friend_id": user_id}],
+            "created_at": {"$gte": week_ago}
+        })
+        
+        if new_friends_count > 0:
+            notifications.append({
+                "type": "friends_joined",
+                "message": f"{new_friends_count} friends joined this week!",
+                "icon": "👥",
+                "action_text": "Invite more friends",
+                "action_url": "/friends"
+            })
+        
+        # Users in same university saving money
+        current_user = await db.users.find_one({"user_id": user_id})
+        university_savers = await db.transactions.count_documents({
+            "type": "income",
+            "created_at": {"$gte": week_ago}
+        })
+        
+        if university_savers > 0:
+            notifications.append({
+                "type": "university_activity",
+                "message": f"{university_savers} students earned money this week!",
+                "icon": "💰",
+                "action_text": "Join the earning streak",
+                "action_url": "/hustles"
+            })
+        
+        # Challenge participation
+        active_challenges = await db.group_challenges.count_documents({
+            "status": "active",
+            "spots_remaining": {"$gt": 0}
+        })
+        
+        if active_challenges > 0:
+            notifications.append({
+                "type": "challenges_available",
+                "message": f"{active_challenges} active challenges with spots available!",
+                "icon": "🏆",
+                "action_text": "Join challenge",
+                "action_url": "/group-challenges"
+            })
+        
+        # Recent achievements by friends
+        friends = await db.friends.find({
+            "$or": [{"user_id": user_id}, {"friend_id": user_id}],
+            "status": "accepted"
+        }).to_list(None)
+        
+        friend_ids = []
+        for friend in friends:
+            friend_id = friend["friend_id"] if friend["user_id"] == user_id else friend["user_id"]
+            friend_ids.append(friend_id)
+        
+        if friend_ids:
+            friend_achievements = await db.user_achievements.count_documents({
+                "user_id": {"$in": friend_ids},
+                "earned_at": {"$gte": week_ago}
+            })
+            
+            if friend_achievements > 0:
+                notifications.append({
+                    "type": "friend_achievements",
+                    "message": f"Your friends earned {friend_achievements} achievements this week!",
+                    "icon": "🎯",
+                    "action_text": "See achievements",
+                    "action_url": "/gamification"
+                })
+        
+        return {"notifications": notifications, "count": len(notifications)}
+        
+    except Exception as e:
+        logger.error(f"Social proof notifications error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get social proof notifications")
+
+# ================================================================================================
+# PHASE 2: ENGAGEMENT FEATURES IMPLEMENTATION
+# ================================================================================================
+
+# Push notifications for friend activities (backend notification creation)
+@api_router.post("/engagement/create-friend-notification")
+@limiter.limit("100/minute")  # Higher limit for system-generated notifications
+async def create_friend_activity_notification(
+    request: Request,
+    notification_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Create notifications for friend activities"""
+    try:
+        activity_type = notification_data.get("activity_type")
+        target_friend_id = notification_data.get("friend_id")
+        details = notification_data.get("details", {})
+        
+        # Verify friendship
+        friendship = await db.friends.find_one({
+            "$or": [
+                {"user_id": user_id, "friend_id": target_friend_id},
+                {"user_id": target_friend_id, "friend_id": user_id}
+            ],
+            "status": "accepted"
+        })
+        
+        if not friendship:
+            return {"success": False, "message": "Not friends"}
+        
+        # Get user info for notification
+        user_info = await db.users.find_one({"user_id": user_id})
+        user_name = user_info.get("name", "Your friend")
+        
+        # Generate notification based on activity type
+        notifications_to_create = []
+        
+        if activity_type == "achievement":
+            notifications_to_create.append({
+                "user_id": target_friend_id,
+                "type": "friend_achievement",
+                "title": "Friend Achievement!",
+                "message": f"{user_name} unlocked a new achievement!",
+                "data": details
+            })
+        elif activity_type == "milestone":
+            notifications_to_create.append({
+                "user_id": target_friend_id,
+                "type": "friend_milestone",
+                "title": "Friend Milestone!",
+                "message": f"{user_name} reached a new savings milestone!",
+                "data": details
+            })
+        elif activity_type == "big_transaction":
+            amount = details.get("amount", 0)
+            notifications_to_create.append({
+                "user_id": target_friend_id,
+                "type": "friend_activity",
+                "title": "Friend Activity!",
+                "message": f"{user_name} just earned ₹{amount}!",
+                "data": details
+            })
+        
+        # Create notifications
+        created_count = 0
+        for notif_data in notifications_to_create:
+            notification = {
+                "notification_id": str(uuid.uuid4()),
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc),
+                **notif_data
+            }
+            await db.notifications.insert_one(notification)
+            created_count += 1
+        
+        return {"success": True, "notifications_created": created_count}
+        
+    except Exception as e:
+        logger.error(f"Friend notification creation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create friend notification")
+
+# Daily savings tips/financial quotes
+@api_router.get("/engagement/daily-tip")
+@limiter.limit("10/minute")
+async def get_daily_financial_tip(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get daily savings tip or financial quote"""
+    try:
+        # Get current date for consistent daily tips
+        today = datetime.now(timezone.utc).date()
+        tip_index = hash(str(today) + user_id) % 50  # Rotate through tips
+        
+        tips_and_quotes = [
+            {
+                "type": "tip",
+                "title": "50/30/20 Rule",
+                "content": "Allocate 50% of income to needs, 30% to wants, and 20% to savings and debt repayment.",
+                "icon": "💡"
+            },
+            {
+                "type": "quote",
+                "title": "Warren Buffett",
+                "content": "Do not save what is left after spending, but spend what is left after saving.",
+                "icon": "💭"
+            },
+            {
+                "type": "tip",
+                "title": "Track Small Expenses",
+                "content": "Small daily expenses like chai and snacks can add up to ₹3,000+ monthly. Track them!",
+                "icon": "☕"
+            },
+            {
+                "type": "quote",
+                "title": "Benjamin Franklin",
+                "content": "An investment in knowledge pays the best interest.",
+                "icon": "📚"
+            },
+            {
+                "type": "tip",
+                "title": "Emergency Fund Priority",
+                "content": "Build an emergency fund of 3-6 months expenses before investing elsewhere.",
+                "icon": "🚨"
+            },
+            {
+                "type": "tip",
+                "title": "Student Discounts",
+                "content": "Always ask for student discounts - many businesses offer 10-20% off for students!",
+                "icon": "🎓"
+            },
+            {
+                "type": "quote",
+                "title": "Robert Kiyosaki",
+                "content": "It's not how much money you make, but how much money you keep.",
+                "icon": "💰"
+            },
+            {
+                "type": "tip",
+                "title": "Cook at Home",
+                "content": "Cooking meals at home can save ₹200-400 per day compared to ordering food.",
+                "icon": "🍳"
+            },
+            {
+                "type": "tip",
+                "title": "Bulk Purchases",
+                "content": "Buy non-perishables in bulk with friends to get wholesale prices and split costs.",
+                "icon": "🛒"
+            },
+            {
+                "type": "quote",
+                "title": "Dave Ramsey",
+                "content": "A budget is telling your money where to go instead of wondering where it went.",
+                "icon": "📊"
+            }
+        ]
+        
+        # Add more tips to reach 50
+        additional_tips = [
+            {"type": "tip", "title": "Public Transport", "content": "Use student bus passes and metro cards for maximum savings on transport.", "icon": "🚌"},
+            {"type": "tip", "title": "Library Resources", "content": "Use college library for books, internet, and study space instead of paid alternatives.", "icon": "📖"},
+            {"type": "tip", "title": "Group Studies", "content": "Share textbook costs with classmates and form study groups to split tuition fees.", "icon": "👥"},
+            {"type": "tip", "title": "Side Hustles", "content": "Start freelancing or tutoring to earn ₹5,000-15,000 monthly during studies.", "icon": "💼"},
+            {"type": "tip", "title": "Water Bottle", "content": "Carry a water bottle to avoid buying ₹20 bottles - save ₹600+ monthly.", "icon": "💧"},
+            {"type": "tip", "title": "Generic Brands", "content": "Choose generic/store brands for basic items - same quality, 30-40% cheaper.", "icon": "🏷️"},
+            {"type": "tip", "title": "Cashback Apps", "content": "Use cashback apps for online shopping to get 2-10% money back.", "icon": "💳"},
+            {"type": "tip", "title": "Movie Discounts", "content": "Watch movies on weekdays or matinee shows for 40-50% discount.", "icon": "🎬"},
+            {"type": "tip", "title": "Subscription Audit", "content": "Review monthly subscriptions and cancel unused ones - save ₹500-1500 monthly.", "icon": "📱"},
+            {"type": "tip", "title": "Energy Saving", "content": "Unplug devices when not in use to reduce electricity bills by 10-15%.", "icon": "⚡"}
+        ]
+        
+        all_tips = tips_and_quotes + additional_tips
+        selected_tip = all_tips[tip_index % len(all_tips)]
+        
+        # Check if user has already seen today's tip
+        today_tip_seen = await db.daily_tips_seen.find_one({
+            "user_id": user_id,
+            "date": today.isoformat()
+        })
+        
+        if not today_tip_seen:
+            # Mark as seen
+            await db.daily_tips_seen.insert_one({
+                "user_id": user_id,
+                "date": today.isoformat(),
+                "tip_content": selected_tip["content"],
+                "seen_at": datetime.now(timezone.utc)
+            })
+            
+            # Award points for checking daily tip
+            gamification_service = get_gamification_service()
+            if gamification_service:
+                try:
+                    await gamification_service.add_experience_points(user_id, 5, "daily_tip_viewed")
+                except:
+                    pass
+        
+        return {
+            "tip": selected_tip,
+            "date": today.isoformat(),
+            "is_new": not bool(today_tip_seen),
+            "streak_info": "Check daily for bonus points!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Daily tip error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get daily tip")
+
+# ================================================================================================
+# PHASE 3: RETENTION MECHANICS IMPLEMENTATION  
+# ================================================================================================
+
+# Daily check-in rewards/bonuses
+@api_router.post("/retention/daily-checkin")
+@limiter.limit("5/minute")
+async def daily_checkin_reward(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Handle daily check-in and rewards"""
+    try:
+        today = datetime.now(timezone.utc).date()
+        
+        # Check if already checked in today
+        existing_checkin = await db.daily_checkins.find_one({
+            "user_id": user_id,
+            "date": today.isoformat()
+        })
+        
+        if existing_checkin:
+            return {
+                "success": False, 
+                "message": "Already checked in today!",
+                "next_checkin": (today + timedelta(days=1)).isoformat()
+            }
+        
+        # Get consecutive check-in streak
+        yesterday = today - timedelta(days=1)
+        yesterday_checkin = await db.daily_checkins.find_one({
+            "user_id": user_id,
+            "date": yesterday.isoformat()
+        })
+        
+        # Calculate streak
+        if yesterday_checkin:
+            current_streak = yesterday_checkin.get("streak", 0) + 1
+        else:
+            current_streak = 1
+        
+        # Calculate rewards based on streak
+        base_points = 10
+        streak_bonus = min(current_streak * 2, 50)  # Max 50 bonus points
+        total_points = base_points + streak_bonus
+        
+        # Special milestone rewards
+        milestone_bonus = 0
+        milestone_message = ""
+        
+        if current_streak == 7:
+            milestone_bonus = 100
+            milestone_message = "7-day streak milestone! 🎉"
+        elif current_streak == 30:
+            milestone_bonus = 500
+            milestone_message = "30-day streak milestone! Amazing! 🏆"
+        elif current_streak == 100:
+            milestone_bonus = 2000
+            milestone_message = "100-day streak! You're incredible! 👑"
+        elif current_streak % 10 == 0:
+            milestone_bonus = current_streak * 5
+            milestone_message = f"{current_streak}-day streak milestone! 🌟"
+        
+        total_points += milestone_bonus
+        
+        # Create check-in record
+        checkin_record = {
+            "user_id": user_id,
+            "date": today.isoformat(),
+            "streak": current_streak,
+            "points_earned": total_points,
+            "milestone_bonus": milestone_bonus,
+            "checked_in_at": datetime.now(timezone.utc)
+        }
+        
+        await db.daily_checkins.insert_one(checkin_record)
+        
+        # Award points through gamification system
+        gamification_service = get_gamification_service()
+        if gamification_service:
+            try:
+                await gamification_service.add_experience_points(user_id, total_points, "daily_checkin")
+                
+                # Check for streak achievements
+                if current_streak in [7, 30, 100]:
+                    await gamification_service.award_achievement(
+                        user_id, 
+                        f"check_in_streak_{current_streak}",
+                        f"{current_streak}-Day Check-in Champion"
+                    )
+            except Exception as e:
+                logger.error(f"Gamification error during check-in: {e}")
+        
+        return {
+            "success": True,
+            "streak": current_streak,
+            "points_earned": total_points,
+            "base_points": base_points,
+            "streak_bonus": streak_bonus,
+            "milestone_bonus": milestone_bonus,
+            "milestone_message": milestone_message,
+            "total_lifetime_points": "Check profile for total",
+            "next_checkin": (today + timedelta(days=1)).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Daily check-in error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process daily check-in")
+
+# Progressive unlock system
+@api_router.get("/retention/unlock-status")
+@limiter.limit("20/minute")
+async def get_feature_unlock_status(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's feature unlock status based on usage"""
+    try:
+        # Get user stats
+        user_stats = await db.user_stats.find_one({"user_id": user_id})
+        if not user_stats:
+            # Initialize user stats if not exists
+            user_stats = {
+                "user_id": user_id,
+                "transactions_count": 0,
+                "days_active": 0,
+                "features_unlocked": [],
+                "created_at": datetime.now(timezone.utc)
+            }
+            await db.user_stats.insert_one(user_stats)
+        
+        # Get transaction count
+        transaction_count = await db.transactions.count_documents({"user_id": user_id})
+        
+        # Get active days (days with any activity)
+        active_days = await db.transactions.distinct("created_at", {"user_id": user_id})
+        days_active = len(set(day.date() for day in active_days))
+        
+        # Define unlock requirements
+        unlock_requirements = [
+            {
+                "feature": "advanced_analytics",
+                "name": "Advanced Analytics Dashboard",
+                "requirement": "5 transactions",
+                "requirement_met": transaction_count >= 5,
+                "description": "Detailed spending patterns and insights",
+                "icon": "📊"
+            },
+            {
+                "feature": "social_sharing",
+                "name": "Achievement Sharing",
+                "requirement": "1 achievement earned",
+                "requirement_met": await db.user_achievements.count_documents({"user_id": user_id}) >= 1,
+                "description": "Share your financial achievements on social media",
+                "icon": "📱"
+            },
+            {
+                "feature": "group_challenges",
+                "name": "Group Challenges",
+                "requirement": "10 transactions",
+                "requirement_met": transaction_count >= 10,
+                "description": "Join savings challenges with friends",
+                "icon": "👥"
+            },
+            {
+                "feature": "ai_insights",
+                "name": "AI Financial Advisor",
+                "requirement": "7 days active",
+                "requirement_met": days_active >= 7,
+                "description": "Personalized AI-powered financial recommendations",
+                "icon": "🤖"
+            },
+            {
+                "feature": "premium_hustles",
+                "name": "Premium Side Hustles",
+                "requirement": "₹5000 total income",
+                "requirement_met": await get_user_total_income(user_id) >= 5000,
+                "description": "Access to exclusive high-paying opportunities",
+                "icon": "💎"
+            },
+            {
+                "feature": "investment_tracker",
+                "name": "Investment Portfolio Tracker",
+                "requirement": "30 days active + ₹10000 savings",
+                "requirement_met": days_active >= 30 and await get_user_total_savings(user_id) >= 10000,
+                "description": "Track and analyze your investment portfolio",
+                "icon": "📈"
+            },
+            {
+                "feature": "mentor_connect",
+                "name": "Mentor Connect",
+                "requirement": "Complete 3 financial goals",
+                "requirement_met": await db.financial_goals.count_documents({
+                    "user_id": user_id,
+                    "progress": {"$gte": 100}
+                }) >= 3,
+                "description": "Connect with financial mentors and experts",
+                "icon": "🎓"
+            }
+        ]
+        
+        # Update user stats
+        await db.user_stats.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "transactions_count": transaction_count,
+                    "days_active": days_active,
+                    "updated_at": datetime.now(timezone.utc)
+                }
+            },
+            upsert=True
+        )
+        
+        return {
+            "user_stats": {
+                "transactions": transaction_count,
+                "days_active": days_active,
+                "total_income": await get_user_total_income(user_id),
+                "total_savings": await get_user_total_savings(user_id)
+            },
+            "features": unlock_requirements,
+            "unlocked_count": sum(1 for req in unlock_requirements if req["requirement_met"]),
+            "total_features": len(unlock_requirements)
+        }
+        
+    except Exception as e:
+        logger.error(f"Feature unlock status error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get unlock status")
+
+# ================================================================================================
+# PHASE 4: SHARING TOOLS IMPLEMENTATION
+# ================================================================================================
+
+# LinkedIn achievement posts
+@api_router.post("/sharing/linkedin-post")
+@limiter.limit("10/minute")
+async def generate_linkedin_achievement_post(
+    request: Request,
+    post_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Generate LinkedIn-ready achievement post content"""
+    try:
+        achievement_type = post_data.get("achievement_type")
+        achievement_details = post_data.get("details", {})
+        
+        # Get user info
+        user_info = await db.users.find_one({"user_id": user_id})
+        user_name = user_info.get("name", "")
+        university = user_info.get("university", "")
+        
+        # Generate LinkedIn post templates
+        linkedin_templates = {
+            "savings_milestone": {
+                "text": f"🎯 Excited to share that I've reached my savings milestone of ₹{achievement_details.get('amount', 0)}! \n\n💡 Using EarnAura has helped me develop better financial habits as a {university} student. The gamification and peer comparison features keep me motivated to save consistently.\n\n#FinancialLiteracy #StudentLife #SavingsGoals #EarnAura #PersonalFinance #StudentSuccess",
+                "hashtags": ["#FinancialLiteracy", "#StudentLife", "#SavingsGoals", "#EarnAura", "#PersonalFinance"],
+                "suggested_image": "achievement_badge"
+            },
+            "streak_achievement": {
+                "text": f"🔥 {achievement_details.get('days', 0)}-day financial tracking streak achieved! \n\n📊 Consistency in money management has been a game-changer. Every day of tracking my expenses and income brings me closer to my financial goals.\n\n💪 To fellow students: small daily habits lead to big financial wins!\n\n#FinancialHabits #ConsistencyMatters #StudentFinance #MoneyManagement #EarnAura #FinancialGoals",
+                "hashtags": ["#FinancialHabits", "#ConsistencyMatters", "#StudentFinance"],
+                "suggested_image": "streak_badge"
+            },
+            "income_milestone": {
+                "text": f"💰 Just earned my first ₹{achievement_details.get('amount', 0)} through side hustles! \n\n🚀 EarnAura's opportunity matching helped me find legitimate freelancing gigs that fit my schedule as a student.\n\n📈 Proof that with the right tools and mindset, students can build multiple income streams while studying.\n\n#SideHustle #StudentEntrepreneur #FinancialIndependence #EarnAura #FreelanceLife #StudentSuccess",
+                "hashtags": ["#SideHustle", "#StudentEntrepreneur", "#FinancialIndependence"],
+                "suggested_image": "income_achievement"
+            }
+        }
+        
+        template = linkedin_templates.get(achievement_type, {
+            "text": f"🎉 Achieved a new financial milestone with EarnAura! \n\n📱 The app's gamification and social features make money management engaging and fun. Highly recommend to fellow students!\n\n#FinancialLiteracy #StudentLife #EarnAura",
+            "hashtags": ["#FinancialLiteracy", "#StudentLife", "#EarnAura"],
+            "suggested_image": "general_achievement"
+        })
+        
+        # Track sharing for analytics
+        sharing_record = {
+            "user_id": user_id,
+            "platform": "linkedin",
+            "achievement_type": achievement_type,
+            "shared_at": datetime.now(timezone.utc),
+            "content_preview": template["text"][:100] + "..."
+        }
+        await db.social_shares.insert_one(sharing_record)
+        
+        return {
+            "platform": "linkedin",
+            "post_content": template["text"],
+            "hashtags": template["hashtags"],
+            "suggested_image": template["suggested_image"],
+            "copy_instructions": "Copy this text and paste it as your LinkedIn post. Add the suggested image for better engagement!",
+            "engagement_tip": "Post between 8-10 AM or 12-2 PM for maximum visibility"
+        }
+        
+    except Exception as e:
+        logger.error(f"LinkedIn post generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate LinkedIn post")
+
+# One-click sharing to multiple platforms
+@api_router.post("/sharing/multi-platform")
+@limiter.limit("15/minute")
+async def share_to_multiple_platforms(
+    request: Request,
+    share_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Generate sharing content for multiple platforms simultaneously"""
+    try:
+        achievement_data = share_data.get("achievement", {})
+        platforms = share_data.get("platforms", ["instagram", "whatsapp", "twitter"])
+        
+        sharing_content = {}
+        
+        for platform in platforms:
+            if platform == "instagram":
+                sharing_content["instagram"] = {
+                    "caption": f"🎯 New milestone unlocked! 💰\n\n#{achievement_data.get('type', 'achievement')} #StudentLife #FinancialGoals #EarnAura #MoneyManagement #StudentSuccess #FinancialLiteracy",
+                    "story_text": f"Just hit my savings goal! 🎉\n₹{achievement_data.get('amount', 0)} milestone reached",
+                    "share_url": f"https://instagram.com/stories/new",
+                    "instructions": "Share to your Instagram story with the generated image"
+                }
+            
+            elif platform == "whatsapp":
+                sharing_content["whatsapp"] = {
+                    "message": f"🎉 Just achieved a financial milestone! Saved ₹{achievement_data.get('amount', 0)} using EarnAura app 💰\n\nIt's amazing how gamification makes saving money fun! 📊\n\nDownload: https://earnaura.app",
+                    "share_url": f"https://wa.me/?text={achievement_data.get('message', '').replace(' ', '%20')}",
+                    "instructions": "Click to share on WhatsApp Status or send to friends"
+                }
+            
+            elif platform == "twitter":
+                tweet_text = f"🎯 Financial milestone achieved! ₹{achievement_data.get('amount', 0)} saved with @EarnAura 💰\n\nGamefication + Social features = Consistent savings habits 📈\n\n#FinTech #StudentLife #SavingsGoals"
+                sharing_content["twitter"] = {
+                    "tweet": tweet_text,
+                    "share_url": f"https://twitter.com/intent/tweet?text={tweet_text.replace(' ', '%20')}",
+                    "instructions": "Click to post this tweet"
+                }
+            
+            elif platform == "facebook":
+                sharing_content["facebook"] = {
+                    "post": f"Excited to share my latest financial achievement! 🎯\n\nReached my ₹{achievement_data.get('amount', 0)} savings goal using EarnAura. The app's social features and gamification make money management actually enjoyable!\n\nHighly recommend to students looking to build better financial habits. 📊💪\n\n#FinancialLiteracy #StudentLife #MoneyManagement",
+                    "share_url": f"https://www.facebook.com/sharer/sharer.php?u=https://earnaura.app",
+                    "instructions": "Share this post on your Facebook timeline"
+                }
+        
+        # Track multi-platform sharing
+        for platform in platforms:
+            sharing_record = {
+                "user_id": user_id,
+                "platform": platform,
+                "achievement_type": achievement_data.get("type"),
+                "shared_at": datetime.now(timezone.utc),
+                "is_multi_platform": True
+            }
+            await db.social_shares.insert_one(sharing_record)
+        
+        return {
+            "platforms": sharing_content,
+            "total_platforms": len(platforms),
+            "sharing_tip": "Posting across multiple platforms increases your reach and can inspire friends to join!",
+            "bonus_points": len(platforms) * 10  # Bonus points for multi-platform sharing
+        }
+        
+    except Exception as e:
+        logger.error(f"Multi-platform sharing error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate multi-platform sharing content")
+
+# Viral referral links with tracking
+@api_router.post("/sharing/create-viral-link")
+@limiter.limit("10/minute")
+async def create_viral_referral_link(
+    request: Request,
+    link_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Create tracked viral referral link with incentives"""
+    try:
+        campaign_type = link_data.get("campaign_type", "general_referral")
+        custom_message = link_data.get("custom_message", "")
+        
+        # Generate unique tracking code
+        tracking_code = f"{user_id[:8]}-{str(uuid.uuid4())[:8]}-{campaign_type}"
+        
+        # Get user info for personalization
+        user_info = await db.users.find_one({"user_id": user_id})
+        user_name = user_info.get("name", "Your friend")
+        university = user_info.get("university", "")
+        
+        # Create viral referral record
+        viral_link = {
+            "link_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "tracking_code": tracking_code,
+            "campaign_type": campaign_type,
+            "custom_message": custom_message,
+            "clicks": 0,
+            "conversions": 0,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+            "is_active": True
+        }
+        
+        await db.viral_referral_links.insert_one(viral_link)
+        
+        # Generate referral URL
+        base_url = "https://earnaura.app"
+        referral_url = f"{base_url}/join?ref={tracking_code}"
+        
+        # Create sharing templates with urgency and social proof
+        sharing_templates = {
+            "achievement_viral": {
+                "title": "I just hit my savings goal! 🎯",
+                "message": f"Just saved ₹5000 using EarnAura! The app made it so much easier with gamification and friend challenges.\n\nJoin me and get ₹50 bonus when you save your first ₹500! 💰\n\nLimited time: Only 100 spots left this month!\n\n{referral_url}",
+                "urgency": "Only 100 spots left this month!",
+                "incentive": "₹50 bonus for first ₹500 saved"
+            },
+            "challenge_viral": {
+                "title": "Join my savings challenge! 🏆", 
+                "message": f"Starting a 30-day savings challenge with friends on EarnAura!\n\nWe're competing to see who can save the most. Want to join us? 🎯\n\n🎁 New members get ₹50 bonus\n⏰ Challenge starts in 3 days\n👥 {university} students only\n\n{referral_url}",
+                "urgency": "Challenge starts in 3 days",
+                "incentive": "₹50 joining bonus + competition prizes"
+            },
+            "milestone_viral": {
+                "title": "This app changed my money habits! 📊",
+                "message": f"EarnAura helped me save ₹10,000 in just 2 months! 🎉\n\nThe social features and AI insights are incredible. My friends and I challenge each other daily.\n\n🎁 Get ₹50 when you join\n🔥 Limited: Only for {university} students\n⭐ 4.8/5 rating\n\n{referral_url}",
+                "urgency": f"Limited to {university} students",
+                "incentive": "₹50 welcome bonus"
+            }
+        }
+        
+        template = sharing_templates.get(campaign_type, sharing_templates["achievement_viral"])
+        
+        return {
+            "referral_url": referral_url,
+            "tracking_code": tracking_code,
+            "sharing_template": template,
+            "qr_code_url": f"/api/sharing/qr-code/{tracking_code}",
+            "analytics_url": f"/api/sharing/link-analytics/{viral_link['link_id']}",
+            "expiry_date": viral_link["expires_at"].isoformat(),
+            "viral_tips": [
+                "Share in student WhatsApp groups for maximum reach",
+                "Post when your friends are most active (evenings)",
+                "Add personal success story for credibility",
+                "Follow up with friends who click but don't sign up"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Viral referral link error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create viral referral link")
+
+# ================================================================================================
+# PHASE 5: ADVANCED SOCIAL & GROWTH MECHANICS
+# ================================================================================================
+
+# Campus ambassador program
+@api_router.post("/advanced/apply-campus-ambassador")
+@limiter.limit("5/minute")
+async def apply_campus_ambassador(
+    request: Request,
+    application_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Apply for campus ambassador program"""
+    try:
+        # Check eligibility requirements
+        user_stats = await db.user_stats.find_one({"user_id": user_id})
+        transaction_count = await db.transactions.count_documents({"user_id": user_id})
+        referral_count = await db.referral_programs.count_documents({
+            "referred_by": user_id,
+            "status": "active"
+        })
+        
+        # Requirements: 50+ transactions, 10+ referrals, 30+ days active
+        eligible = (
+            transaction_count >= 50 and
+            referral_count >= 10 and
+            user_stats and user_stats.get("days_active", 0) >= 30
+        )
+        
+        if not eligible:
+            return {
+                "eligible": False,
+                "requirements": {
+                    "transactions_needed": max(0, 50 - transaction_count),
+                    "referrals_needed": max(0, 10 - referral_count),
+                    "days_needed": max(0, 30 - user_stats.get("days_active", 0) if user_stats else 30)
+                },
+                "message": "Complete the requirements to unlock Ambassador status!"
+            }
+        
+        # Create ambassador application
+        application = {
+            "application_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "motivation": application_data.get("motivation", ""),
+            "campus_influence": application_data.get("campus_influence", ""),
+            "social_media_handles": application_data.get("social_media", {}),
+            "marketing_ideas": application_data.get("marketing_ideas", []),
+            "status": "pending",
+            "applied_at": datetime.now(timezone.utc),
+            "stats_at_application": {
+                "transactions": transaction_count,
+                "referrals": referral_count,
+                "days_active": user_stats.get("days_active", 0) if user_stats else 0
+            }
+        }
+        
+        await db.ambassador_applications.insert_one(application)
+        
+        return {
+            "success": True,
+            "application_id": application["application_id"],
+            "message": "Application submitted! We'll review within 3-5 business days.",
+            "benefits_preview": [
+                "₹500/month base stipend",
+                "₹50 per successful referral",
+                "Exclusive ambassador badge and features",
+                "Direct line to product team",
+                "Campus event organizing opportunities"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Campus ambassador application error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to submit ambassador application")
+
+# Group expense splitting with friends
+@api_router.post("/advanced/create-expense-split")
+@limiter.limit("20/minute")
+async def create_group_expense_split(
+    request: Request,
+    split_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Create group expense split with friends"""
+    try:
+        expense_title = split_data.get("title")
+        total_amount = split_data.get("total_amount")
+        participants = split_data.get("participants", [])  # List of friend user_ids
+        split_type = split_data.get("split_type", "equal")  # equal, custom, percentage
+        custom_splits = split_data.get("custom_splits", {})
+        
+        # Validate participants are friends
+        for participant_id in participants:
+            friendship = await db.friends.find_one({
+                "$or": [
+                    {"user_id": user_id, "friend_id": participant_id},
+                    {"user_id": participant_id, "friend_id": user_id}
+                ],
+                "status": "accepted"
+            })
+            
+            if not friendship:
+                raise HTTPException(status_code=400, detail=f"User {participant_id} is not your friend")
+        
+        # Calculate splits
+        splits = {}
+        if split_type == "equal":
+            amount_per_person = total_amount / (len(participants) + 1)  # +1 for creator
+            splits[user_id] = amount_per_person
+            for participant_id in participants:
+                splits[participant_id] = amount_per_person
+        else:
+            splits = custom_splits
+        
+        # Create expense split record
+        expense_split = {
+            "split_id": str(uuid.uuid4()),
+            "creator_id": user_id,
+            "title": expense_title,
+            "total_amount": total_amount,
+            "split_type": split_type,
+            "participants": participants + [user_id],
+            "splits": splits,
+            "payments": {user_id: total_amount},  # Creator paid initially
+            "status": "active",
+            "created_at": datetime.now(timezone.utc),
+            "settled_at": None
+        }
+        
+        await db.expense_splits.insert_one(expense_split)
+        
+        # Create notifications for participants
+        for participant_id in participants:
+            notification = {
+                "notification_id": str(uuid.uuid4()),
+                "user_id": participant_id,
+                "type": "expense_split",
+                "title": "New Expense Split",
+                "message": f"You owe ₹{splits.get(participant_id, 0):.2f} for '{expense_title}'",
+                "data": {
+                    "split_id": expense_split["split_id"],
+                    "amount_owed": splits.get(participant_id, 0)
+                },
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc)
+            }
+            await db.notifications.insert_one(notification)
+        
+        return {
+            "success": True,
+            "split_id": expense_split["split_id"],
+            "splits": splits,
+            "payment_link": f"/api/advanced/expense-split/{expense_split['split_id']}",
+            "total_amount": total_amount,
+            "participants_notified": len(participants)
+        }
+        
+    except Exception as e:
+        logger.error(f"Group expense split error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create expense split")
+
+# Invite quota system (limited invites create urgency)
+@api_router.get("/growth/invite-quota")
+@limiter.limit("10/minute")
+async def get_user_invite_quota(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's invite quota and usage"""
+    try:
+        # Base quota: 5 invites per month
+        base_quota = 5
+        
+        # Bonus quota based on user level/achievements
+        user_level = await get_user_level(user_id)
+        achievement_count = await db.user_achievements.count_documents({"user_id": user_id})
+        
+        bonus_quota = 0
+        if user_level >= 5:
+            bonus_quota += 3  # Level 5+ users get 3 extra
+        if achievement_count >= 10:
+            bonus_quota += 2  # Users with 10+ achievements get 2 extra
+        
+        total_quota = base_quota + bonus_quota
+        
+        # Get current month usage
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        invites_used = await db.friend_invitations.count_documents({
+            "inviter_id": user_id,
+            "created_at": {"$gte": month_start}
+        })
+        
+        remaining_quota = max(0, total_quota - invites_used)
+        
+        # Check if user qualifies for bonus invites
+        bonus_opportunities = []
+        if user_level < 10:
+            bonus_opportunities.append({
+                "action": "Reach level 10",
+                "reward": "+5 monthly invites",
+                "progress": f"Level {user_level}/10"
+            })
+        
+        if achievement_count < 20:
+            bonus_opportunities.append({
+                "action": "Earn 20 achievements",
+                "reward": "+3 monthly invites",
+                "progress": f"{achievement_count}/20 achievements"
+            })
+        
+        # Create urgency messaging
+        urgency_message = ""
+        if remaining_quota <= 2:
+            urgency_message = "⚠️ Only 2 invites left this month! Use them wisely."
+        elif remaining_quota <= 5:
+            urgency_message = f"🔥 {remaining_quota} invites remaining - invite your closest friends!"
+        
+        return {
+            "quota": {
+                "total": total_quota,
+                "used": invites_used,
+                "remaining": remaining_quota,
+                "resets_at": (month_start + timedelta(days=32)).replace(day=1).isoformat()
+            },
+            "breakdown": {
+                "base_quota": base_quota,
+                "level_bonus": 3 if user_level >= 5 else 0,
+                "achievement_bonus": 2 if achievement_count >= 10 else 0
+            },
+            "urgency_message": urgency_message,
+            "bonus_opportunities": bonus_opportunities,
+            "scarcity_marketing": f"Only {remaining_quota} exclusive spots available this month!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Invite quota error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get invite quota")
+
+async def get_user_level(user_id: str) -> int:
+    """Helper function to get user's current level"""
+    try:
+        gamification_service = get_gamification_service()
+        if gamification_service:
+            profile = await gamification_service.get_user_profile(user_id)
+            return profile.get("level", 1)
+        return 1
+    except:
+        return 1
+
+# Waiting list for exclusive features
+@api_router.post("/growth/join-waitlist")
+@limiter.limit("5/minute")
+async def join_feature_waitlist(
+    request: Request,
+    waitlist_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Join waiting list for exclusive features"""
+    try:
+        feature_name = waitlist_data.get("feature_name")
+        
+        # Check if already on waitlist
+        existing = await db.feature_waitlist.find_one({
+            "user_id": user_id,
+            "feature_name": feature_name
+        })
+        
+        if existing:
+            return {
+                "success": False,
+                "message": "You're already on the waitlist for this feature!"
+            }
+        
+        # Get current waitlist position
+        current_position = await db.feature_waitlist.count_documents({
+            "feature_name": feature_name
+        }) + 1
+        
+        # Create waitlist entry
+        waitlist_entry = {
+            "entry_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "feature_name": feature_name,
+            "position": current_position,
+            "joined_at": datetime.now(timezone.utc),
+            "status": "waiting",
+            "priority_score": await calculate_priority_score(user_id)
+        }
+        
+        await db.feature_waitlist.insert_one(waitlist_entry)
+        
+        # Feature descriptions and estimated timeline
+        features_info = {
+            "crypto_tracking": {
+                "description": "Portfolio tracking for cryptocurrency investments",
+                "eta": "Q2 2025",
+                "spots_available": 500
+            },
+            "ai_investment_advisor": {
+                "description": "AI-powered investment recommendations",
+                "eta": "Q3 2025", 
+                "spots_available": 200
+            },
+            "premium_mentorship": {
+                "description": "1-on-1 sessions with financial experts",
+                "eta": "Q1 2025",
+                "spots_available": 100
+            }
+        }
+        
+        feature_info = features_info.get(feature_name, {
+            "description": "Exclusive new feature",
+            "eta": "Coming soon",
+            "spots_available": 1000
+        })
+        
+        return {
+            "success": True,
+            "position": current_position,
+            "feature_info": feature_info,
+            "estimated_wait": f"{max(1, current_position // 50)} weeks",
+            "early_access_tip": "Invite friends and complete challenges to move up the list!",
+            "total_waiting": current_position
+        }
+        
+    except Exception as e:
+        logger.error(f"Waitlist join error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to join waitlist")
+
+async def calculate_priority_score(user_id: str) -> int:
+    """Calculate user's priority score for waitlists"""
+    score = 0
+    
+    # Base score from transactions
+    transaction_count = await db.transactions.count_documents({"user_id": user_id})
+    score += min(transaction_count * 2, 100)  # Max 100 from transactions
+    
+    # Referrals bonus
+    referral_count = await db.referral_programs.count_documents({"referred_by": user_id})
+    score += min(referral_count * 10, 200)  # Max 200 from referrals
+    
+    # Achievement bonus
+    achievement_count = await db.user_achievements.count_documents({"user_id": user_id})
+    score += min(achievement_count * 5, 150)  # Max 150 from achievements
+    
+    # Active days bonus
+    user_stats = await db.user_stats.find_one({"user_id": user_id})
+    if user_stats:
+        days_active = user_stats.get("days_active", 0)
+        score += min(days_active * 2, 100)  # Max 100 from activity
+    
+    return score
+
+# ================================================================================================
+# ADDITIONAL ENGAGEMENT & RETENTION FEATURES
+# ================================================================================================
+
+# Limited-time offers/challenges with deadlines  
+@api_router.get("/engagement/limited-offers")
+@limiter.limit("10/minute")
+async def get_limited_time_offers(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get current limited-time offers and challenges"""
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # Create dynamic offers based on time
+        offers = []
+        
+        # Weekend saving bonus (Friday-Sunday)
+        if now.weekday() >= 4:  # Friday=4, Saturday=5, Sunday=6
+            weekend_end = now.replace(hour=23, minute=59, second=59)
+            if now.weekday() == 6:  # Sunday
+                weekend_end = now.replace(hour=23, minute=59, second=59)
+            else:
+                # Calculate next Sunday
+                days_until_sunday = 6 - now.weekday()
+                weekend_end = now + timedelta(days=days_until_sunday)
+                weekend_end = weekend_end.replace(hour=23, minute=59, second=59)
+            
+            offers.append({
+                "id": "weekend_bonus",
+                "title": "Weekend Savings Bonus! 🎉",
+                "description": "Earn double points for all transactions this weekend",
+                "type": "points_multiplier",
+                "multiplier": 2,
+                "deadline": weekend_end.isoformat(),
+                "hours_remaining": int((weekend_end - now).total_seconds() // 3600),
+                "urgency": "high",
+                "icon": "⚡"
+            })
+        
+        # Monthly challenge (last week of month)
+        if now.day >= 22:
+            month_end = (now.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+            month_end = month_end.replace(hour=23, minute=59, second=59)
+            
+            offers.append({
+                "id": "month_end_challenge",
+                "title": "Month-End Sprint Challenge! 🏃‍♂️",
+                "description": "Save ₹1000 before month ends - win ₹200 bonus!",
+                "type": "savings_challenge",
+                "target_amount": 1000,
+                "reward": 200,
+                "deadline": month_end.isoformat(),
+                "days_remaining": (month_end.date() - now.date()).days,
+                "urgency": "medium",
+                "icon": "🎯"
+            })
+        
+        # Flash social challenge (24-48 hours)
+        flash_challenge_end = now + timedelta(hours=36)
+        offers.append({
+            "id": "flash_social",
+            "title": "Flash Social Challenge! ⚡",
+            "description": "Invite 3 friends in 36 hours - unlock exclusive badge",
+            "type": "social_challenge",
+            "target": 3,
+            "reward": "Exclusive 'Social Lightning' badge",
+            "deadline": flash_challenge_end.isoformat(),
+            "hours_remaining": 36,
+            "urgency": "high",
+            "icon": "👥"
+        })
+        
+        # Check user's participation in current offers
+        for offer in offers:
+            participation = await db.limited_offers_participation.find_one({
+                "user_id": user_id,
+                "offer_id": offer["id"],
+                "expires_at": {"$gt": now}
+            })
+            offer["participated"] = bool(participation)
+            offer["progress"] = participation.get("progress", 0) if participation else 0
+        
+        return {
+            "offers": offers,
+            "total_active": len(offers),
+            "urgency_message": "⏰ Limited time offers expire soon! Act fast!",
+            "next_offers_in": "New offers every weekend and month-end!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Limited offers error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get limited offers")
+
+# FOMO mechanics ("Only 50 spots left in challenge")
+@api_router.get("/engagement/fomo-alerts")
+@limiter.limit("10/minute")
+async def get_fomo_alerts(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get FOMO (Fear of Missing Out) alerts and scarcity notifications"""
+    try:
+        fomo_alerts = []
+        
+        # Limited spots in challenges
+        active_challenges = await db.group_challenges.find({
+            "status": "active",
+            "spots_remaining": {"$lte": 100, "$gt": 0}
+        }).to_list(None)
+        
+        for challenge in active_challenges:
+            spots_left = challenge.get("spots_remaining", 0)
+            urgency_level = "high" if spots_left <= 10 else "medium" if spots_left <= 50 else "low"
+            
+            fomo_alerts.append({
+                "type": "challenge_spots",
+                "title": f"Only {spots_left} spots left! 🔥",
+                "message": f"Challenge '{challenge['title']}' is filling up fast!",
+                "urgency": urgency_level,
+                "action": "Join now",
+                "action_url": f"/group-challenges/{challenge['challenge_id']}",
+                "spots_remaining": spots_left,
+                "icon": "⚠️"
+            })
+        
+        # Limited mentor slots
+        available_mentors = 15 - (hash(user_id) % 10)  # Dynamic based on user
+        if available_mentors <= 5:
+            fomo_alerts.append({
+                "type": "mentor_slots",
+                "title": f"Only {available_mentors} mentor slots left this month!",
+                "message": "Premium mentorship program almost full",
+                "urgency": "high",
+                "action": "Book session",
+                "action_url": "/mentorship/book",
+                "slots_remaining": available_mentors,
+                "icon": "👨‍🏫"
+            })
+        
+        # Exclusive feature access
+        beta_spots = 25 - (len(user_id) % 15)  # Dynamic
+        if beta_spots <= 10:
+            fomo_alerts.append({
+                "type": "beta_access",
+                "title": f"Beta access: {beta_spots} spots remaining!",
+                "message": "Early access to AI investment advisor",
+                "urgency": "medium",
+                "action": "Join beta",
+                "action_url": "/growth/join-waitlist",
+                "spots_remaining": beta_spots,
+                "icon": "🚀"
+            })
+        
+        # Time-sensitive achievements
+        if datetime.now().day <= 7:  # First week of month
+            fomo_alerts.append({
+                "type": "achievement_window",
+                "title": "Early Bird Achievement - 7 days left! 🐦",
+                "message": "Complete 10 transactions this month for exclusive badge",
+                "urgency": "medium",
+                "action": "Start tracking",
+                "action_url": "/transactions",
+                "time_remaining": f"{7 - datetime.now().day} days",
+                "icon": "🏆"
+            })
+        
+        # Social pressure (friends' activity)
+        friend_count = await db.friends.count_documents({
+            "$or": [{"user_id": user_id}, {"friend_id": user_id}],
+            "status": "accepted"
+        })
+        
+        if friend_count >= 5:
+            active_friends = friend_count // 2  # Estimate active friends
+            fomo_alerts.append({
+                "type": "social_pressure",
+                "title": f"{active_friends} friends are actively saving!",
+                "message": "Don't get left behind - join the savings streak",
+                "urgency": "low",
+                "action": "See friend activity",
+                "action_url": "/social/friend-activity-feed",
+                "friends_count": active_friends,
+                "icon": "👫"
+            })
+        
+        return {
+            "alerts": fomo_alerts,
+            "total_alerts": len(fomo_alerts),
+            "psychology_tip": "Scarcity and social proof drive action - use them wisely!",
+            "user_urgency_score": sum(1 for alert in fomo_alerts if alert["urgency"] == "high") * 3 + 
+                                 sum(1 for alert in fomo_alerts if alert["urgency"] == "medium") * 2 +
+                                 sum(1 for alert in fomo_alerts if alert["urgency"] == "low")
+        }
+        
+    except Exception as e:
+        logger.error(f"FOMO alerts error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get FOMO alerts")
+
+# Photo sharing for achievements  
+@api_router.post("/engagement/upload-achievement-photo")
+@limiter.limit("5/minute")
+async def upload_achievement_photo(
+    request: Request,
+    file: UploadFile = File(...),
+    achievement_id: str = None,
+    caption: str = "",
+    user_id: str = Depends(get_current_user)
+):
+    """Upload photo for achievement sharing"""
+    try:
+        # Validate file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="Only image files are allowed")
+        
+        # Create unique filename
+        file_extension = file.filename.split('.')[-1] if '.' in file.filename else 'jpg'
+        unique_filename = f"achievement_{user_id}_{uuid.uuid4()}.{file_extension}"
+        file_path = UPLOADS_DIR / unique_filename
+        
+        # Save uploaded file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Create photo record
+        achievement_photo = {
+            "photo_id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "achievement_id": achievement_id,
+            "filename": unique_filename,
+            "file_path": str(file_path),
+            "photo_url": f"/uploads/{unique_filename}",
+            "caption": caption,
+            "likes": 0,
+            "comments": [],
+            "is_public": True,
+            "uploaded_at": datetime.now(timezone.utc)
+        }
+        
+        await db.achievement_photos.insert_one(achievement_photo)
+        
+        # Award points for sharing achievement photo
+        gamification_service = get_gamification_service()
+        if gamification_service:
+            try:
+                await gamification_service.add_experience_points(user_id, 25, "achievement_photo_shared")
+            except:
+                pass
+        
+        return {
+            "success": True,
+            "photo_id": achievement_photo["photo_id"],
+            "photo_url": achievement_photo["photo_url"],
+            "sharing_links": {
+                "instagram": f"Share this achievement photo on your Instagram story!",
+                "whatsapp": f"https://wa.me/?text=Check%20out%20my%20achievement!%20{achievement_photo['photo_url']}",
+                "facebook": f"Post this achievement on Facebook to inspire friends!"
+            },
+            "points_earned": 25
+        }
+        
+    except Exception as e:
+        logger.error(f"Achievement photo upload error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload achievement photo")
+
+# Story-style financial journey timeline
+@api_router.get("/engagement/financial-journey")
+@limiter.limit("10/minute")
+async def get_financial_journey_timeline(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get story-style timeline of user's financial journey"""
+    try:
+        # Get user's financial milestones and events
+        timeline_events = []
+        
+        # Registration milestone
+        user_info = await db.users.find_one({"user_id": user_id})
+        if user_info:
+            timeline_events.append({
+                "type": "milestone",
+                "title": "Started Financial Journey! 🚀",
+                "description": f"Joined EarnAura on {user_info['created_at'].strftime('%B %d, %Y')}",
+                "date": user_info["created_at"],
+                "icon": "🎯",
+                "color": "blue"
+            })
+        
+        # First transaction
+        first_transaction = await db.transactions.find_one(
+            {"user_id": user_id},
+            sort=[("created_at", 1)]
+        )
+        if first_transaction:
+            action = "earned" if first_transaction["type"] == "income" else "tracked spending of"
+            timeline_events.append({
+                "type": "transaction",
+                "title": "First Transaction! 💰",
+                "description": f"First {action} ₹{first_transaction['amount']} on {first_transaction['category']}",
+                "date": first_transaction["created_at"],
+                "icon": "💵",
+                "color": "green",
+                "amount": first_transaction["amount"]
+            })
+        
+        # Achievements timeline
+        achievements = await db.user_achievements.find(
+            {"user_id": user_id}
+        ).sort("earned_at", 1).to_list(None)
+        
+        for achievement in achievements:
+            timeline_events.append({
+                "type": "achievement",
+                "title": f"Achievement Unlocked! 🏆",
+                "description": achievement["achievement_name"],
+                "date": achievement["earned_at"],
+                "icon": "🎖️",
+                "color": "gold"
+            })
+        
+        # Major milestones
+        milestones = await db.user_milestones.find(
+            {"user_id": user_id}
+        ).sort("achieved_at", 1).to_list(None)
+        
+        for milestone in milestones:
+            timeline_events.append({
+                "type": "milestone",
+                "title": f"Milestone Reached! 🎉",
+                "description": f"{milestone['milestone_type']} of ₹{milestone.get('amount', 0)}",
+                "date": milestone["achieved_at"],
+                "icon": "🏁",
+                "color": "purple",
+                "amount": milestone.get("amount", 0)
+            })
+        
+        # Friend connections
+        first_friend = await db.friends.find_one(
+            {"$or": [{"user_id": user_id}, {"friend_id": user_id}]},
+            sort=[("created_at", 1)]
+        )
+        if first_friend:
+            timeline_events.append({
+                "type": "social",
+                "title": "First Friend Connected! 👫",
+                "description": "Started building your financial network",
+                "date": first_friend["created_at"],
+                "icon": "🤝",
+                "color": "pink"
+            })
+        
+        # Sort timeline by date
+        timeline_events.sort(key=lambda x: x["date"])
+        
+        # Add story-style descriptions
+        for i, event in enumerate(timeline_events):
+            event["story_position"] = i + 1
+            event["days_ago"] = (datetime.now(timezone.utc) - event["date"]).days
+            
+            if event["days_ago"] == 0:
+                event["time_text"] = "Today"
+            elif event["days_ago"] == 1:
+                event["time_text"] = "Yesterday"
+            elif event["days_ago"] <= 7:
+                event["time_text"] = f"{event['days_ago']} days ago"
+            elif event["days_ago"] <= 30:
+                event["time_text"] = f"{event['days_ago'] // 7} weeks ago"
+            else:
+                event["time_text"] = f"{event['days_ago'] // 30} months ago"
+        
+        # Calculate journey statistics
+        total_savings = await get_user_total_savings(user_id)
+        total_income = await get_user_total_income(user_id)
+        journey_days = (datetime.now(timezone.utc) - user_info["created_at"]).days if user_info else 0
+        
+        return {
+            "timeline": timeline_events,
+            "journey_stats": {
+                "days_active": journey_days,
+                "total_savings": total_savings,
+                "total_income": total_income,
+                "milestones_reached": len([e for e in timeline_events if e["type"] == "milestone"]),
+                "achievements_earned": len([e for e in timeline_events if e["type"] == "achievement"])
+            },
+            "story_summary": f"In {journey_days} days, you've saved ₹{total_savings:.0f} and unlocked {len(achievements)} achievements!",
+            "next_milestone": "Keep going to unlock more achievements!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Financial journey error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get financial journey")
 
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
