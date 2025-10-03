@@ -278,7 +278,7 @@ const SocialSharing = ({ achievement, onClose }) => {
         {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
           <p className="text-sm text-gray-600">
-            Powered by <span className="font-semibold text-emerald-600">EarnNest</span>
+            Powered by <span className="font-semibold text-emerald-600">EarnAura</span>
           </p>
           <button
             onClick={onClose}
