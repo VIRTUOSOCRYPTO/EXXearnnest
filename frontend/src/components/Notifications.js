@@ -8,7 +8,10 @@ import {
   UsersIcon,
   FireIcon,
   GiftIcon,
-  ClockIcon
+  ClockIcon,
+  LightBulbIcon,
+  StarIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 
 const Notifications = () => {
@@ -41,32 +44,62 @@ const Notifications = () => {
     } catch (error) {
       console.error('Error fetching notifications:', error);
       setError('Failed to load notifications');
-      // Set some sample notifications for demo purposes
+      // Set some sample notifications for demo purposes including Phase 1 features
       setNotifications([
         {
           id: 1,
+          type: 'daily_tip',
+          title: 'Daily Financial Tip 💡',
+          message: 'Today\'s tip: Cook at home for 1 week and save ₹1,400+! Check your dashboard for the full tip.',
+          created_at: new Date().toISOString(),
+          is_read: false,
+          icon: 'lightbulb',
+          action_url: '/dashboard'
+        },
+        {
+          id: 2,
+          type: 'individual_challenge_invite',
+          title: 'Friend Challenge Received! 🥊',
+          message: 'Rahul has challenged you to a Savings Race: Save ₹5,000 in 7 days. Stakes: Loser buys coffee!',
+          created_at: new Date(Date.now() - 3600000).toISOString(),
+          is_read: false,
+          icon: 'star',
+          action_url: '/challenges?tab=friend_challenges'
+        },
+        {
+          id: 3,
+          type: 'peer_comparison',
+          title: 'Peer Comparison Update ✨',
+          message: 'You\'re saving 15% more than your university peers! Keep it up - you\'re in the top 25%.',
+          created_at: new Date(Date.now() - 7200000).toISOString(),
+          is_read: false,
+          icon: 'peer_comparison',
+          action_url: '/social-feed'
+        },
+        {
+          id: 4,
           type: 'milestone_achieved',
           title: 'Milestone Achieved! 🎉',
           message: 'Congratulations! You\'ve saved ₹10,000 this month.',
-          created_at: new Date().toISOString(),
+          created_at: new Date(Date.now() - 86400000).toISOString(),
           is_read: false,
           icon: 'trophy'
         },
         {
-          id: 2,
+          id: 5,
           type: 'friend_joined',
-          title: 'Friend Joined EarnAura',
-          message: 'Your friend Priya has joined EarnAura using your referral link!',
-          created_at: new Date(Date.now() - 86400000).toISOString(),
+          title: 'Friend Joined EarnNest',
+          message: 'Your friend Priya has joined EarnNest using your referral link!',
+          created_at: new Date(Date.now() - 172800000).toISOString(),
           is_read: false,
           icon: 'users'
         },
         {
-          id: 3,
+          id: 6,
           type: 'budget_alert',
           title: 'Budget Alert',
           message: 'You\'ve spent 80% of your Entertainment budget this month.',
-          created_at: new Date(Date.now() - 172800000).toISOString(),
+          created_at: new Date(Date.now() - 259200000).toISOString(),
           is_read: true,
           icon: 'exclamation'
         }
@@ -130,6 +163,7 @@ const Notifications = () => {
         return <UsersIcon className={`${iconClass} text-blue-500`} />;
       case 'fire':
       case 'challenge':
+      case 'streak_reminder':
         return <FireIcon className={`${iconClass} text-red-500`} />;
       case 'gift':
       case 'reward':
@@ -137,6 +171,15 @@ const Notifications = () => {
       case 'exclamation':
       case 'budget_alert':
         return <ExclamationCircleIcon className={`${iconClass} text-amber-500`} />;
+      case 'lightbulb':
+      case 'daily_tip':
+        return <LightBulbIcon className={`${iconClass} text-blue-500`} />;
+      case 'star':
+      case 'individual_challenge_invite':
+      case 'individual_challenge':
+        return <StarIcon className={`${iconClass} text-purple-500`} />;
+      case 'peer_comparison':
+        return <SparklesIcon className={`${iconClass} text-green-500`} />;
       default:
         return <BellIcon className={`${iconClass} text-gray-500`} />;
     }
@@ -222,7 +265,14 @@ const Notifications = () => {
                     ? 'bg-white border-gray-200 hover:border-gray-300'
                     : 'bg-blue-50 border-blue-200 hover:border-blue-300'
                 }`}
-                onClick={() => !notification.is_read && markAsRead(notification.id)}
+                onClick={() => {
+                  if (!notification.is_read) {
+                    markAsRead(notification.id);
+                  }
+                  if (notification.action_url) {
+                    window.location.href = notification.action_url;
+                  }
+                }}
               >
                 <div className="flex items-start gap-4">
                   {/* Icon */}
@@ -249,6 +299,11 @@ const Notifications = () => {
                           {!notification.is_read && (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                               New
+                            </span>
+                          )}
+                          {notification.action_url && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Click to view →
                             </span>
                           )}
                         </div>
