@@ -4591,7 +4591,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://running-smoothly.preview.emergentagent.com"
+        base_url = "https://thrift-hub-3.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -6698,6 +6698,156 @@ async def challenge_friend_to_goal(
         logger.error(f"Challenge friend error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create friend challenge")
 
+async def generate_enhanced_peer_comparison(user_savings_rate: float, peer_savings_rates: list, university: str, role: str, user_id: str):
+    """Generate enhanced peer comparison with detailed messaging and social pressure"""
+    try:
+        if not peer_savings_rates:
+            return {
+                "user_savings_rate": round(user_savings_rate, 1),
+                "peer_average_rate": 0,
+                "comparison_message": "No peer data available for comparison",
+                "detailed_message": "Be the first in your university to start tracking finances!",
+                "status": "no_data",
+                "peer_count": 0,
+                "university": university,
+                "role": role,
+                "motivation_level": "neutral",
+                "social_pressure": 0,
+                "actionable_tips": ["Start saving to compare with future peers"]
+            }
+        
+        avg_peer_rate = sum(peer_savings_rates) / len(peer_savings_rates)
+        comparison_percentage = ((user_savings_rate - avg_peer_rate) / avg_peer_rate * 100) if avg_peer_rate > 0 else 0
+        
+        # Calculate percentile ranking
+        better_than_count = sum(1 for rate in peer_savings_rates if user_savings_rate > rate)
+        percentile = (better_than_count / len(peer_savings_rates)) * 100
+        
+        # Get additional context
+        top_10_percent = sorted(peer_savings_rates, reverse=True)[:max(1, len(peer_savings_rates)//10)]
+        top_performer_rate = max(peer_savings_rates) if peer_savings_rates else 0
+        
+        # Generate detailed comparison messaging
+        if comparison_percentage > 20:
+            status = "top_performer"
+            motivation_level = "excellent"
+            social_pressure = 8
+            primary_message = f"🏆 Outstanding! You save {comparison_percentage:.1f}% more than peers!"
+            detailed_message = f"You're in the top {100-percentile:.0f}% of {role.lower()}s at {university}. Your {user_savings_rate:.1f}% savings rate puts you ahead of {better_than_count} out of {len(peer_savings_rates)} peers. Keep this momentum going!"
+            
+            actionable_tips = [
+                "Share your success story with friends",
+                "Consider mentoring peers with lower savings rates",
+                f"Challenge: Can you reach the top performer's {top_performer_rate:.1f}% rate?"
+            ]
+            
+        elif comparison_percentage > 5:
+            status = "above_average" 
+            motivation_level = "good"
+            social_pressure = 6
+            primary_message = f"✨ Great job! You save {comparison_percentage:.1f}% more than similar students"
+            detailed_message = f"You're doing better than {percentile:.0f}% of your peers at {university}. Your {user_savings_rate:.1f}% savings rate beats the average of {avg_peer_rate:.1f}%. You're on the right track!"
+            
+            actionable_tips = [
+                f"You're only {top_performer_rate - user_savings_rate:.1f}% away from the top performer",
+                "Invite friends to join and compete together",
+                "Try the 50/30/20 rule to optimize further"
+            ]
+            
+        elif comparison_percentage >= -5:
+            status = "average"
+            motivation_level = "okay"
+            social_pressure = 5
+            primary_message = f"📊 You're close to average - {user_savings_rate:.1f}% vs {avg_peer_rate:.1f}%"
+            detailed_message = f"You're performing similarly to most {role.lower()}s at {university}. Your savings rate is within 5% of the average. Small improvements can make a big difference!"
+            
+            actionable_tips = [
+                f"Increase savings by just 2% to beat {len([r for r in peer_savings_rates if r < user_savings_rate + 2]):.0f} more peers",
+                "Track expenses for 1 week to find saving opportunities", 
+                "Join a group challenge for motivation"
+            ]
+            
+        elif comparison_percentage >= -15:
+            status = "below_average"
+            motivation_level = "needs_improvement"
+            social_pressure = 7
+            primary_message = f"💪 You can improve! Currently {abs(comparison_percentage):.1f}% behind peers"
+            detailed_message = f"Your {user_savings_rate:.1f}% savings rate is below the {university} average of {avg_peer_rate:.1f}%. But don't worry - {len([r for r in peer_savings_rates if r < avg_peer_rate]):.0f} other students are also working to improve!"
+            
+            actionable_tips = [
+                f"Save just ₹{((avg_peer_rate - user_savings_rate) * 1000 / 100):.0f} more monthly to reach average",
+                "Use the 'Cook at Home' tip - save ₹200-400 daily",
+                f"Join friends who are already saving well - peer motivation works!"
+            ]
+            
+        else:  # More than 15% below
+            status = "needs_attention"
+            motivation_level = "urgent"
+            social_pressure = 9
+            primary_message = f"🚨 Action needed: {abs(comparison_percentage):.1f}% behind peers"
+            detailed_message = f"Your {user_savings_rate:.1f}% savings rate is significantly below your {university} peers' {avg_peer_rate:.1f}% average. Time to take action! Remember, small changes lead to big results."
+            
+            # Get user's recent expenses for personalized tips
+            recent_expenses = await db.transactions.find({
+                "user_id": user_id,
+                "type": "expense", 
+                "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=7)}
+            }).to_list(None)
+            
+            top_expense_categories = {}
+            for expense in recent_expenses:
+                category = expense.get("category", "Other")
+                top_expense_categories[category] = top_expense_categories.get(category, 0) + expense["amount"]
+            
+            top_category = max(top_expense_categories.items(), key=lambda x: x[1])[0] if top_expense_categories else "Food"
+            
+            actionable_tips = [
+                f"Focus on {top_category} expenses - your biggest spending area",
+                "Start with the 50/30/20 rule: 20% savings minimum",
+                f"Challenge a friend - social accountability helps!",
+                f"Quick win: Cook at home for 1 week, save ₹1,400+"
+            ]
+        
+        # Add university-specific insights
+        university_context = ""
+        if university:
+            if "IIT" in university or "NIT" in university:
+                university_context = f"Tech students at {university} typically excel at systematic saving!"
+            elif "Delhi" in university or "Mumbai" in university:
+                university_context = f"Metro city students face higher costs - great job tracking expenses!"
+            else:
+                university_context = f"{university} students are building strong financial habits together!"
+        
+        return {
+            "user_savings_rate": round(user_savings_rate, 1),
+            "peer_average_rate": round(avg_peer_rate, 1),
+            "comparison_message": primary_message,
+            "detailed_message": detailed_message,
+            "status": status,
+            "peer_count": len(peer_savings_rates),
+            "university": university,
+            "role": role,
+            "percentile": round(percentile, 1),
+            "motivation_level": motivation_level,
+            "social_pressure": social_pressure,
+            "actionable_tips": actionable_tips,
+            "university_context": university_context,
+            "top_performer_rate": round(top_performer_rate, 1),
+            "gap_to_top": round(max(0, top_performer_rate - user_savings_rate), 1),
+            "peers_behind": better_than_count,
+            "peers_ahead": len(peer_savings_rates) - better_than_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Enhanced peer comparison generation error: {str(e)}")
+        return {
+            "user_savings_rate": round(user_savings_rate, 1),
+            "peer_average_rate": 0,
+            "comparison_message": "Error generating comparison",
+            "status": "error",
+            "peer_count": 0
+        }
+
 # Peer comparison features
 @api_router.get("/social/peer-comparison")
 @limiter.limit("10/minute")
@@ -6745,33 +6895,197 @@ async def get_peer_comparison(
             peer_rate = (peer_savings / peer_income * 100) if peer_income > 0 else 0
             peer_savings_rates.append(peer_rate)
         
-        if peer_savings_rates:
-            avg_peer_rate = sum(peer_savings_rates) / len(peer_savings_rates)
-            comparison_percentage = ((user_savings_rate - avg_peer_rate) / avg_peer_rate * 100) if avg_peer_rate > 0 else 0
-            
-            if comparison_percentage > 0:
-                message = f"You save {comparison_percentage:.1f}% more than similar students! 🎉"
-                status = "above_average"
-            else:
-                message = f"You save {abs(comparison_percentage):.1f}% less than similar students"
-                status = "below_average"
-        else:
-            message = "No peer data available for comparison"
-            status = "no_data"
+        enhanced_comparison = await generate_enhanced_peer_comparison(
+            user_savings_rate, peer_savings_rates, university, role, user_id
+        )
         
-        return {
-            "user_savings_rate": round(user_savings_rate, 1),
-            "peer_average_rate": round(avg_peer_rate if peer_savings_rates else 0, 1),
-            "comparison_message": message,
-            "status": status,
-            "peer_count": len(peer_savings_rates),
-            "university": university,
-            "role": role
-        }
+        return enhanced_comparison
         
     except Exception as e:
         logger.error(f"Peer comparison error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get peer comparison")
+
+# Enhanced peer messaging with social pressure and motivation
+@api_router.get("/social/peer-messages") 
+@limiter.limit("10/minute")
+async def get_peer_motivation_messages(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get personalized peer comparison messages and social pressure alerts"""
+    try:
+        current_user = await db.users.find_one({"user_id": user_id})
+        if not current_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        university = current_user.get("university", "")
+        role = current_user.get("role", "Student")
+        
+        # Get recent peer activities for social pressure
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        # Friends' recent achievements
+        friends = await db.friends.find({
+            "$or": [{"user_id": user_id}, {"friend_id": user_id}],
+            "status": "accepted"
+        }).to_list(None)
+        
+        friend_ids = []
+        for friend in friends:
+            friend_id = friend["friend_id"] if friend["user_id"] == user_id else friend["user_id"] 
+            friend_ids.append(friend_id)
+        
+        peer_messages = []
+        
+        if friend_ids:
+            # Friends who saved more this week
+            friend_savings = []
+            for friend_id in friend_ids[:10]:  # Limit to 10 friends for performance
+                friend_transactions = await db.transactions.find({
+                    "user_id": friend_id,
+                    "created_at": {"$gte": week_ago}
+                }).to_list(None)
+                
+                friend_income = sum(tx["amount"] for tx in friend_transactions if tx["type"] == "income")
+                friend_expenses = sum(tx["amount"] for tx in friend_transactions if tx["type"] == "expense")
+                net_savings = friend_income - friend_expenses
+                
+                if net_savings > 0:
+                    friend_user = await db.users.find_one({"user_id": friend_id})
+                    friend_savings.append({
+                        "friend_id": friend_id,
+                        "name": friend_user.get("name", "Friend"),
+                        "avatar": friend_user.get("avatar", "boy"),
+                        "net_savings": net_savings
+                    })
+            
+            # Sort friends by savings
+            friend_savings.sort(key=lambda x: x["net_savings"], reverse=True)
+            
+            # Create social pressure messages
+            if friend_savings:
+                top_friend = friend_savings[0]
+                peer_messages.append({
+                    "type": "friend_outperforming",
+                    "urgency": "high",
+                    "title": f"🚀 {top_friend['name']} saved ₹{top_friend['net_savings']:.0f} this week!",
+                    "message": f"Your friend is on fire! They're ahead of you this week. Can you catch up?",
+                    "call_to_action": "Add income or reduce expenses",
+                    "action_url": "/transactions/new",
+                    "social_pressure": 8,
+                    "friend_avatar": top_friend['avatar']
+                })
+                
+                if len(friend_savings) >= 3:
+                    peer_messages.append({
+                        "type": "multiple_friends_saving",
+                        "urgency": "medium", 
+                        "title": f"💰 {len(friend_savings)} friends are actively saving!",
+                        "message": f"Don't get left behind! Your network is building wealth together.",
+                        "call_to_action": "Join the savings streak",
+                        "action_url": "/friends",
+                        "social_pressure": 6
+                    })
+        
+        # University peer pressure
+        university_active_users = await db.transactions.count_documents({
+            "created_at": {"$gte": week_ago}
+        })
+        
+        if university_active_users > 0:
+            peer_messages.append({
+                "type": "university_activity",
+                "urgency": "medium",
+                "title": f"📊 {university_active_users} students tracked money this week",
+                "message": f"Your {university} peers are getting ahead financially. Stay competitive!",
+                "call_to_action": "Track your expenses",
+                "action_url": "/analytics",
+                "social_pressure": 5
+            })
+        
+        # Challenge pressure - active challenges with friends
+        friend_challenges = await db.group_challenges.find({
+            "status": "active",
+            "participants": {"$in": friend_ids}
+        }).to_list(None)
+        
+        if friend_challenges:
+            peer_messages.append({
+                "type": "friends_in_challenges", 
+                "urgency": "high",
+                "title": f"⚡ Your friends are in {len(friend_challenges)} active challenges!",
+                "message": "They're earning points and badges while you're missing out!",
+                "call_to_action": "Join a challenge",
+                "action_url": "/group-challenges",
+                "social_pressure": 9
+            })
+        
+        # Personal performance decline
+        user_last_week = await db.transactions.find({
+            "user_id": user_id,
+            "created_at": {"$gte": week_ago - timedelta(days=7), "$lt": week_ago}
+        }).to_list(None)
+        
+        user_this_week = await db.transactions.find({
+            "user_id": user_id,
+            "created_at": {"$gte": week_ago}
+        }).to_list(None)
+        
+        if len(user_last_week) > len(user_this_week) and len(user_last_week) > 3:
+            peer_messages.append({
+                "type": "personal_decline",
+                "urgency": "high",
+                "title": "📉 Your financial tracking declined this week",
+                "message": f"You tracked {len(user_last_week)} transactions last week vs {len(user_this_week)} this week. Your peers are staying consistent!",
+                "call_to_action": "Get back on track",
+                "action_url": "/transactions",
+                "social_pressure": 7
+            })
+        
+        # Streak pressure
+        current_streak = current_user.get("current_streak", 0)
+        if current_streak == 0:
+            # Check friends' streaks
+            friend_streaks = []
+            for friend_id in friend_ids[:5]:
+                friend = await db.users.find_one({"user_id": friend_id})
+                if friend and friend.get("current_streak", 0) > 0:
+                    friend_streaks.append({
+                        "name": friend.get("name", "Friend"),
+                        "streak": friend.get("current_streak", 0)
+                    })
+            
+            if friend_streaks:
+                max_streak_friend = max(friend_streaks, key=lambda x: x["streak"])
+                peer_messages.append({
+                    "type": "streak_pressure",
+                    "urgency": "critical",
+                    "title": f"🔥 {max_streak_friend['name']} has a {max_streak_friend['streak']}-day streak!",
+                    "message": "Your friends are building habits while you're at 0 days. Start now!",
+                    "call_to_action": "Start your streak",
+                    "action_url": "/transactions/quick",
+                    "social_pressure": 10
+                })
+        
+        # Sort by social pressure (urgency)
+        urgency_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        peer_messages.sort(key=lambda x: urgency_order.get(x["urgency"], 0), reverse=True)
+        
+        return {
+            "peer_messages": peer_messages[:5],  # Limit to top 5 most urgent
+            "total_pressure_score": sum(msg.get("social_pressure", 0) for msg in peer_messages),
+            "friends_count": len(friend_ids),
+            "active_friends": len(friend_savings) if 'friend_savings' in locals() else 0,
+            "urgency_distribution": {
+                "critical": len([m for m in peer_messages if m["urgency"] == "critical"]),
+                "high": len([m for m in peer_messages if m["urgency"] == "high"]),
+                "medium": len([m for m in peer_messages if m["urgency"] == "medium"])
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Peer motivation messages error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get peer messages")
 
 # Social proof notifications
 @api_router.get("/social/social-proof")
@@ -6862,6 +7176,449 @@ async def get_social_proof_notifications(
     except Exception as e:
         logger.error(f"Social proof notifications error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get social proof notifications")
+
+# ================================================================================================
+# INDIVIDUAL FRIEND CHALLENGES SYSTEM (1-on-1 Challenges)
+# ================================================================================================
+
+@api_router.post("/individual-challenges/create")
+@limiter.limit("10/minute")
+async def create_individual_friend_challenge(
+    request: Request,
+    challenge_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Create a 1-on-1 challenge with a specific friend"""
+    try:
+        friend_id = challenge_data.get("friend_id")
+        challenge_type = challenge_data.get("challenge_type")  # "savings_race", "streak_battle", "expense_limit"
+        target_amount = challenge_data.get("target_amount", 0)
+        duration_days = challenge_data.get("duration_days", 7)
+        title = challenge_data.get("title", "")
+        description = challenge_data.get("description", "")
+        
+        # Validate friendship
+        friendship = await db.friends.find_one({
+            "$or": [
+                {"user_id": user_id, "friend_id": friend_id},
+                {"user_id": friend_id, "friend_id": user_id}
+            ],
+            "status": "accepted"
+        })
+        
+        if not friendship:
+            raise HTTPException(status_code=400, detail="You can only challenge accepted friends")
+        
+        # Create individual challenge
+        challenge_id = str(uuid.uuid4())
+        end_date = datetime.now(timezone.utc) + timedelta(days=duration_days)
+        
+        individual_challenge = {
+            "challenge_id": challenge_id,
+            "challenger_id": user_id,
+            "challenged_id": friend_id,
+            "challenge_type": challenge_type,
+            "title": title,
+            "description": description,
+            "target_amount": target_amount,
+            "duration_days": duration_days,
+            "start_date": datetime.now(timezone.utc),
+            "end_date": end_date,
+            "status": "pending",  # pending, active, completed, declined
+            "challenger_progress": 0,
+            "challenged_progress": 0,
+            "winner": None,
+            "created_at": datetime.now(timezone.utc),
+            "stakes": challenge_data.get("stakes", "Bragging rights!")
+        }
+        
+        await db.individual_challenges.insert_one(individual_challenge)
+        
+        # Create notification for challenged friend
+        notification = {
+            "notification_id": str(uuid.uuid4()),
+            "user_id": friend_id,
+            "notification_type": "individual_challenge_invite",
+            "title": f"🥊 Challenge from {user_id}!",
+            "message": f"You've been challenged to: {title}",
+            "action_url": f"/individual-challenges/{challenge_id}",
+            "related_id": challenge_id,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        await db.in_app_notifications.insert_one(notification)
+        
+        return {
+            "success": True,
+            "challenge_id": challenge_id,
+            "message": "Challenge sent to your friend!",
+            "challenge_details": individual_challenge
+        }
+        
+    except Exception as e:
+        logger.error(f"Individual challenge creation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create individual challenge")
+
+@api_router.post("/individual-challenges/{challenge_id}/respond")
+@limiter.limit("10/minute") 
+async def respond_to_individual_challenge(
+    request: Request,
+    challenge_id: str,
+    response_data: dict,
+    user_id: str = Depends(get_current_user)
+):
+    """Accept or decline an individual challenge"""
+    try:
+        action = response_data.get("action")  # "accept" or "decline"
+        
+        # Find the challenge
+        challenge = await db.individual_challenges.find_one({"challenge_id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Verify user is the challenged person
+        if challenge["challenged_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to respond to this challenge")
+        
+        # Check if challenge is still pending
+        if challenge["status"] != "pending":
+            raise HTTPException(status_code=400, detail="Challenge is no longer pending")
+        
+        if action == "accept":
+            # Accept the challenge
+            await db.individual_challenges.update_one(
+                {"challenge_id": challenge_id},
+                {
+                    "$set": {
+                        "status": "active",
+                        "start_date": datetime.now(timezone.utc),
+                        "end_date": datetime.now(timezone.utc) + timedelta(days=challenge["duration_days"])
+                    }
+                }
+            )
+            
+            # Notify challenger
+            notification = {
+                "notification_id": str(uuid.uuid4()),
+                "user_id": challenge["challenger_id"],
+                "notification_type": "challenge_accepted",
+                "title": "🔥 Challenge Accepted!",
+                "message": f"Your friend accepted your challenge: {challenge['title']}",
+                "action_url": f"/individual-challenges/{challenge_id}",
+                "related_id": challenge_id,
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc)
+            }
+            
+            await db.in_app_notifications.insert_one(notification)
+            
+            return {"success": True, "message": "Challenge accepted! Let the battle begin!", "status": "active"}
+            
+        elif action == "decline":
+            # Decline the challenge
+            await db.individual_challenges.update_one(
+                {"challenge_id": challenge_id},
+                {"$set": {"status": "declined"}}
+            )
+            
+            # Notify challenger
+            notification = {
+                "notification_id": str(uuid.uuid4()),
+                "user_id": challenge["challenger_id"],
+                "notification_type": "challenge_declined",
+                "title": "💔 Challenge Declined",
+                "message": f"Your friend declined the challenge: {challenge['title']}",
+                "action_url": "/individual-challenges",
+                "related_id": challenge_id,
+                "is_read": False,
+                "created_at": datetime.now(timezone.utc)
+            }
+            
+            await db.in_app_notifications.insert_one(notification)
+            
+            return {"success": True, "message": "Challenge declined", "status": "declined"}
+        
+    except Exception as e:
+        logger.error(f"Individual challenge response error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to respond to challenge")
+
+@api_router.get("/individual-challenges")
+@limiter.limit("20/minute")
+async def get_individual_challenges(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's individual challenges (both created and received)"""
+    try:
+        # Get challenges where user is either challenger or challenged
+        challenges = await db.individual_challenges.find({
+            "$or": [
+                {"challenger_id": user_id},
+                {"challenged_id": user_id}
+            ]
+        }).sort("created_at", -1).to_list(None)
+        
+        # Get friend details for each challenge
+        for challenge in challenges:
+            friend_id = challenge["challenged_id"] if challenge["challenger_id"] == user_id else challenge["challenger_id"]
+            friend = await db.users.find_one({"user_id": friend_id})
+            
+            challenge["friend_info"] = {
+                "friend_id": friend_id,
+                "name": friend.get("name", "Unknown"),
+                "avatar": friend.get("avatar", "boy"),
+                "university": friend.get("university", "")
+            }
+            
+            challenge["user_role"] = "challenger" if challenge["challenger_id"] == user_id else "challenged"
+            
+            # Calculate progress
+            await update_individual_challenge_progress(challenge["challenge_id"])
+        
+        # Refresh challenge data after progress update
+        challenges = await db.individual_challenges.find({
+            "$or": [
+                {"challenger_id": user_id},
+                {"challenged_id": user_id}
+            ]
+        }).sort("created_at", -1).to_list(None)
+        
+        return {
+            "challenges": challenges,
+            "total": len(challenges),
+            "active_count": len([c for c in challenges if c["status"] == "active"]),
+            "pending_count": len([c for c in challenges if c["status"] == "pending"])
+        }
+        
+    except Exception as e:
+        logger.error(f"Get individual challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get individual challenges")
+
+@api_router.get("/individual-challenges/{challenge_id}")
+@limiter.limit("20/minute")
+async def get_individual_challenge_details(
+    request: Request,
+    challenge_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Get detailed information about a specific individual challenge"""
+    try:
+        challenge = await db.individual_challenges.find_one({"challenge_id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Verify user is part of this challenge
+        if challenge["challenger_id"] != user_id and challenge["challenged_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this challenge")
+        
+        # Update progress
+        await update_individual_challenge_progress(challenge_id)
+        
+        # Get updated challenge data
+        challenge = await db.individual_challenges.find_one({"challenge_id": challenge_id})
+        
+        # Get both users' info
+        challenger = await db.users.find_one({"user_id": challenge["challenger_id"]})
+        challenged = await db.users.find_one({"user_id": challenge["challenged_id"]})
+        
+        challenge["challenger_info"] = {
+            "name": challenger.get("name", "Unknown"),
+            "avatar": challenger.get("avatar", "boy"),
+            "university": challenger.get("university", "")
+        }
+        
+        challenge["challenged_info"] = {
+            "name": challenged.get("name", "Unknown"),
+            "avatar": challenged.get("avatar", "girl"),
+            "university": challenged.get("university", "")
+        }
+        
+        # Calculate time remaining
+        if challenge["status"] == "active":
+            time_remaining = challenge["end_date"] - datetime.now(timezone.utc)
+            challenge["hours_remaining"] = max(0, int(time_remaining.total_seconds() // 3600))
+            challenge["days_remaining"] = max(0, time_remaining.days)
+        
+        return challenge
+        
+    except Exception as e:
+        logger.error(f"Get individual challenge details error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenge details")
+
+async def update_individual_challenge_progress(challenge_id: str):
+    """Update progress for an individual challenge"""
+    try:
+        challenge = await db.individual_challenges.find_one({"challenge_id": challenge_id})
+        if not challenge or challenge["status"] != "active":
+            return
+        
+        challenge_type = challenge["challenge_type"]
+        start_date = challenge["start_date"]
+        end_date = challenge["end_date"]
+        now = datetime.now(timezone.utc)
+        
+        # Calculate challenger progress
+        challenger_progress = await calculate_individual_challenge_progress(
+            challenge["challenger_id"], challenge_type, start_date
+        )
+        
+        # Calculate challenged progress  
+        challenged_progress = await calculate_individual_challenge_progress(
+            challenge["challenged_id"], challenge_type, start_date
+        )
+        
+        # Update challenge with new progress
+        update_data = {
+            "challenger_progress": challenger_progress,
+            "challenged_progress": challenged_progress
+        }
+        
+        # Check if challenge is completed
+        if now >= end_date:
+            # Determine winner based on challenge type and progress
+            if challenge_type == "savings_race":
+                if challenger_progress > challenged_progress:
+                    winner = challenge["challenger_id"]
+                elif challenged_progress > challenger_progress:
+                    winner = challenge["challenged_id"]
+                else:
+                    winner = "tie"
+            elif challenge_type == "streak_battle":
+                if challenger_progress > challenged_progress:
+                    winner = challenge["challenger_id"]
+                elif challenged_progress > challenger_progress:
+                    winner = challenge["challenged_id"]
+                else:
+                    winner = "tie"
+            else:
+                winner = "tie"
+            
+            update_data["status"] = "completed"
+            update_data["winner"] = winner
+            
+            # Send completion notifications
+            await send_challenge_completion_notifications(challenge_id, winner)
+        
+        await db.individual_challenges.update_one(
+            {"challenge_id": challenge_id},
+            {"$set": update_data}
+        )
+        
+    except Exception as e:
+        logger.error(f"Update individual challenge progress error: {str(e)}")
+
+async def calculate_individual_challenge_progress(user_id: str, challenge_type: str, start_date: datetime) -> float:
+    """Calculate user's progress for individual challenge"""
+    try:
+        if challenge_type == "savings_race":
+            # Calculate income since challenge start
+            income_result = await db.transactions.aggregate([
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "type": "income",
+                        "created_at": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_income": {"$sum": "$amount"}
+                    }
+                }
+            ]).to_list(None)
+            
+            return income_result[0]["total_income"] if income_result else 0.0
+            
+        elif challenge_type == "streak_battle":
+            # Get current streak
+            user = await db.users.find_one({"user_id": user_id})
+            return user.get("current_streak", 0)
+            
+        elif challenge_type == "expense_limit":
+            # Calculate expenses since challenge start
+            expense_result = await db.transactions.aggregate([
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "type": "expense",
+                        "created_at": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_expenses": {"$sum": "$amount"}
+                    }
+                }
+            ]).to_list(None)
+            
+            # For expense limit, lower is better (return negative to make comparison work)
+            return -(expense_result[0]["total_expenses"] if expense_result else 0.0)
+        
+        return 0.0
+        
+    except Exception as e:
+        logger.error(f"Calculate individual challenge progress error: {str(e)}")
+        return 0.0
+
+async def send_challenge_completion_notifications(challenge_id: str, winner: str):
+    """Send notifications when individual challenge completes"""
+    try:
+        challenge = await db.individual_challenges.find_one({"challenge_id": challenge_id})
+        if not challenge:
+            return
+        
+        challenger_id = challenge["challenger_id"]
+        challenged_id = challenge["challenged_id"]
+        
+        # Notification for challenger
+        challenger_notification = {
+            "notification_id": str(uuid.uuid4()),
+            "user_id": challenger_id,
+            "notification_type": "challenge_completed",
+            "title": "🏁 Challenge Complete!",
+            "message": "",
+            "action_url": f"/individual-challenges/{challenge_id}",
+            "related_id": challenge_id,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        # Notification for challenged
+        challenged_notification = {
+            "notification_id": str(uuid.uuid4()),
+            "user_id": challenged_id,
+            "notification_type": "challenge_completed", 
+            "title": "🏁 Challenge Complete!",
+            "message": "",
+            "action_url": f"/individual-challenges/{challenge_id}",
+            "related_id": challenge_id,
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        if winner == challenger_id:
+            challenger_notification["message"] = f"🎉 You won the challenge: {challenge['title']}!"
+            challenger_notification["title"] = "🏆 You Won!"
+            challenged_notification["message"] = f"😔 You lost the challenge: {challenge['title']}"
+            challenged_notification["title"] = "😔 Challenge Lost"
+        elif winner == challenged_id:
+            challenger_notification["message"] = f"😔 You lost the challenge: {challenge['title']}"
+            challenger_notification["title"] = "😔 Challenge Lost"
+            challenged_notification["message"] = f"🎉 You won the challenge: {challenge['title']}!"
+            challenged_notification["title"] = "🏆 You Won!"
+        else:
+            challenger_notification["message"] = f"🤝 Tie! Great effort on: {challenge['title']}"
+            challenger_notification["title"] = "🤝 It's a Tie!"
+            challenged_notification["message"] = f"🤝 Tie! Great effort on: {challenge['title']}"
+            challenged_notification["title"] = "🤝 It's a Tie!"
+        
+        await db.in_app_notifications.insert_many([challenger_notification, challenged_notification])
+        
+    except Exception as e:
+        logger.error(f"Send challenge completion notifications error: {str(e)}")
 
 # ================================================================================================
 # PHASE 2: ENGAGEMENT FEATURES IMPLEMENTATION
@@ -7070,6 +7827,138 @@ async def get_daily_financial_tip(
     except Exception as e:
         logger.error(f"Daily tip error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get daily tip")
+
+# Enhanced daily tips with push notification scheduling
+@api_router.post("/engagement/schedule-daily-tips")
+@limiter.limit("5/minute")
+async def schedule_daily_tip_notifications(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Schedule daily tip push notifications for user"""
+    try:
+        # Check if user has active push subscription
+        subscription = await db.push_subscriptions.find_one({
+            "user_id": user_id,
+            "is_active": True
+        })
+        
+        if not subscription:
+            return {
+                "success": False,
+                "message": "Please enable push notifications first to receive daily tips"
+            }
+        
+        # Check current preferences
+        preferences = subscription.get("notification_preferences", {})
+        if not preferences.get("daily_tips", True):
+            return {
+                "success": False,
+                "message": "Daily tip notifications are disabled in your preferences"
+            }
+        
+        # Create daily tip schedule
+        schedule_entry = {
+            "user_id": user_id,
+            "notification_type": "daily_tip",
+            "scheduled_time": "09:00",  # 9 AM daily
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc),
+            "last_sent": None,
+            "timezone": "Asia/Kolkata"  # Default to Indian timezone
+        }
+        
+        # Upsert schedule (update if exists, create if not)
+        await db.notification_schedules.update_one(
+            {
+                "user_id": user_id,
+                "notification_type": "daily_tip"
+            },
+            {"$set": schedule_entry},
+            upsert=True
+        )
+        
+        return {
+            "success": True,
+            "message": "Daily tip notifications scheduled for 9:00 AM",
+            "scheduled_time": "09:00"
+        }
+        
+    except Exception as e:
+        logger.error(f"Daily tip scheduling error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to schedule daily tips")
+
+# Send daily tip push notification (called by scheduler)
+async def send_daily_tip_push_notification(user_id: str):
+    """Send daily tip as push notification"""
+    try:
+        if not PUSH_NOTIFICATION_AVAILABLE:
+            return False
+        
+        push_service = get_push_service()
+        if not push_service:
+            return False
+        
+        # Get today's tip
+        today = datetime.now(timezone.utc).date()
+        tip_index = hash(str(today) + user_id) % 50
+        
+        # Reduced tip set for notifications (most impactful ones)
+        notification_tips = [
+            {"title": "💡 50/30/20 Rule", "content": "Allocate 50% to needs, 30% to wants, 20% to savings!", "icon": "💡"},
+            {"title": "☕ Track Small Expenses", "content": "Daily chai & snacks add up to ₹3,000+ monthly. Track them!", "icon": "☕"},
+            {"title": "🚨 Emergency Fund", "content": "Build 3-6 months expenses emergency fund before investing.", "icon": "🚨"},
+            {"title": "🍳 Cook at Home", "content": "Save ₹200-400 daily by cooking instead of ordering food.", "icon": "🍳"},
+            {"title": "🎓 Student Discounts", "content": "Always ask for student discounts - get 10-20% off!", "icon": "🎓"},
+            {"title": "🚌 Public Transport", "content": "Use student passes for maximum transport savings.", "icon": "🚌"},
+            {"title": "💧 Water Bottle", "content": "Carry water bottle - save ₹600+ monthly on bottles.", "icon": "💧"},
+            {"title": "💼 Side Hustles", "content": "Start freelancing - earn ₹5,000-15,000 monthly!", "icon": "💼"},
+            {"title": "📱 Subscription Audit", "content": "Cancel unused subscriptions - save ₹500-1500 monthly.", "icon": "📱"},
+            {"title": "⚡ Energy Saving", "content": "Unplug devices when not in use - reduce bills by 10-15%.", "icon": "⚡"}
+        ]
+        
+        selected_tip = notification_tips[tip_index % len(notification_tips)]
+        
+        # Create notification payload
+        notification_data = {
+            "title": f"💰 Daily Financial Tip",
+            "message": f"{selected_tip['title']}: {selected_tip['content']}",
+            "icon": selected_tip["icon"],
+            "type": "daily_tip",
+            "action_url": "/dashboard"
+        }
+        
+        # Send push notification
+        success = await push_service.send_milestone_notification(user_id, notification_data)
+        
+        if success:
+            # Mark as sent in schedule
+            await db.notification_schedules.update_one(
+                {
+                    "user_id": user_id,
+                    "notification_type": "daily_tip"
+                },
+                {
+                    "$set": {
+                        "last_sent": datetime.now(timezone.utc)
+                    }
+                }
+            )
+            
+            # Track engagement
+            await db.daily_tips_sent.insert_one({
+                "user_id": user_id,
+                "date": today.isoformat(),
+                "tip_content": selected_tip["content"],
+                "sent_at": datetime.now(timezone.utc),
+                "notification_method": "push"
+            })
+        
+        return success
+        
+    except Exception as e:
+        logger.error(f"Daily tip push notification error: {str(e)}")
+        return False
 
 # ================================================================================================
 # PHASE 3: RETENTION MECHANICS IMPLEMENTATION  
@@ -8076,6 +8965,166 @@ async def get_fomo_alerts(
     except Exception as e:
         logger.error(f"FOMO alerts error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get FOMO alerts")
+
+# Enhanced FOMO mechanics with countdown timers
+@api_router.get("/engagement/countdown-alerts")
+@limiter.limit("10/minute")
+async def get_countdown_alerts(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get time-sensitive alerts with precise countdown timers"""
+    try:
+        now = datetime.now(timezone.utc)
+        countdown_alerts = []
+        
+        # Flash savings challenge (6-hour windows)
+        flash_end_times = [
+            now.replace(hour=11, minute=0, second=0, microsecond=0),  # 11 AM
+            now.replace(hour=17, minute=0, second=0, microsecond=0),  # 5 PM  
+            now.replace(hour=21, minute=0, second=0, microsecond=0)   # 9 PM
+        ]
+        
+        # Find the next flash challenge window
+        next_flash = None
+        for flash_time in flash_end_times:
+            if flash_time > now:
+                next_flash = flash_time
+                break
+        
+        if not next_flash:
+            # If no more windows today, use tomorrow's 11 AM
+            next_flash = (now + timedelta(days=1)).replace(hour=11, minute=0, second=0, microsecond=0)
+        
+        seconds_remaining = int((next_flash - now).total_seconds())
+        if seconds_remaining > 0 and seconds_remaining <= 21600:  # Within 6 hours
+            countdown_alerts.append({
+                "id": "flash_savings",
+                "type": "flash_challenge",
+                "title": "⚡ Flash Savings Challenge",
+                "message": f"Save ₹100 in the next {seconds_remaining//3600}h {(seconds_remaining%3600)//60}m - win 2x points!",
+                "deadline": next_flash.isoformat(),
+                "seconds_remaining": seconds_remaining,
+                "urgency": "critical" if seconds_remaining <= 1800 else "high",  # Critical if < 30 min
+                "reward": "Double points on all transactions",
+                "action": "Make Transaction",
+                "action_url": "/transactions/new",
+                "countdown_display": "live"
+            })
+        
+        # Daily milestone deadline (11:59 PM)
+        today_end = now.replace(hour=23, minute=59, second=0, microsecond=0)
+        seconds_to_midnight = int((today_end - now).total_seconds())
+        
+        # Check if user needs to complete daily goal
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_transactions = await db.transactions.find({
+            "user_id": user_id,
+            "created_at": {"$gte": today_start, "$lt": today_end}
+        }).to_list(None)
+        
+        if len(today_transactions) == 0 and seconds_to_midnight > 0:
+            countdown_alerts.append({
+                "id": "daily_streak",
+                "type": "daily_deadline",
+                "title": "🔥 Save Your Streak!",
+                "message": f"Add 1 transaction before midnight to maintain your streak!",
+                "deadline": today_end.isoformat(),
+                "seconds_remaining": seconds_to_midnight,
+                "urgency": "critical" if seconds_to_midnight <= 3600 else "high",  # Critical if < 1 hour
+                "consequence": "Lose current streak",
+                "action": "Quick Add",
+                "action_url": "/transactions/quick",
+                "countdown_display": "live"
+            })
+        
+        # Weekend challenge countdown (Friday 6 PM to Sunday 11:59 PM)
+        if now.weekday() == 4 and now.hour >= 18:  # Friday after 6 PM
+            sunday_end = now + timedelta(days=2)
+            sunday_end = sunday_end.replace(hour=23, minute=59, second=0, microsecond=0)
+            weekend_seconds = int((sunday_end - now).total_seconds())
+            
+            countdown_alerts.append({
+                "id": "weekend_challenge",
+                "type": "weekend_special",
+                "title": "🎉 Weekend Savings Sprint",
+                "message": "Save ₹500 this weekend - unlock special badge!",
+                "deadline": sunday_end.isoformat(),
+                "seconds_remaining": weekend_seconds,
+                "urgency": "medium",
+                "reward": "Weekend Warrior badge + 100 points",
+                "action": "Start Saving",
+                "action_url": "/challenges/weekend",
+                "countdown_display": "live"
+            })
+        
+        # Limited mentor booking (next 2 hours)
+        mentor_deadline = now + timedelta(hours=2)
+        available_slots = max(0, 5 - (hash(user_id) % 7))
+        
+        if available_slots > 0:
+            countdown_alerts.append({
+                "id": "mentor_booking",
+                "type": "limited_slots",
+                "title": f"🎯 {available_slots} Mentor Slots Left",
+                "message": "Book your 1-on-1 financial mentor session now!",
+                "deadline": mentor_deadline.isoformat(),
+                "seconds_remaining": 7200,  # 2 hours
+                "urgency": "high" if available_slots <= 2 else "medium",
+                "spots_remaining": available_slots,
+                "action": "Book Now",
+                "action_url": "/mentorship/book",
+                "countdown_display": "slots"
+            })
+        
+        # Referral bonus countdown (monthly reset)
+        # Calculate next month's first day
+        if now.month == 12:
+            next_month = now.replace(year=now.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            next_month = now.replace(month=now.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        month_end_seconds = int((next_month - now).total_seconds())
+        
+        # Check user's monthly referrals
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_referrals = await db.referral_programs.count_documents({
+            "referred_by": user_id,
+            "created_at": {"$gte": month_start}
+        })
+        
+        if monthly_referrals < 5 and month_end_seconds <= 604800:  # Less than a week left
+            countdown_alerts.append({
+                "id": "referral_deadline",
+                "type": "monthly_deadline",
+                "title": "💰 Monthly Referral Bonus Ending",
+                "message": f"Refer {5 - monthly_referrals} more friends to earn ₹500 bonus!",
+                "deadline": next_month.isoformat(),
+                "seconds_remaining": month_end_seconds,
+                "urgency": "medium" if month_end_seconds > 86400 else "high",  # High if < 24 hours
+                "progress": f"{monthly_referrals}/5 referrals",
+                "reward": "₹500 referral bonus",
+                "action": "Invite Friends", 
+                "action_url": "/referrals/invite",
+                "countdown_display": "progress"
+            })
+        
+        # Sort by urgency (critical > high > medium > low)
+        urgency_order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+        countdown_alerts.sort(key=lambda x: urgency_order.get(x["urgency"], 0), reverse=True)
+        
+        return {
+            "countdown_alerts": countdown_alerts,
+            "total_active": len(countdown_alerts),
+            "critical_count": sum(1 for alert in countdown_alerts if alert["urgency"] == "critical"),
+            "server_time": now.isoformat(),
+            "timezone": "UTC",
+            "update_frequency": "30s"  # Recommend frontend updates every 30 seconds
+        }
+        
+    except Exception as e:
+        logger.error(f"Countdown alerts error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get countdown alerts")
 
 # Photo sharing for achievements  
 @api_router.post("/engagement/upload-achievement-photo")
