@@ -140,7 +140,7 @@ const NotificationSettings = () => {
       pushNotificationService.showLocalNotification(
         '🧪 Test Notification',
         {
-          body: 'This is a test notification from EarnNest!',
+          body: 'This is a test notification from EarnAura!',
           icon: '/icons/achievement-icon.png',
           requireInteraction: false
         }
