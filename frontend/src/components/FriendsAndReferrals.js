@@ -522,6 +522,19 @@ const FriendsAndReferrals = () => {
                           <span className="text-gray-500">Points:</span>
                           <span className="font-medium">{friend.total_points || 0}</span>
                         </div>
+                        
+                        {/* Challenge Friend Button */}
+                        <div className="mt-3 pt-2 border-t">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="w-full text-xs"
+                            onClick={() => window.location.href = '/challenges?tab=friend_challenges&challenge_friend=' + friend.user_id}
+                          >
+                            <TrophyIcon className="w-3 h-3 mr-1" />
+                            Challenge Friend
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
