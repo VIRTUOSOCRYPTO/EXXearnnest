@@ -320,6 +320,376 @@ class PushNotificationService:
         
         return len(tasks)
 
+    async def send_daily_tip_notification(self, user_id: str, tip_data: Dict[str, Any]):
+        """Send push notification for daily financial tip"""
+        try:
+            subscription = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "is_active": True
+            })
+            
+            if not subscription:
+                return False
+            
+            preferences = subscription.get("notification_preferences", {})
+            if not preferences.get("daily_tips", True):
+                return False
+            
+            notification_payload = {
+                "title": f"💡 {tip_data['title']}",
+                "body": tip_data['message'][:120] + "..." if len(tip_data['message']) > 120 else tip_data['message'],
+                "icon": "/icons/tip-icon.png",
+                "badge": "/icons/badge-icon.png",
+                "data": {
+                    "type": "daily_tip",
+                    "tip_id": tip_data.get('tip_id'),
+                    "url": "/dashboard",
+                    "tip_category": tip_data.get('category', 'general')
+                },
+                "actions": [
+                    {
+                        "action": "view",
+                        "title": "View Tip"
+                    },
+                    {
+                        "action": "save",
+                        "title": "Save for Later"
+                    }
+                ],
+                "tag": "daily-tip"
+            }
+            
+            return await self._send_push_notification(subscription["subscription_data"], notification_payload)
+            
+        except Exception as e:
+            logger.error(f"Send daily tip notification error: {str(e)}")
+            return False
+
+    async def send_limited_offer_notification(self, user_id: str, offer_data: Dict[str, Any]):
+        """Send push notification for limited-time offers"""
+        try:
+            subscription = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "is_active": True
+            })
+            
+            if not subscription:
+                return False
+            
+            preferences = subscription.get("notification_preferences", {})
+            if not preferences.get("limited_offers", True):
+                return False
+            
+            urgency_level = offer_data.get('urgency_level', 3)
+            require_interaction = urgency_level >= 4
+            
+            notification_payload = {
+                "title": offer_data['title'],
+                "body": offer_data['message'],
+                "icon": "/icons/offer-icon.png",
+                "badge": "/icons/badge-icon.png",
+                "data": {
+                    "type": "limited_offer",
+                    "offer_id": offer_data.get('offer_id'),
+                    "url": f"/offers/{offer_data.get('offer_id')}",
+                    "urgency_level": urgency_level
+                },
+                "actions": [
+                    {
+                        "action": "view",
+                        "title": "View Offer"
+                    },
+                    {
+                        "action": "join",
+                        "title": "Join Now!"
+                    }
+                ],
+                "tag": f"offer-{offer_data.get('offer_id')}",
+                "requireInteraction": require_interaction
+            }
+            
+            return await self._send_push_notification(subscription["subscription_data"], notification_payload)
+            
+        except Exception as e:
+            logger.error(f"Send limited offer notification error: {str(e)}")
+            return False
+
+    async def send_friend_activity_notification(self, user_id: str, activity_data: Dict[str, Any]):
+        """Send push notification for friend activities"""
+        try:
+            subscription = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "is_active": True
+            })
+            
+            if not subscription:
+                return False
+            
+            preferences = subscription.get("notification_preferences", {})
+            if not preferences.get("friend_activities", True):
+                return False
+            
+            friend_name = activity_data.get('friend_name', 'A friend')
+            activity_type = activity_data.get('activity_type', 'achieved something')
+            
+            # Customize notification based on activity type
+            if activity_type == "milestone":
+                title = f"🎉 {friend_name} Hit a Milestone!"
+                body = f"{friend_name} {activity_data.get('description', 'achieved a financial milestone')}. Motivate them!"
+                icon_path = "/icons/milestone-icon.png"
+            elif activity_type == "goal_completed":
+                title = f"🏆 {friend_name} Completed a Goal!"
+                body = f"{friend_name} {activity_data.get('description', 'completed their financial goal')}. Celebrate with them!"
+                icon_path = "/icons/goal-icon.png"
+            elif activity_type == "streak":
+                title = f"🔥 {friend_name}'s Streak!"
+                body = f"{friend_name} {activity_data.get('description', 'extended their tracking streak')}. Keep up the motivation!"
+                icon_path = "/icons/streak-icon.png"
+            else:
+                title = f"👥 Friend Update"
+                body = f"{friend_name} {activity_data.get('description', 'has new activity')} on EarnNest"
+                icon_path = "/icons/friend-icon.png"
+            
+            notification_payload = {
+                "title": title,
+                "body": body,
+                "icon": icon_path,
+                "badge": "/icons/badge-icon.png",
+                "data": {
+                    "type": "friend_activity",
+                    "friend_id": activity_data.get('friend_id'),
+                    "activity_id": activity_data.get('activity_id'),
+                    "url": "/friends",
+                    "activity_type": activity_type
+                },
+                "actions": [
+                    {
+                        "action": "view",
+                        "title": "View Activity"
+                    },
+                    {
+                        "action": "react",
+                        "title": "React"
+                    }
+                ],
+                "tag": "friend-activity"
+            }
+            
+            return await self._send_push_notification(subscription["subscription_data"], notification_payload)
+            
+        except Exception as e:
+            logger.error(f"Send friend activity notification error: {str(e)}")
+            return False
+
+    async def send_timeline_reaction_notification(self, user_id: str, reaction_data: Dict[str, Any]):
+        """Send push notification when someone reacts to user's timeline event"""
+        try:
+            subscription = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "is_active": True
+            })
+            
+            if not subscription:
+                return False
+            
+            preferences = subscription.get("notification_preferences", {})
+            if not preferences.get("friend_activities", True):
+                return False
+            
+            reactor_name = reaction_data.get('reactor_name', 'Someone')
+            reaction_type = reaction_data.get('reaction_type', 'liked')
+            event_title = reaction_data.get('event_title', 'your activity')
+            
+            # Reaction emojis
+            reaction_emojis = {
+                "like": "👍",
+                "celebrate": "🎉", 
+                "motivate": "💪",
+                "inspire": "✨"
+            }
+            
+            emoji = reaction_emojis.get(reaction_type, "👍")
+            
+            notification_payload = {
+                "title": f"{emoji} New Reaction!",
+                "body": f"{reactor_name} {reaction_type}d {event_title}",
+                "icon": "/icons/reaction-icon.png",
+                "badge": "/icons/badge-icon.png",
+                "data": {
+                    "type": "timeline_reaction",
+                    "reactor_id": reaction_data.get('reactor_id'),
+                    "event_id": reaction_data.get('event_id'),
+                    "url": f"/timeline?event_id={reaction_data.get('event_id')}",
+                    "reaction_type": reaction_type
+                },
+                "actions": [
+                    {
+                        "action": "view",
+                        "title": "View Timeline"
+                    }
+                ],
+                "tag": "timeline-reaction"
+            }
+            
+            return await self._send_push_notification(subscription["subscription_data"], notification_payload)
+            
+        except Exception as e:
+            logger.error(f"Send timeline reaction notification error: {str(e)}")
+            return False
+
+    async def send_challenge_update_notification(self, user_id: str, challenge_data: Dict[str, Any]):
+        """Send push notification for challenge updates"""
+        try:
+            subscription = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "is_active": True
+            })
+            
+            if not subscription:
+                return False
+            
+            preferences = subscription.get("notification_preferences", {})
+            if not preferences.get("challenge_updates", True):
+                return False
+            
+            update_type = challenge_data.get('update_type')
+            challenge_title = challenge_data.get('title', 'Challenge')
+            
+            if update_type == "deadline_approaching":
+                title = f"⏰ Challenge Deadline Soon!"
+                body = f"{challenge_title} ends in {challenge_data.get('time_remaining', 'soon')}. Push to finish!"
+                require_interaction = True
+            elif update_type == "progress_milestone":
+                title = f"📈 Challenge Progress!"
+                body = f"You're {challenge_data.get('progress', '50')}% done with {challenge_title}. Keep going!"
+                require_interaction = False
+            elif update_type == "leaderboard_change":
+                title = f"🏆 Leaderboard Update!"
+                body = f"You're now #{challenge_data.get('rank', '?')} in {challenge_title}!"
+                require_interaction = False
+            else:
+                title = f"🎯 Challenge Update"
+                body = f"New update for {challenge_title}"
+                require_interaction = False
+            
+            notification_payload = {
+                "title": title,
+                "body": body,
+                "icon": "/icons/challenge-icon.png",
+                "badge": "/icons/badge-icon.png",
+                "data": {
+                    "type": "challenge_update",
+                    "challenge_id": challenge_data.get('challenge_id'),
+                    "url": f"/challenges/{challenge_data.get('challenge_id')}",
+                    "update_type": update_type
+                },
+                "actions": [
+                    {
+                        "action": "view",
+                        "title": "View Challenge"
+                    }
+                ],
+                "tag": f"challenge-{challenge_data.get('challenge_id')}",
+                "requireInteraction": require_interaction
+            }
+            
+            return await self._send_push_notification(subscription["subscription_data"], notification_payload)
+            
+        except Exception as e:
+            logger.error(f"Send challenge update notification error: {str(e)}")
+            return False
+
+    async def create_push_subscription(self, user_id: str, subscription_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or update push notification subscription for user"""
+        try:
+            # Check if subscription already exists
+            existing = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "subscription_data.endpoint": subscription_data["subscription_data"]["endpoint"]
+            })
+            
+            if existing:
+                # Update existing subscription
+                await self.db.push_subscriptions.update_one(
+                    {"user_id": user_id, "subscription_data.endpoint": subscription_data["subscription_data"]["endpoint"]},
+                    {
+                        "$set": {
+                            "subscription_data": subscription_data["subscription_data"],
+                            "device_type": subscription_data.get("device_type", "web"),
+                            "browser_info": subscription_data.get("browser_info"),
+                            "is_active": True,
+                            "last_used_at": datetime.now(timezone.utc)
+                        }
+                    }
+                )
+                return {"success": True, "message": "Subscription updated"}
+            else:
+                # Create new subscription
+                subscription_doc = {
+                    "id": f"sub_{user_id}_{int(datetime.now(timezone.utc).timestamp())}",
+                    "user_id": user_id,
+                    "subscription_data": subscription_data["subscription_data"],
+                    "device_type": subscription_data.get("device_type", "web"),
+                    "browser_info": subscription_data.get("browser_info"),
+                    "notification_preferences": subscription_data.get("notification_preferences", {
+                        "friend_activities": True,
+                        "milestone_achievements": True,
+                        "streak_reminders": True,
+                        "daily_tips": True,
+                        "limited_offers": True,
+                        "challenge_updates": True
+                    }),
+                    "is_active": True,
+                    "created_at": datetime.now(timezone.utc),
+                    "last_used_at": datetime.now(timezone.utc)
+                }
+                
+                await self.db.push_subscriptions.insert_one(subscription_doc)
+                return {"success": True, "message": "Subscription created"}
+                
+        except Exception as e:
+            logger.error(f"Create push subscription error: {str(e)}")
+            return {"success": False, "message": "Failed to create subscription"}
+
+    async def update_notification_preferences(self, user_id: str, preferences: Dict[str, bool]) -> bool:
+        """Update user's notification preferences"""
+        try:
+            result = await self.db.push_subscriptions.update_many(
+                {"user_id": user_id},
+                {"$set": {"notification_preferences": preferences}}
+            )
+            
+            return result.modified_count > 0
+            
+        except Exception as e:
+            logger.error(f"Update notification preferences error: {str(e)}")
+            return False
+
+    async def get_user_notification_preferences(self, user_id: str) -> Dict[str, bool]:
+        """Get user's notification preferences"""
+        try:
+            subscription = await self.db.push_subscriptions.find_one({
+                "user_id": user_id,
+                "is_active": True
+            })
+            
+            if subscription:
+                return subscription.get("notification_preferences", {})
+            
+            # Return default preferences
+            return {
+                "friend_activities": True,
+                "milestone_achievements": True,
+                "streak_reminders": True,
+                "daily_tips": True,
+                "limited_offers": True,
+                "challenge_updates": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Get notification preferences error: {str(e)}")
+            return {}
+
 # Global instance
 push_service = None
 
