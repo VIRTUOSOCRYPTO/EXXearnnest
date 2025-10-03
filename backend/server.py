@@ -1479,7 +1479,7 @@ async def create_admin_hustle(request: Request, hustle_data: AdminHustleCreate, 
         hustle_dict["is_admin_posted"] = True
         hustle_dict["pay_rate"] = hustle_data.estimated_pay
         hustle_dict["pay_type"] = "estimated"
-        hustle_dict["contact_info"] = hustle_data.application_link or "admin@earnwise.app"
+        hustle_dict["contact_info"] = hustle_data.application_link or "admin@earnaura.app"
         hustle_dict["is_remote"] = True
         
         hustle = UserHustle(**hustle_dict)
@@ -4591,7 +4591,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://achievement-pulse-1.preview.emergentagent.com"
+        base_url = "https://earnest-ui-boost.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
