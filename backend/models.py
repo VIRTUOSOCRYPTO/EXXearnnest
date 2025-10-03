@@ -1586,3 +1586,298 @@ class DailyTipNotification(BaseModel):
     sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     viewed_at: Optional[datetime] = None
     notification_method: str = "push"  # "push", "in_app", "both"
+    
+    @validator('tip_type')
+    def validate_tip_type(cls, v):
+        allowed_types = ["tip", "quote"]
+        if v not in allowed_types:
+            raise ValueError(f'Tip type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('notification_method')
+    def validate_notification_method(cls, v):
+        allowed_methods = ["push", "in_app", "both"]
+        if v not in allowed_methods:
+            raise ValueError(f'Notification method must be one of: {", ".join(allowed_methods)}')
+        return v
+
+# Enhanced Push Notification Models
+class PushSubscription(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    subscription_data: Dict[str, Any]  # WebPush subscription object
+    device_type: str = "web"  # "web", "mobile", "desktop"
+    browser_info: Optional[Dict[str, Any]] = None
+    notification_preferences: Dict[str, bool] = {
+        "friend_activities": True,
+        "milestone_achievements": True,
+        "streak_reminders": True,
+        "daily_tips": True,
+        "limited_offers": True,
+        "challenge_updates": True
+    }
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_used_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    deactivated_at: Optional[datetime] = None
+
+class PushSubscriptionCreate(BaseModel):
+    subscription_data: Dict[str, Any]
+    device_type: str = "web"
+    browser_info: Optional[Dict[str, Any]] = None
+    notification_preferences: Optional[Dict[str, bool]] = None
+
+# Limited-Time Offers Models
+class LimitedOffer(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    offer_type: str  # "challenge", "premium_unlock", "referral_bonus", "early_access"
+    title: str
+    description: str
+    offer_details: Dict[str, Any]
+    # FOMO mechanics
+    total_spots: Optional[int] = None  # "Only X spots left"
+    spots_claimed: int = 0
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Eligibility criteria
+    eligible_users: Optional[List[str]] = None  # Specific user IDs, None = all users
+    min_level: Optional[int] = None
+    min_streak: Optional[int] = None
+    target_audience: str = "all"  # "all", "students", "professionals", "new_users"
+    # Rewards
+    reward_type: str  # "points", "badge", "premium_feature", "cash", "discount"
+    reward_value: Union[int, float, str]
+    # Status
+    is_active: bool = True
+    auto_activate: bool = False
+    # Visual styling
+    urgency_level: int = Field(..., ge=1, le=5)  # 1-5 scale for FOMO intensity
+    color_scheme: str = "red"  # "red", "orange", "blue", "purple"
+    icon: str = "🔥"
+    
+    @validator('offer_type')
+    def validate_offer_type(cls, v):
+        allowed_types = ["challenge", "premium_unlock", "referral_bonus", "early_access"]
+        if v not in allowed_types:
+            raise ValueError(f'Offer type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('target_audience')
+    def validate_target_audience(cls, v):
+        allowed_audiences = ["all", "students", "professionals", "new_users"]
+        if v not in allowed_audiences:
+            raise ValueError(f'Target audience must be one of: {", ".join(allowed_audiences)}')
+        return v
+    
+    @validator('reward_type')
+    def validate_reward_type(cls, v):
+        allowed_types = ["points", "badge", "premium_feature", "cash", "discount"]
+        if v not in allowed_types:
+            raise ValueError(f'Reward type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class LimitedOfferCreate(BaseModel):
+    offer_type: str
+    title: str
+    description: str
+    offer_details: Dict[str, Any]
+    total_spots: Optional[int] = None
+    expires_at: datetime
+    eligible_users: Optional[List[str]] = None
+    min_level: Optional[int] = None
+    min_streak: Optional[int] = None
+    target_audience: str = "all"
+    reward_type: str
+    reward_value: Union[int, float, str]
+    urgency_level: int = Field(..., ge=1, le=5)
+    color_scheme: str = "red"
+    icon: str = "🔥"
+
+class OfferParticipation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    offer_id: str
+    status: str = "active"  # "active", "completed", "expired", "abandoned"
+    progress: Dict[str, Any] = {}
+    reward_claimed: bool = False
+    participated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["active", "completed", "expired", "abandoned"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+# Photo Sharing for Achievements Models
+class AchievementPhoto(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    achievement_id: str
+    achievement_type: str  # "milestone", "badge", "goal_completion", "streak"
+    photo_type: str = "custom"  # "custom", "branded_template", "combined"
+    # Photo data
+    original_photo_url: Optional[str] = None  # User uploaded photo
+    branded_photo_url: Optional[str] = None   # Generated branded version
+    final_photo_url: str  # Final shareable image
+    # Photo metadata
+    photo_metadata: Dict[str, Any] = {}
+    caption: Optional[str] = None
+    tags: List[str] = []
+    # Privacy and sharing
+    privacy_level: str = "public"  # "private", "friends", "public"
+    shared_platforms: List[str] = []  # ["instagram", "whatsapp", "facebook", "twitter"]
+    share_count: int = 0
+    like_count: int = 0
+    # Status
+    status: str = "active"  # "active", "archived", "reported", "deleted"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('photo_type')
+    def validate_photo_type(cls, v):
+        allowed_types = ["custom", "branded_template", "combined"]
+        if v not in allowed_types:
+            raise ValueError(f'Photo type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('privacy_level')
+    def validate_privacy_level(cls, v):
+        allowed_levels = ["private", "friends", "public"]
+        if v not in allowed_levels:
+            raise ValueError(f'Privacy level must be one of: {", ".join(allowed_levels)}')
+        return v
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["active", "archived", "reported", "deleted"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class AchievementPhotoCreate(BaseModel):
+    achievement_id: str
+    achievement_type: str
+    photo_type: str = "custom"
+    caption: Optional[str] = None
+    tags: List[str] = []
+    privacy_level: str = "public"
+
+class PhotoLike(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    photo_id: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# Story Timeline Models
+class TimelineEvent(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # Owner of the timeline
+    event_type: str  # "personal" or "social"
+    # Event classification
+    category: str  # "transaction", "milestone", "goal", "badge", "friend_activity", "challenge"
+    subcategory: Optional[str] = None  # "income", "expense", "savings_milestone", "streak_badge", etc.
+    # Event details
+    title: str
+    description: str
+    amount: Optional[float] = None
+    metadata: Dict[str, Any] = {}
+    # Related entities
+    related_user_id: Optional[str] = None  # For friend activities
+    related_entity_id: Optional[str] = None  # Transaction ID, Achievement ID, etc.
+    # Visual elements
+    icon: str = "📊"
+    color: str = "#3B82F6"
+    image_url: Optional[str] = None
+    # Timeline position
+    event_date: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Privacy and visibility
+    visibility: str = "friends"  # "private", "friends", "public"
+    is_featured: bool = False  # Featured events appear more prominently
+    
+    @validator('event_type')
+    def validate_event_type(cls, v):
+        allowed_types = ["personal", "social"]
+        if v not in allowed_types:
+            raise ValueError(f'Event type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('category')
+    def validate_category(cls, v):
+        allowed_categories = ["transaction", "milestone", "goal", "badge", "friend_activity", "challenge"]
+        if v not in allowed_categories:
+            raise ValueError(f'Category must be one of: {", ".join(allowed_categories)}')
+        return v
+    
+    @validator('visibility')
+    def validate_visibility(cls, v):
+        allowed_levels = ["private", "friends", "public"]
+        if v not in allowed_levels:
+            raise ValueError(f'Visibility must be one of: {", ".join(allowed_levels)}')
+        return v
+
+class TimelineEventCreate(BaseModel):
+    event_type: str
+    category: str
+    subcategory: Optional[str] = None
+    title: str
+    description: str
+    amount: Optional[float] = None
+    metadata: Dict[str, Any] = {}
+    related_user_id: Optional[str] = None
+    related_entity_id: Optional[str] = None
+    icon: str = "📊"
+    color: str = "#3B82F6"
+    image_url: Optional[str] = None
+    event_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    visibility: str = "friends"
+
+class TimelineReaction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    timeline_event_id: str
+    reaction_type: str  # "like", "celebrate", "motivate", "inspire"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('reaction_type')
+    def validate_reaction_type(cls, v):
+        allowed_types = ["like", "celebrate", "motivate", "inspire"]
+        if v not in allowed_types:
+            raise ValueError(f'Reaction type must be one of: {", ".join(allowed_types)}')
+        return v
+
+# Enhanced Daily Tips Models
+class DailyTipPersonalization(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    # User financial profile for personalization
+    spending_categories: List[str] = []
+    financial_goals: List[str] = []
+    current_challenges: List[str] = []
+    learning_preferences: List[str] = []  # "budgeting", "investing", "saving", "earning"
+    tip_delivery_time: str = "09:00"  # Preferred time for daily tips
+    tip_frequency: str = "daily"  # "daily", "every_other_day", "weekly"
+    # Tip history and preferences
+    favorite_tip_types: List[str] = []
+    dismissed_tip_topics: List[str] = []
+    engagement_score: float = 0.0  # 0-1 based on tip interaction history
+    last_tip_sent: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class DailyTipInteraction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    tip_id: str
+    interaction_type: str  # "viewed", "liked", "shared", "saved", "dismissed"
+    interaction_data: Dict[str, Any] = {}
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('interaction_type')
+    def validate_interaction_type(cls, v):
+        allowed_types = ["viewed", "liked", "shared", "saved", "dismissed"]
+        if v not in allowed_types:
+            raise ValueError(f'Interaction type must be one of: {", ".join(allowed_types)}')
+        return v
