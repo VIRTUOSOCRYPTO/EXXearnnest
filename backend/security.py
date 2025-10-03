@@ -14,7 +14,7 @@ import logging
 limiter = Limiter(key_func=get_remote_address)
 
 # JWT Configuration
-JWT_SECRET = "earnwise-production-secret-key-2024-secure"
+JWT_SECRET = "earnnest-production-secret-key-2024-secure"
 JWT_ALGORITHM = "HS256"
 
 # Security constants
