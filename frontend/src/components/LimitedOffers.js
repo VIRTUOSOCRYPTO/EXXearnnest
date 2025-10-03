@@ -1,240 +1,396 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { Card, CardHeader, CardContent } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Progress } from './ui/progress';
 
-const LimitedOffers = () => {
+const LimitedOffers = ({ userId }) => {
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [fomoAlerts, setFomoAlerts] = useState([]);
+  const [participatingOffer, setParticipatingOffer] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [offerHistory, setOfferHistory] = useState([]);
 
   useEffect(() => {
-    fetchLimitedOffers();
-    fetchFomoAlerts();
-    
-    // Refresh every 5 minutes
-    const interval = setInterval(() => {
-      fetchLimitedOffers();
-      fetchFomoAlerts();
-    }, 5 * 60 * 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    fetchActiveOffers();
+  }, [userId]);
 
-  const fetchLimitedOffers = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/api/engagement/limited-offers`,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+  useEffect(() => {
+    // Update countdown timers every second
+    const interval = setInterval(() => {
+      setOffers(prevOffers => 
+        prevOffers.map(offer => ({
+          ...offer,
+          time_remaining: calculateTimeRemaining(offer.expires_at)
+        }))
       );
-      setOffers(response.data.offers);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [offers.length]);
+
+  const fetchActiveOffers = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/offers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOffers(data.offers.map(offer => ({
+          ...offer,
+          time_remaining: calculateTimeRemaining(offer.expires_at)
+        })));
+      } else {
+        console.error('Failed to fetch offers');
+      }
     } catch (error) {
-      console.error('Limited offers error:', error);
+      console.error('Error fetching offers:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchFomoAlerts = async () => {
+  const fetchOfferHistory = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(
-        `${process.env.REACT_APP_BACKEND_URL}/api/engagement/fomo-alerts`,
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-      setFomoAlerts(response.data.alerts);
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/offers/history`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOfferHistory(data.history);
+      }
     } catch (error) {
-      console.error('FOMO alerts error:', error);
+      console.error('Error fetching offer history:', error);
     }
   };
 
-  const getUrgencyColor = (urgency) => {
-    switch (urgency) {
-      case 'high': return 'border-red-500 bg-red-50';
-      case 'medium': return 'border-yellow-500 bg-yellow-50';
-      case 'low': return 'border-blue-500 bg-blue-50';
-      default: return 'border-gray-300 bg-gray-50';
+  const participateInOffer = async (offerId) => {
+    try {
+      setParticipatingOffer(offerId);
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/offers/${offerId}/participate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(result.message);
+        // Update the offer in state to reflect participation
+        setOffers(prevOffers => 
+          prevOffers.map(offer => 
+            offer.id === offerId 
+              ? { 
+                  ...offer, 
+                  spots_claimed: offer.spots_claimed + 1,
+                  user_participated: true
+                }
+              : offer
+          )
+        );
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      console.error('Error participating in offer:', error);
+      alert('Failed to join offer. Please try again.');
+    } finally {
+      setParticipatingOffer(null);
     }
   };
 
-  const getUrgencyTextColor = (urgency) => {
-    switch (urgency) {
-      case 'high': return 'text-red-700';
-      case 'medium': return 'text-yellow-700';
-      case 'low': return 'text-blue-700';
-      default: return 'text-gray-700';
+  const calculateTimeRemaining = (expiresAt) => {
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const diff = expiry - now;
+
+    if (diff <= 0) {
+      return { expired: true, display: 'Expired' };
     }
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    let display;
+    if (days > 0) {
+      display = `${days}d ${hours}h`;
+    } else if (hours > 0) {
+      display = `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      display = `${minutes}m ${seconds}s`;
+    } else {
+      display = `${seconds}s`;
+    }
+
+    return {
+      expired: false,
+      days,
+      hours,
+      minutes,
+      seconds,
+      display,
+      total_seconds: Math.floor(diff / 1000)
+    };
   };
 
-  const formatTimeRemaining = (offer) => {
-    if (offer.hours_remaining) {
-      return `${offer.hours_remaining} hours left`;
+  const getUrgencyColor = (urgencyLevel, timeRemaining) => {
+    if (timeRemaining?.expired) return 'bg-gray-500';
+    if (urgencyLevel >= 4 || (timeRemaining?.hours < 6 && timeRemaining?.days === 0)) return 'bg-red-500';
+    if (urgencyLevel >= 3 || timeRemaining?.days <= 1) return 'bg-orange-500';
+    return 'bg-blue-500';
+  };
+
+  const getOfferIcon = (offerType) => {
+    const icons = {
+      'challenge': '🎯',
+      'premium_unlock': '⭐',
+      'referral_bonus': '🤝',
+      'early_access': '🚀'
+    };
+    return icons[offerType] || '🔥';
+  };
+
+  const toggleHistory = () => {
+    if (!showHistory && offerHistory.length === 0) {
+      fetchOfferHistory();
     }
-    if (offer.days_remaining) {
-      return `${offer.days_remaining} days left`;
-    }
-    return 'Ending soon';
+    setShowHistory(!showHistory);
   };
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="animate-pulse space-y-4">
-          {[1, 2].map(i => (
-            <div key={i} className="h-32 bg-gray-300 rounded-lg"></div>
-          ))}
-        </div>
+      <div className="space-y-4">
+        {[1, 2].map(i => (
+          <Card key={i} className="w-full">
+            <CardContent className="p-6">
+              <div className="animate-pulse">
+                <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-full mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* Limited Time Offers */}
-      <div className="bg-white rounded-lg shadow-lg">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-            ⏰ Limited Time Offers
-          </h2>
-          <p className="text-gray-600 mt-2">Don't miss these exclusive opportunities!</p>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {offers.map((offer) => (
-            <div
-              key={offer.id}
-              className={`border-2 rounded-lg p-4 ${getUrgencyColor(offer.urgency)} relative overflow-hidden`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-3">
-                  <span className="text-3xl">{offer.icon}</span>
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">{offer.title}</h3>
-                    <p className={`text-sm ${getUrgencyTextColor(offer.urgency)} mb-2`}>
-                      {offer.description}
-                    </p>
-                    
-                    {offer.type === 'points_multiplier' && (
-                      <div className="flex items-center space-x-2">
-                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
-                          {offer.multiplier}x Points
-                        </span>
-                      </div>
-                    )}
-                    
-                    {offer.type === 'savings_challenge' && (
-                      <div className="flex items-center space-x-4">
-                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
-                          Target: ₹{offer.target_amount}
-                        </span>
-                        <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
-                          Reward: ₹{offer.reward}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {offer.type === 'social_challenge' && (
-                      <div className="flex items-center space-x-2">
-                        <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
-                          Invite {offer.target} friends
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="text-right">
-                  <div className={`text-sm font-bold ${getUrgencyTextColor(offer.urgency)}`}>
-                    {formatTimeRemaining(offer)}
-                  </div>
-                  <button 
-                    className={`mt-2 px-4 py-2 rounded-lg font-medium text-white ${
-                      offer.urgency === 'high' 
-                        ? 'bg-red-500 hover:bg-red-600' 
-                        : offer.urgency === 'medium'
-                        ? 'bg-yellow-500 hover:bg-yellow-600'
-                        : 'bg-blue-500 hover:bg-blue-600'
-                    } transition-colors`}
-                  >
-                    {offer.participated ? 'Participating' : 'Join Now'}
-                  </button>
-                </div>
-              </div>
-              
-              {offer.participated && (
-                <div className="mt-3 bg-white bg-opacity-50 rounded p-2">
-                  <div className="flex justify-between text-xs">
-                    <span>Progress:</span>
-                    <span>{offer.progress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                    <div 
-                      className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.min(offer.progress, 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-          
-          {offers.length === 0 && (
-            <div className="text-center py-8">
-              <div className="text-4xl mb-4">⏰</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No active offers</h3>
-              <p className="text-gray-500">Check back later for new limited-time opportunities!</p>
-            </div>
-          )}
-        </div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">🔥 Limited-Time Offers</h2>
+        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+          🔄 Refresh
+        </Button>
       </div>
 
-      {/* FOMO Alerts */}
-      {fomoAlerts.length > 0 && (
-        <div className="bg-white rounded-lg shadow-lg">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center">
-              🔥 Don't Miss Out!
-            </h2>
-            <p className="text-gray-600 mt-2">Limited spots and exclusive opportunities</p>
-          </div>
-
-          <div className="p-6 space-y-3">
-            {fomoAlerts.map((alert, index) => (
-              <div
-                key={index}
-                className={`border-l-4 p-4 ${getUrgencyColor(alert.urgency)} rounded-r-lg`}
-              >
-                <div className="flex items-center justify-between">
+      {offers.length === 0 ? (
+        <Card className="w-full">
+          <CardContent className="p-8 text-center">
+            <div className="text-6xl mb-4">🎯</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Active Offers</h3>
+            <p className="text-gray-600">Check back soon for exclusive opportunities!</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {offers.map((offer) => (
+            <Card 
+              key={offer.id} 
+              className={`w-full border-l-4 ${
+                offer.time_remaining?.expired ? 'border-l-gray-400 opacity-75' : 
+                `border-l-${offer.color_scheme}-500`
+              } shadow-lg hover:shadow-xl transition-all duration-300`}
+            >
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{alert.icon}</span>
+                    <span className="text-3xl">{offer.icon}</span>
                     <div>
-                      <h4 className="font-bold text-gray-900">{alert.title}</h4>
-                      <p className="text-sm text-gray-600">{alert.message}</p>
+                      <h3 className="font-bold text-lg text-gray-900">{offer.title}</h3>
+                      <Badge 
+                        variant={offer.offer_type === 'premium_unlock' ? 'default' : 'secondary'}
+                        className="mt-1"
+                      >
+                        {offer.offer_type.replace('_', ' ').toUpperCase()}
+                      </Badge>
                     </div>
                   </div>
-                  <button 
-                    className={`px-4 py-2 rounded-lg font-medium text-white ${
-                      alert.urgency === 'high' 
-                        ? 'bg-red-500 hover:bg-red-600' 
-                        : 'bg-blue-500 hover:bg-blue-600'
-                    } transition-colors`}
-                  >
-                    {alert.action}
-                  </button>
+                  <div className="text-right">
+                    <Badge 
+                      variant="outline" 
+                      className={`${getUrgencyColor(offer.urgency_level, offer.time_remaining)} text-white border-transparent`}
+                    >
+                      {offer.time_remaining?.display || 'Calculating...'}
+                    </Badge>
+                  </div>
                 </div>
-                
-                {alert.spots_remaining && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    Only {alert.spots_remaining} spots remaining
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <p className="text-gray-700">{offer.description}</p>
+
+                {/* FOMO Indicators */}
+                <div className="space-y-2">
+                  {offer.total_spots && (
+                    <div>
+                      <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+                        <span>Spots Claimed</span>
+                        <span>{offer.spots_claimed}/{offer.total_spots}</span>
+                      </div>
+                      <Progress 
+                        value={(offer.spots_claimed / offer.total_spots) * 100} 
+                        className="h-2"
+                      />
+                      <p className="text-sm font-medium text-red-600 mt-1">
+                        {offer.spots_remaining !== undefined && offer.spots_remaining <= 10 && 
+                          `⚡ Only ${offer.spots_remaining} spots left!`
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {offer.urgency_message && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      <p className="text-sm font-medium text-red-800">
+                        {offer.urgency_message}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Offer Details */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-medium text-gray-900 mb-2">What You Get:</h4>
+                  <div className="text-sm text-gray-700">
+                    <p>🎁 Reward: {offer.reward_type === 'points' ? `${offer.reward_value} Points` : offer.reward_value}</p>
+                    {offer.offer_details && (
+                      <div className="mt-2 space-y-1">
+                        {Object.entries(offer.offer_details).map(([key, value]) => (
+                          <p key={key}>
+                            • {key.replace('_', ' ')}: {typeof value === 'object' ? JSON.stringify(value) : value}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <div className="pt-2">
+                  {offer.time_remaining?.expired ? (
+                    <Button disabled className="w-full">
+                      ⏰ Offer Expired
+                    </Button>
+                  ) : offer.user_participated ? (
+                    <Button disabled className="w-full">
+                      ✅ Already Participating
+                    </Button>
+                  ) : offer.spots_remaining === 0 ? (
+                    <Button disabled className="w-full">
+                      😞 All Spots Claimed
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => participateInOffer(offer.id)}
+                      disabled={participatingOffer === offer.id}
+                      className={`w-full bg-${offer.color_scheme}-600 hover:bg-${offer.color_scheme}-700 text-white font-medium`}
+                    >
+                      {participatingOffer === offer.id ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Joining...</span>
+                        </div>
+                      ) : (
+                        <>🚀 Join Now{offer.total_spots && ` (${offer.spots_remaining} left)`}</>
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Countdown Bar for Urgent Offers */}
+                {offer.urgency_level >= 4 && offer.time_remaining && !offer.time_remaining.expired && (
+                  <div className="bg-red-100 rounded-lg p-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-red-800">⏰ Time Running Out!</span>
+                      <span className="font-mono text-red-700">{offer.time_remaining.display}</span>
+                    </div>
                   </div>
                 )}
-              </div>
-            ))}
-          </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
+      )}
+
+      {/* History Toggle */}
+      <div className="flex justify-center pt-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleHistory}
+          className="text-gray-600 hover:text-gray-800"
+        >
+          {showHistory ? '▼ Hide Offer History' : '▶ View Offer History'}
+        </Button>
+      </div>
+
+      {/* Offer History */}
+      {showHistory && (
+        <Card className="w-full">
+          <CardHeader>
+            <h3 className="font-medium text-gray-900">Your Offer History</h3>
+          </CardHeader>
+          <CardContent>
+            {offerHistory.length === 0 ? (
+              <p className="text-gray-500 text-sm">No offer history found.</p>
+            ) : (
+              <div className="space-y-3">
+                {offerHistory.map((participation) => (
+                  <div key={participation.id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-medium text-gray-800">
+                        {participation.offer_details?.title || 'Offer'}
+                      </h5>
+                      <Badge variant={
+                        participation.status === 'completed' ? 'default' :
+                        participation.status === 'active' ? 'secondary' :
+                        'outline'
+                      }>
+                        {participation.status}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Joined: {new Date(participation.participated_at).toLocaleDateString()}
+                    </p>
+                    {participation.reward_claimed && (
+                      <div className="text-sm text-green-600">
+                        ✅ Reward claimed
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
