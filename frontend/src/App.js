@@ -21,6 +21,12 @@ import AllChallenges from './components/AllChallenges';
 import Notifications from './components/Notifications';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
+import SocialFeed from './components/SocialFeed';
+import DailyCheckin from './components/DailyCheckin';
+import LimitedOffers from './components/LimitedOffers';
+import SharingHub from './components/SharingHub';
+import FeatureUnlock from './components/FeatureUnlock';
+import FinancialJourney from './components/FinancialJourney';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -187,6 +193,30 @@ function App() {
               <Route 
                 path="/notifications" 
                 element={user ? <Notifications /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/social-feed" 
+                element={user ? <SocialFeed /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/daily-checkin" 
+                element={user ? <DailyCheckin /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/limited-offers" 
+                element={user ? <LimitedOffers /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/sharing-hub" 
+                element={user ? <SharingHub /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/feature-unlock" 
+                element={user ? <FeatureUnlock /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/financial-journey" 
+                element={user ? <FinancialJourney /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
