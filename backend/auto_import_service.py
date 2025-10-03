@@ -111,7 +111,7 @@ class AutoImportService:
     def _build_system_message(self, user_patterns: List[Dict], user_feedback: List[Dict]) -> str:
         """Build system message with user context for AI"""
         
-        system_msg = """You are an expert AI financial transaction parser for the EarnNest app. 
+        system_msg = """You are an expert AI financial transaction parser for the EarnAura app. 
         Your job is to extract transaction details from SMS and email content with high accuracy.
 
         CORE TASK: Parse financial transaction content and return structured JSON data.
