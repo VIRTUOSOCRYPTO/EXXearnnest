@@ -34,12 +34,19 @@ const Navigation = () => {
     { path: '/transactions', label: 'Transactions', icon: CreditCardIcon },
     { path: '/budget', label: 'Budget', icon: BanknotesIcon },
     { path: '/goals', label: 'Goals', icon: StarIcon },
+    { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
+    { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
+    { path: '/recommendations', label: 'Recommendations', icon: LightBulbIcon },
+    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
     { path: '/friends-referrals', label: 'Friends & Referrals', icon: UsersIcon },
     { path: '/challenges', label: 'Challenges', icon: FireIcon },
-    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
+    { path: '/social-feed', label: 'Social Feed', icon: UserGroupIcon },
+    { path: '/sharing-hub', label: 'Sharing Hub', icon: GiftIcon },
+    { path: '/daily-checkin', label: 'Daily Check-in', icon: StarIcon },
+    { path: '/limited-offers', label: 'Limited Offers', icon: GiftIcon },
+    { path: '/feature-unlock', label: 'Feature Unlock', icon: LightBulbIcon },
+    { path: '/financial-journey', label: 'Financial Journey', icon: ChartBarIcon },
     { path: '/notifications', label: 'Notifications', icon: BellIcon },
-    { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
-    { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
   ];
 
   const handleLogout = () => {
