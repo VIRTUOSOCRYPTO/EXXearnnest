@@ -30,6 +30,9 @@ import FinancialJourney from './components/FinancialJourney';
 import DailyTips from './components/DailyTips';
 import Timeline from './components/Timeline';
 import EnhancedPhotoSharing from './components/EnhancedPhotoSharing';
+import HabitTracking from './components/HabitTracking';
+import WeeklyRecap from './components/WeeklyRecap';
+import PersonalizedGoals from './components/PersonalizedGoals';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -232,6 +235,18 @@ function App() {
               <Route 
                 path="/photo-sharing" 
                 element={user ? <EnhancedPhotoSharing userId={user?.id} /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/habit-tracking" 
+                element={user ? <HabitTracking /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/weekly-recap" 
+                element={user ? <WeeklyRecap /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/personalized-goals" 
+                element={user ? <PersonalizedGoals /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
