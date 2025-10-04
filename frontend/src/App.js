@@ -37,6 +37,9 @@ import CampusAmbassador from './components/CampusAmbassador';
 import GrowthMechanics from './components/GrowthMechanics';
 import ExpenseReceipts from './components/ExpenseReceipts';
 import GroupExpenses from './components/GroupExpenses';
+import InterCollegeCompetitions from './components/InterCollegeCompetitions';
+import PrizeChallenges from './components/PrizeChallenges';
+import CampusReputation from './components/CampusReputation';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -267,6 +270,18 @@ function App() {
               <Route 
                 path="/group-expenses" 
                 element={user ? <GroupExpenses /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/inter-college-competitions" 
+                element={user ? <InterCollegeCompetitions /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/prize-challenges" 
+                element={user ? <PrizeChallenges /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/campus-reputation" 
+                element={user ? <CampusReputation /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
