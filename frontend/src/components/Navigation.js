@@ -70,6 +70,14 @@ const Navigation = () => {
     { path: '/campus-reputation', label: 'Campus Reputation', icon: TrophyIcon },
   ];
 
+  const viralItems = [
+    { path: '/public/campus-battle', label: 'Campus Battle Arena', icon: TrophyIcon, public: true },
+    { path: '/spending-insights', label: 'Spending Insights', icon: ChartBarIcon },
+    { path: '/viral-milestones', label: 'Viral Milestones', icon: FireIcon, public: true },
+    { path: '/friend-comparisons', label: 'Friend Comparisons', icon: UsersIcon },
+    { path: '/public/impact-stats', label: 'Impact Stories', icon: DocumentIcon, public: true },
+  ];
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -169,6 +177,44 @@ const Navigation = () => {
                       >
                         <Icon className="w-4 h-4" />
                         {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Viral Features Dropdown */}
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-orange-600 hover:bg-gray-50 transition-all duration-200">
+                <FireIcon className="w-4 h-4" />
+                🔥 Viral
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {/* Viral Features Dropdown Menu */}
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <div className="p-2 space-y-1">
+                  {viralItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location.pathname === item.path;
+                    
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          isActive
+                            ? 'bg-orange-100 text-orange-700'
+                            : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
+                        }`}
+                        {...(item.public ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {item.label}
+                        {item.public && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded-full ml-auto">Public</span>}
                       </Link>
                     );
                   })}
@@ -306,6 +352,38 @@ const Navigation = () => {
                     >
                       <Icon className="w-5 h-5" />
                       {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              {/* Viral Features Section */}
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <div className="px-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                    <FireIcon className="w-4 h-4" />
+                    🔥 Viral Features
+                  </h3>
+                </div>
+                {viralItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={closeMobileMenu}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        isActive
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
+                      }`}
+                      {...(item.public ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                    >
+                      <Icon className="w-5 h-5" />
+                      {item.label}
+                      {item.public && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded-full">Public</span>}
                     </Link>
                   );
                 })}
