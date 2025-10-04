@@ -113,11 +113,21 @@ const DailyCheckin = () => {
         </div>
       </div>
 
-      {/* Check-in Success Modal */}
+      {/* Enhanced Check-in Success Modal */}
       {checkinStatus && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full text-center animate-bounce">
             <div className="text-6xl mb-4">{getStreakEmoji(checkinStatus.streak)}</div>
+            
+            {/* Streak Tier Badge */}
+            <div className={`inline-block px-3 py-1 rounded-full text-sm font-bold mb-3 ${
+              checkinStatus.streak_tier === 'legend' ? 'bg-purple-100 text-purple-800' :
+              checkinStatus.streak_tier === 'champion' ? 'bg-gold-100 text-gold-800' :
+              checkinStatus.streak_tier === 'warrior' ? 'bg-blue-100 text-blue-800' :
+              'bg-green-100 text-green-800'
+            }`}>
+              {checkinStatus.streak_tier?.toUpperCase()} STATUS
+            </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Check-in Complete!</h3>
             
             <div className="space-y-2 mb-4">
@@ -138,10 +148,25 @@ const DailyCheckin = () => {
             <div className="text-sm text-gray-600 space-y-1">
               <div>Base Points: +{checkinStatus.base_points}</div>
               <div>Streak Bonus: +{checkinStatus.streak_bonus}</div>
+              {checkinStatus.weekly_multiplier_bonus > 0 && (
+                <div className="text-blue-600 font-semibold">
+                  Weekly Multiplier: +{checkinStatus.weekly_multiplier_bonus} 🎉
+                </div>
+              )}
               {checkinStatus.milestone_bonus > 0 && (
-                <div>Milestone Bonus: +{checkinStatus.milestone_bonus}</div>
+                <div className="text-purple-600 font-semibold">
+                  Milestone Bonus: +{checkinStatus.milestone_bonus}
+                </div>
               )}
             </div>
+            
+            {checkinStatus.is_weekly_multiplier && (
+              <div className="bg-blue-100 border border-blue-300 rounded-lg p-3 mt-3">
+                <p className="text-blue-800 font-medium text-sm">
+                  🔥 7-Day Streak Achieved! Double points earned!
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
