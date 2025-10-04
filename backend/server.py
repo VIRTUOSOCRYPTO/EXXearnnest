@@ -4710,7 +4710,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://campus-ambassador-1.preview.emergentagent.com"
+        base_url = "https://hide-promo-dash.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7259,7 +7259,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://campus-ambassador-1.preview.emergentagent.com"
+        base_url = "https://hide-promo-dash.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -13045,6 +13045,594 @@ async def update_notification_preferences_endpoint(
     except Exception as e:
         logger.error(f"Update notification preferences error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to update preferences")
+
+# Missing Timeline/Friend Activity Endpoints (Added for Dashboard Activation)
+@api_router.get("/timeline/activities")
+@limiter.limit("30/minute")
+async def get_timeline_activities_endpoint(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+    activity_type: str = "all",  # "achievements", "transactions", "milestones", "social", "all"
+    user_id: str = Depends(get_current_user)
+):
+    """Get timeline activities for dashboard"""
+    try:
+        # Get recent user activities
+        db = await get_database()
+        activities = []
+        
+        # Get recent achievements
+        if activity_type in ["achievements", "all"]:
+            recent_achievements = await db.achievements.find({
+                "user_id": user_id,
+                "created_at": {"$exists": True}
+            }).sort("created_at", -1).limit(5).to_list(length=5)
+            
+            for achievement in recent_achievements:
+                activities.append({
+                    "id": str(achievement.get("_id", "")),
+                    "type": "achievement",
+                    "title": f"🏆 {achievement.get('title', 'Achievement Unlocked')}",
+                    "description": achievement.get('description', 'New achievement earned!'),
+                    "timestamp": achievement.get('created_at', datetime.now(timezone.utc)),
+                    "icon": achievement.get('icon', '🎯'),
+                    "points": achievement.get('points', 0)
+                })
+        
+        # Get recent transactions
+        if activity_type in ["transactions", "all"]:
+            recent_transactions = await db.transactions.find({
+                "user_id": user_id
+            }).sort("created_at", -1).limit(3).to_list(length=3)
+            
+            for transaction in recent_transactions:
+                activities.append({
+                    "id": str(transaction.get("_id", "")),
+                    "type": "transaction",
+                    "title": f"💰 {transaction.get('type', '').title()}: {transaction.get('description', 'Transaction')}",
+                    "description": f"Amount: ₹{transaction.get('amount', 0):.2f} | Category: {transaction.get('category', 'General')}",
+                    "timestamp": transaction.get('created_at', datetime.now(timezone.utc)),
+                    "icon": "💸" if transaction.get('type') == 'expense' else "💰",
+                    "amount": transaction.get('amount', 0)
+                })
+        
+        # Get recent milestones
+        if activity_type in ["milestones", "all"]:
+            # Look for milestone achievements in user profile
+            user = await db.users.find_one({"id": user_id})
+            if user and user.get('milestones_reached'):
+                for milestone in user.get('milestones_reached', [])[-3:]:
+                    activities.append({
+                        "id": f"milestone_{milestone.get('type', 'unknown')}",
+                        "type": "milestone",
+                        "title": f"🎉 Milestone Reached: {milestone.get('title', 'Goal Achieved')}",
+                        "description": milestone.get('description', 'You hit an important milestone!'),
+                        "timestamp": milestone.get('achieved_at', datetime.now(timezone.utc)),
+                        "icon": "🚀",
+                        "value": milestone.get('value', 0)
+                    })
+        
+        # Sort activities by timestamp
+        activities.sort(key=lambda x: x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        
+        # Apply pagination
+        paginated_activities = activities[offset:offset + limit]
+        
+        return {
+            "activities": paginated_activities,
+            "total": len(activities),
+            "has_more": len(activities) > offset + limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Get timeline activities error: {str(e)}")
+        return {"activities": [], "total": 0, "has_more": False}
+
+@api_router.get("/friends/activities")
+@limiter.limit("20/minute")
+async def get_friends_activities_endpoint(
+    request: Request,
+    limit: int = 15,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get friend activities for dashboard"""
+    try:
+        db = await get_database()
+        
+        # Get user's friends
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user_id": user_id},
+                {"friend_id": user_id}
+            ],
+            "status": "accepted"
+        }).to_list(length=None)
+        
+        friend_ids = []
+        for friendship in friendships:
+            if friendship.get("user_id") == user_id:
+                friend_ids.append(friendship.get("friend_id"))
+            else:
+                friend_ids.append(friendship.get("user_id"))
+        
+        if not friend_ids:
+            return {"activities": [], "message": "No friends yet! Add friends to see their activities."}
+        
+        # Get recent activities from friends
+        friend_activities = []
+        
+        # Get friends' recent achievements
+        friend_achievements = await db.achievements.find({
+            "user_id": {"$in": friend_ids},
+            "created_at": {"$exists": True}
+        }).sort("created_at", -1).limit(10).to_list(length=10)
+        
+        for achievement in friend_achievements:
+            # Get friend's name
+            friend = await db.users.find_one({"id": achievement.get("user_id")})
+            friend_name = friend.get("full_name", "Friend") if friend else "Friend"
+            
+            friend_activities.append({
+                "id": str(achievement.get("_id", "")),
+                "type": "friend_achievement",
+                "user_name": friend_name,
+                "title": f"{friend_name} earned an achievement!",
+                "description": f"🏆 {achievement.get('title', 'New Achievement')} - {achievement.get('description', '')}",
+                "timestamp": achievement.get('created_at', datetime.now(timezone.utc)),
+                "icon": achievement.get('icon', '🎯'),
+                "points": achievement.get('points', 0)
+            })
+        
+        # Get friends' recent milestones
+        friends_data = await db.users.find({
+            "id": {"$in": friend_ids},
+            "milestones_reached": {"$exists": True}
+        }).to_list(length=None)
+        
+        for friend in friends_data:
+            friend_name = friend.get("full_name", "Friend")
+            recent_milestones = friend.get('milestones_reached', [])[-2:]  # Last 2 milestones
+            
+            for milestone in recent_milestones:
+                friend_activities.append({
+                    "id": f"friend_milestone_{friend.get('id')}_{milestone.get('type', 'unknown')}",
+                    "type": "friend_milestone",
+                    "user_name": friend_name,
+                    "title": f"{friend_name} reached a milestone!",
+                    "description": f"🚀 {milestone.get('title', 'Goal Achieved')} - {milestone.get('description', '')}",
+                    "timestamp": milestone.get('achieved_at', datetime.now(timezone.utc)),
+                    "icon": "🎉",
+                    "value": milestone.get('value', 0)
+                })
+        
+        # Sort by timestamp
+        friend_activities.sort(key=lambda x: x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        
+        # Apply pagination
+        paginated_activities = friend_activities[offset:offset + limit]
+        
+        return {
+            "activities": paginated_activities,
+            "total": len(friend_activities),
+            "has_more": len(friend_activities) > offset + limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Get friends activities error: {str(e)}")
+        return {"activities": [], "message": "Unable to load friend activities"}
+
+@api_router.get("/friends/timeline")
+@limiter.limit("20/minute")
+async def get_friends_timeline_endpoint(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get combined timeline with friend activities"""
+    try:
+        db = await get_database()
+        
+        # Get friends list
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user_id": user_id},
+                {"friend_id": user_id}
+            ],
+            "status": "accepted"
+        }).to_list(length=None)
+        
+        friend_ids = []
+        for friendship in friendships:
+            if friendship.get("user_id") == user_id:
+                friend_ids.append(friendship.get("friend_id"))
+            else:
+                friend_ids.append(friendship.get("user_id"))
+        
+        # Include user's own activities
+        all_user_ids = friend_ids + [user_id]
+        
+        timeline_events = []
+        
+        # Get achievements for all users (self + friends)
+        achievements = await db.achievements.find({
+            "user_id": {"$in": all_user_ids},
+            "created_at": {"$exists": True}
+        }).sort("created_at", -1).limit(15).to_list(length=15)
+        
+        for achievement in achievements:
+            user_data = await db.users.find_one({"id": achievement.get("user_id")})
+            user_name = user_data.get("full_name", "Unknown") if user_data else "Unknown"
+            is_self = achievement.get("user_id") == user_id
+            
+            timeline_events.append({
+                "id": str(achievement.get("_id", "")),
+                "type": "achievement",
+                "user_id": achievement.get("user_id"),
+                "user_name": user_name,
+                "is_self": is_self,
+                "title": achievement.get('title', 'Achievement Unlocked'),
+                "description": achievement.get('description', 'New achievement earned!'),
+                "timestamp": achievement.get('created_at', datetime.now(timezone.utc)),
+                "icon": achievement.get('icon', '🎯'),
+                "points": achievement.get('points', 0)
+            })
+        
+        # Get recent transactions for timeline
+        recent_transactions = await db.transactions.find({
+            "user_id": {"$in": all_user_ids},
+            "type": "income"  # Only show income for privacy
+        }).sort("created_at", -1).limit(10).to_list(length=10)
+        
+        for transaction in recent_transactions:
+            user_data = await db.users.find_one({"id": transaction.get("user_id")})
+            user_name = user_data.get("full_name", "Unknown") if user_data else "Unknown"
+            is_self = transaction.get("user_id") == user_id
+            
+            timeline_events.append({
+                "id": str(transaction.get("_id", "")),
+                "type": "income",
+                "user_id": transaction.get("user_id"),
+                "user_name": user_name,
+                "is_self": is_self,
+                "title": f"Earned ₹{transaction.get('amount', 0):.2f}",
+                "description": f"Income from {transaction.get('category', 'work')}",
+                "timestamp": transaction.get('created_at', datetime.now(timezone.utc)),
+                "icon": "💰",
+                "amount": transaction.get('amount', 0)
+            })
+        
+        # Sort timeline by timestamp
+        timeline_events.sort(key=lambda x: x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        
+        # Apply pagination
+        paginated_events = timeline_events[offset:offset + limit]
+        
+        return {
+            "timeline": paginated_events,
+            "total": len(timeline_events),
+            "has_more": len(timeline_events) > offset + limit,
+            "friends_count": len(friend_ids)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get friends timeline error: {str(e)}")
+        return {"timeline": [], "total": 0, "has_more": False, "friends_count": 0}
+
+@api_router.get("/social/timeline")
+@limiter.limit("20/minute")
+async def get_social_timeline_endpoint(
+    request: Request,
+    limit: int = 20,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get social timeline with public activities"""
+    try:
+        db = await get_database()
+        
+        social_events = []
+        
+        # Get recent public achievements from all users
+        public_achievements = await db.achievements.find({
+            "is_public": {"$ne": False},  # Default to public unless explicitly private
+            "created_at": {"$exists": True}
+        }).sort("created_at", -1).limit(25).to_list(length=25)
+        
+        for achievement in public_achievements:
+            user_data = await db.users.find_one({"id": achievement.get("user_id")})
+            if not user_data:
+                continue
+                
+            user_name = user_data.get("full_name", "Anonymous User")
+            avatar = user_data.get("avatar", "person")
+            university = user_data.get("university", "Unknown University")
+            
+            social_events.append({
+                "id": str(achievement.get("_id", "")),
+                "type": "public_achievement",
+                "user_id": achievement.get("user_id"),
+                "user_name": user_name,
+                "user_avatar": avatar,
+                "user_university": university,
+                "title": f"{user_name} earned an achievement!",
+                "description": f"🏆 {achievement.get('title', 'Achievement Unlocked')} - {achievement.get('description', '')}",
+                "timestamp": achievement.get('created_at', datetime.now(timezone.utc)),
+                "icon": achievement.get('icon', '🎯'),
+                "points": achievement.get('points', 0),
+                "rarity": achievement.get('rarity', 'common')
+            })
+        
+        # Get public milestones
+        users_with_milestones = await db.users.find({
+            "milestones_reached": {"$exists": True},
+            "privacy_settings.milestones_public": {"$ne": False}
+        }).limit(20).to_list(length=20)
+        
+        for user in users_with_milestones:
+            recent_milestones = user.get('milestones_reached', [])[-1:]  # Latest milestone
+            user_name = user.get("full_name", "Anonymous User")
+            avatar = user.get("avatar", "person")
+            university = user.get("university", "Unknown University")
+            
+            for milestone in recent_milestones:
+                social_events.append({
+                    "id": f"public_milestone_{user.get('id')}_{milestone.get('type', 'unknown')}",
+                    "type": "public_milestone",
+                    "user_id": user.get('id'),
+                    "user_name": user_name,
+                    "user_avatar": avatar,
+                    "user_university": university,
+                    "title": f"{user_name} reached a milestone!",
+                    "description": f"🚀 {milestone.get('title', 'Goal Achieved')}",
+                    "timestamp": milestone.get('achieved_at', datetime.now(timezone.utc)),
+                    "icon": "🎉",
+                    "value": milestone.get('value', 0)
+                })
+        
+        # Sort by timestamp
+        social_events.sort(key=lambda x: x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        
+        # Apply pagination
+        paginated_events = social_events[offset:offset + limit]
+        
+        return {
+            "timeline": paginated_events,
+            "total": len(social_events),
+            "has_more": len(social_events) > offset + limit,
+            "message": "Social timeline showing public achievements and milestones"
+        }
+        
+    except Exception as e:
+        logger.error(f"Get social timeline error: {str(e)}")
+        return {"timeline": [], "total": 0, "has_more": False}
+
+@api_router.get("/engagement/timeline")
+@limiter.limit("30/minute")
+async def get_engagement_timeline_endpoint(
+    request: Request,
+    limit: int = 15,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get engagement-focused timeline for dashboard"""
+    try:
+        db = await get_database()
+        
+        engagement_events = []
+        
+        # Get user's recent engagement activities
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            return {"events": [], "message": "User not found"}
+        
+        # Recent achievements
+        recent_achievements = await db.achievements.find({
+            "user_id": user_id
+        }).sort("created_at", -1).limit(3).to_list(length=3)
+        
+        for achievement in recent_achievements:
+            engagement_events.append({
+                "id": str(achievement.get("_id", "")),
+                "type": "achievement",
+                "title": f"🏆 {achievement.get('title', 'Achievement Unlocked')}",
+                "description": achievement.get('description', 'You earned a new achievement!'),
+                "timestamp": achievement.get('created_at', datetime.now(timezone.utc)),
+                "icon": achievement.get('icon', '🎯'),
+                "engagement_score": 10,
+                "action_url": "/gamification"
+            })
+        
+        # Streak activities
+        current_streak = user.get('current_streak', 0)
+        if current_streak > 0:
+            engagement_events.append({
+                "id": f"streak_{current_streak}",
+                "type": "streak",
+                "title": f"🔥 {current_streak} Day Streak Active!",
+                "description": "Keep logging transactions to maintain your streak",
+                "timestamp": datetime.now(timezone.utc),
+                "icon": "🔥",
+                "engagement_score": min(current_streak, 50),
+                "action_url": "/transactions"
+            })
+        
+        # Recent milestone progress
+        if user.get('milestones_reached'):
+            latest_milestone = user.get('milestones_reached', [])[-1]
+            engagement_events.append({
+                "id": f"milestone_{latest_milestone.get('type')}",
+                "type": "milestone",
+                "title": f"🚀 Milestone: {latest_milestone.get('title', 'Goal Achieved')}",
+                "description": latest_milestone.get('description', 'You reached an important goal!'),
+                "timestamp": latest_milestone.get('achieved_at', datetime.now(timezone.utc)),
+                "icon": "🎉",
+                "engagement_score": 25,
+                "action_url": "/goals"
+            })
+        
+        # Level progress
+        experience_points = user.get('experience_points', 0)
+        level = user.get('level', 1)
+        engagement_events.append({
+            "id": f"level_{level}",
+            "type": "level",
+            "title": f"⭐ Level {level} - {experience_points} XP",
+            "description": f"Keep earning XP to reach the next level!",
+            "timestamp": datetime.now(timezone.utc),
+            "icon": "⭐",
+            "engagement_score": experience_points // 10,
+            "action_url": "/gamification"
+        })
+        
+        # Recent transactions for engagement
+        recent_transactions = await db.transactions.find({
+            "user_id": user_id
+        }).sort("created_at", -1).limit(2).to_list(length=2)
+        
+        for transaction in recent_transactions:
+            engagement_events.append({
+                "id": str(transaction.get("_id", "")),
+                "type": "transaction",
+                "title": f"💰 Recent {transaction.get('type', '').title()}",
+                "description": f"{transaction.get('description', 'Transaction')} - ₹{transaction.get('amount', 0):.2f}",
+                "timestamp": transaction.get('created_at', datetime.now(timezone.utc)),
+                "icon": "💸" if transaction.get('type') == 'expense' else "💰",
+                "engagement_score": 5,
+                "action_url": "/analytics"
+            })
+        
+        # Sort by engagement score and timestamp
+        engagement_events.sort(key=lambda x: (x.get('engagement_score', 0), x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc))), reverse=True)
+        
+        # Apply pagination
+        paginated_events = engagement_events[offset:offset + limit]
+        
+        return {
+            "events": paginated_events,
+            "total": len(engagement_events),
+            "has_more": len(engagement_events) > offset + limit,
+            "user_engagement_score": sum(event.get('engagement_score', 0) for event in engagement_events)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get engagement timeline error: {str(e)}")
+        return {"events": [], "total": 0, "has_more": False}
+
+@api_router.get("/engagement/friend-activities")
+@limiter.limit("20/minute")
+async def get_engagement_friend_activities_endpoint(
+    request: Request,
+    limit: int = 10,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user)
+):
+    """Get friend activities for engagement dashboard"""
+    try:
+        db = await get_database()
+        
+        # Get friends
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user_id": user_id},
+                {"friend_id": user_id}
+            ],
+            "status": "accepted"
+        }).to_list(length=None)
+        
+        friend_ids = []
+        for friendship in friendships:
+            if friendship.get("user_id") == user_id:
+                friend_ids.append(friendship.get("friend_id"))
+            else:
+                friend_ids.append(friendship.get("user_id"))
+        
+        if not friend_ids:
+            return {
+                "activities": [],
+                "message": "Add friends to see their activities and achievements!",
+                "suggested_action": "Visit /friends to connect with other users"
+            }
+        
+        friend_activities = []
+        
+        # Get friends' recent achievements with engagement metrics
+        friend_achievements = await db.achievements.find({
+            "user_id": {"$in": friend_ids}
+        }).sort("created_at", -1).limit(8).to_list(length=8)
+        
+        for achievement in friend_achievements:
+            friend = await db.users.find_one({"id": achievement.get("user_id")})
+            if not friend:
+                continue
+                
+            friend_name = friend.get("full_name", "Friend")
+            friend_avatar = friend.get("avatar", "person")
+            
+            friend_activities.append({
+                "id": str(achievement.get("_id", "")),
+                "type": "friend_achievement",
+                "friend_id": achievement.get("user_id"),
+                "friend_name": friend_name,
+                "friend_avatar": friend_avatar,
+                "title": f"{friend_name} earned: {achievement.get('title', 'Achievement')}",
+                "description": achievement.get('description', 'New achievement unlocked!'),
+                "timestamp": achievement.get('created_at', datetime.now(timezone.utc)),
+                "icon": achievement.get('icon', '🏆'),
+                "points": achievement.get('points', 0),
+                "engagement_type": "achievement",
+                "can_congratulate": True
+            })
+        
+        # Get friends' milestones
+        friends_data = await db.users.find({
+            "id": {"$in": friend_ids},
+            "milestones_reached": {"$exists": True}
+        }).limit(5).to_list(length=5)
+        
+        for friend in friends_data:
+            friend_name = friend.get("full_name", "Friend")
+            friend_avatar = friend.get("avatar", "person")
+            recent_milestones = friend.get('milestones_reached', [])[-1:]  # Latest milestone
+            
+            for milestone in recent_milestones:
+                friend_activities.append({
+                    "id": f"friend_milestone_{friend.get('id')}_{milestone.get('type')}",
+                    "type": "friend_milestone",
+                    "friend_id": friend.get('id'),
+                    "friend_name": friend_name,
+                    "friend_avatar": friend_avatar,
+                    "title": f"{friend_name} reached: {milestone.get('title', 'Milestone')}",
+                    "description": milestone.get('description', 'Important milestone achieved!'),
+                    "timestamp": milestone.get('achieved_at', datetime.now(timezone.utc)),
+                    "icon": "🚀",
+                    "value": milestone.get('value', 0),
+                    "engagement_type": "milestone",
+                    "can_congratulate": True
+                })
+        
+        # Sort by timestamp
+        friend_activities.sort(key=lambda x: x.get('timestamp', datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+        
+        # Apply pagination
+        paginated_activities = friend_activities[offset:offset + limit]
+        
+        return {
+            "activities": paginated_activities,
+            "total": len(friend_activities),
+            "has_more": len(friend_activities) > offset + limit,
+            "friends_count": len(friend_ids),
+            "engagement_summary": {
+                "recent_achievements": len([a for a in friend_activities if a.get('type') == 'friend_achievement']),
+                "recent_milestones": len([a for a in friend_activities if a.get('type') == 'friend_milestone'])
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get engagement friend activities error: {str(e)}")
+        return {"activities": [], "total": 0, "has_more": False}
 
 # ==================== END ENGAGEMENT FEATURES ====================
 
