@@ -4591,7 +4591,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://wealth-buddy-25.preview.emergentagent.com"
+        base_url = "https://streak-rewards-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -8001,37 +8001,75 @@ async def daily_checkin_reward(
         else:
             current_streak = 1
         
-        # Calculate rewards based on streak
+        # Enhanced reward calculation system
         base_points = 10
-        streak_bonus = min(current_streak * 2, 50)  # Max 50 bonus points
-        total_points = base_points + streak_bonus
         
-        # Special milestone rewards
+        # Progressive streak bonus (increases over time)
+        if current_streak <= 7:
+            streak_bonus = current_streak * 3  # 3-21 points for first week
+        elif current_streak <= 30:
+            streak_bonus = 21 + ((current_streak - 7) * 5)  # Higher bonus for weeks 2-4
+        else:
+            streak_bonus = min(21 + (23 * 5) + ((current_streak - 30) * 7), 200)  # Max 200 bonus
+        
+        # Weekly streak multiplier bonus (2x points for 7-day streaks)
+        weekly_multiplier_bonus = 0
+        if current_streak % 7 == 0 and current_streak >= 7:
+            weekly_multiplier_bonus = (base_points + streak_bonus)  # Double the current points
+            
+        total_points = base_points + streak_bonus + weekly_multiplier_bonus
+        
+        # Enhanced milestone rewards with better progression
         milestone_bonus = 0
         milestone_message = ""
+        milestone_type = ""
         
-        if current_streak == 7:
-            milestone_bonus = 100
-            milestone_message = "7-day streak milestone! 🎉"
+        if current_streak == 3:
+            milestone_bonus = 25
+            milestone_message = "3-day starter bonus! You're building a habit! 🌱"
+            milestone_type = "starter"
+        elif current_streak == 7:
+            milestone_bonus = 150  # Increased from 100
+            milestone_message = "Weekly warrior! 7-day streak bonus! 🎉"
+            milestone_type = "weekly"
+        elif current_streak == 14:
+            milestone_bonus = 300
+            milestone_message = "Two weeks strong! Consistency champion! ⚡"
+            milestone_type = "biweekly"
         elif current_streak == 30:
-            milestone_bonus = 500
-            milestone_message = "30-day streak milestone! Amazing! 🏆"
+            milestone_bonus = 1000  # Increased from 500
+            milestone_message = "Monthly master! 30-day streak! Amazing! 🏆"
+            milestone_type = "monthly"
+        elif current_streak == 60:
+            milestone_bonus = 2500
+            milestone_message = "Two months of dedication! Incredible! 💎"
+            milestone_type = "bimonthly"
         elif current_streak == 100:
-            milestone_bonus = 2000
-            milestone_message = "100-day streak! You're incredible! 👑"
-        elif current_streak % 10 == 0:
-            milestone_bonus = current_streak * 5
-            milestone_message = f"{current_streak}-day streak milestone! 🌟"
+            milestone_bonus = 5000  # Increased from 2000
+            milestone_message = "Centurion status! 100-day legend! 👑"
+            milestone_type = "centurion"
+        elif current_streak == 365:
+            milestone_bonus = 25000
+            milestone_message = "Annual achievement! You're unstoppable! 🌟"
+            milestone_type = "annual"
+        elif current_streak % 50 == 0 and current_streak > 100:
+            milestone_bonus = current_streak * 25
+            milestone_message = f"{current_streak}-day milestone! Legendary dedication! 🚀"
+            milestone_type = "legendary"
         
         total_points += milestone_bonus
         
-        # Create check-in record
+        # Create enhanced check-in record
         checkin_record = {
             "user_id": user_id,
             "date": today.isoformat(),
             "streak": current_streak,
             "points_earned": total_points,
+            "base_points": base_points,
+            "streak_bonus": streak_bonus,
+            "weekly_multiplier_bonus": weekly_multiplier_bonus,
             "milestone_bonus": milestone_bonus,
+            "milestone_type": milestone_type,
             "checked_in_at": datetime.now(timezone.utc)
         }
         
@@ -8059,10 +8097,14 @@ async def daily_checkin_reward(
             "points_earned": total_points,
             "base_points": base_points,
             "streak_bonus": streak_bonus,
+            "weekly_multiplier_bonus": weekly_multiplier_bonus,
             "milestone_bonus": milestone_bonus,
             "milestone_message": milestone_message,
+            "milestone_type": milestone_type,
+            "is_weekly_multiplier": current_streak % 7 == 0 and current_streak >= 7,
             "total_lifetime_points": "Check profile for total",
-            "next_checkin": (today + timedelta(days=1)).isoformat()
+            "next_checkin": (today + timedelta(days=1)).isoformat(),
+            "streak_tier": "legend" if current_streak >= 100 else "champion" if current_streak >= 30 else "warrior" if current_streak >= 7 else "starter"
         }
         
     except Exception as e:
@@ -8098,7 +8140,15 @@ async def get_feature_unlock_status(
         active_days = await db.transactions.distinct("created_at", {"user_id": user_id})
         days_active = len(set(day.date() for day in active_days))
         
-        # Define unlock requirements
+        # Get friend count for social feature unlocks
+        friend_count = await db.friendships.count_documents({
+            "$or": [
+                {"user_id": user_id, "status": "active"},
+                {"friend_id": user_id, "status": "active"}
+            ]
+        })
+        
+        # Define enhanced unlock requirements with social features based on friend count
         unlock_requirements = [
             {
                 "feature": "advanced_analytics",
@@ -8106,23 +8156,62 @@ async def get_feature_unlock_status(
                 "requirement": "5 transactions",
                 "requirement_met": transaction_count >= 5,
                 "description": "Detailed spending patterns and insights",
-                "icon": "📊"
+                "icon": "📊",
+                "category": "analytics"
+            },
+            {
+                "feature": "friend_invitations",
+                "name": "Friend Invitations",
+                "requirement": "Complete profile setup",
+                "requirement_met": True,  # Always unlocked
+                "description": "Invite friends to join your financial journey",
+                "icon": "👋",
+                "category": "social"
             },
             {
                 "feature": "social_sharing",
                 "name": "Achievement Sharing",
-                "requirement": "1 achievement earned",
-                "requirement_met": await db.user_achievements.count_documents({"user_id": user_id}) >= 1,
-                "description": "Share your financial achievements on social media",
-                "icon": "📱"
+                "requirement": "1 friend connected",
+                "requirement_met": friend_count >= 1,
+                "description": "Share your financial achievements with friends",
+                "icon": "📱",
+                "category": "social"
             },
             {
                 "feature": "group_challenges",
                 "name": "Group Challenges",
-                "requirement": "10 transactions",
-                "requirement_met": transaction_count >= 10,
-                "description": "Join savings challenges with friends",
-                "icon": "👥"
+                "requirement": "3 friends connected",
+                "requirement_met": friend_count >= 3,
+                "description": "Create and join savings challenges with friends",
+                "icon": "👥",
+                "category": "social"
+            },
+            {
+                "feature": "friend_leaderboards",
+                "name": "Friend Leaderboards",
+                "requirement": "5 friends connected",
+                "requirement_met": friend_count >= 5,
+                "description": "Compete with friends on savings leaderboards",
+                "icon": "🏆",
+                "category": "social"
+            },
+            {
+                "feature": "social_feed",
+                "name": "Social Activity Feed",
+                "requirement": "7 friends connected",
+                "requirement_met": friend_count >= 7,
+                "description": "See your friends' achievements and milestones",
+                "icon": "📰",
+                "category": "social"
+            },
+            {
+                "feature": "peer_insights",
+                "name": "Peer Performance Insights",
+                "requirement": "10 friends connected",
+                "requirement_met": friend_count >= 10,
+                "description": "Compare your progress with friend averages",
+                "icon": "📊",
+                "category": "social"
             },
             {
                 "feature": "ai_insights",
@@ -8130,7 +8219,8 @@ async def get_feature_unlock_status(
                 "requirement": "7 days active",
                 "requirement_met": days_active >= 7,
                 "description": "Personalized AI-powered financial recommendations",
-                "icon": "🤖"
+                "icon": "🤖",
+                "category": "ai"
             },
             {
                 "feature": "premium_hustles",
@@ -8138,7 +8228,8 @@ async def get_feature_unlock_status(
                 "requirement": "₹5000 total income",
                 "requirement_met": await get_user_total_income(user_id) >= 5000,
                 "description": "Access to exclusive high-paying opportunities",
-                "icon": "💎"
+                "icon": "💎",
+                "category": "premium"
             },
             {
                 "feature": "investment_tracker",
@@ -8146,18 +8237,8 @@ async def get_feature_unlock_status(
                 "requirement": "30 days active + ₹10000 savings",
                 "requirement_met": days_active >= 30 and await get_user_total_savings(user_id) >= 10000,
                 "description": "Track and analyze your investment portfolio",
-                "icon": "📈"
-            },
-            {
-                "feature": "mentor_connect",
-                "name": "Mentor Connect",
-                "requirement": "Complete 3 financial goals",
-                "requirement_met": await db.financial_goals.count_documents({
-                    "user_id": user_id,
-                    "progress": {"$gte": 100}
-                }) >= 3,
-                "description": "Connect with financial mentors and experts",
-                "icon": "🎓"
+                "icon": "📈",
+                "category": "premium"
             }
         ]
         
@@ -8174,21 +8255,625 @@ async def get_feature_unlock_status(
             upsert=True
         )
         
+        # Categorize features by unlock status
+        unlocked_features = [f for f in unlock_requirements if f["requirement_met"]]
+        locked_features = [f for f in unlock_requirements if not f["requirement_met"]]
+        
         return {
             "user_stats": {
                 "transactions": transaction_count,
                 "days_active": days_active,
+                "friend_count": friend_count,
                 "total_income": await get_user_total_income(user_id),
                 "total_savings": await get_user_total_savings(user_id)
             },
             "features": unlock_requirements,
-            "unlocked_count": sum(1 for req in unlock_requirements if req["requirement_met"]),
-            "total_features": len(unlock_requirements)
+            "unlocked_features": unlocked_features,
+            "locked_features": locked_features,
+            "unlocked_count": len(unlocked_features),
+            "total_features": len(unlock_requirements),
+            "social_progress": {
+                "current_friends": friend_count,
+                "next_unlock_at": next(
+                    (f["requirement"] for f in locked_features 
+                     if f["category"] == "social" and "friends" in f["requirement"]),
+                    None
+                )
+            }
         }
         
     except Exception as e:
         logger.error(f"Feature unlock status error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get unlock status")
+
+# Dynamic personalized goals based on university leaderboards
+@api_router.get("/retention/personalized-goals")
+@limiter.limit("10/minute")
+async def get_personalized_goals(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get dynamic personalized goals based on peer performance"""
+    try:
+        # Get user info
+        user_doc = await get_user_by_id(user_id)
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_university = user_doc.get("university", "")
+        
+        # Get user's current performance
+        user_total_savings = await get_user_total_savings(user_id)
+        user_monthly_income = await get_user_monthly_income(user_id)
+        user_transaction_count = await db.transactions.count_documents({"user_id": user_id})
+        
+        # Get university peer performance averages
+        university_users = await db.users.find({"university": user_university}).to_list(None)
+        peer_user_ids = [str(u["_id"]) for u in university_users if str(u["_id"]) != user_id]
+        
+        # Calculate peer averages
+        peer_savings = []
+        peer_monthly_incomes = []
+        peer_transaction_counts = []
+        
+        for peer_id in peer_user_ids[:50]:  # Limit for performance
+            peer_savings.append(await get_user_total_savings(peer_id))
+            peer_monthly_incomes.append(await get_user_monthly_income(peer_id))
+            peer_count = await db.transactions.count_documents({"user_id": peer_id})
+            peer_transaction_counts.append(peer_count)
+        
+        # Calculate statistics
+        avg_peer_savings = sum(peer_savings) / len(peer_savings) if peer_savings else 0
+        avg_peer_monthly_income = sum(peer_monthly_incomes) / len(peer_monthly_incomes) if peer_monthly_incomes else 0
+        avg_peer_transactions = sum(peer_transaction_counts) / len(peer_transaction_counts) if peer_transaction_counts else 0
+        
+        # Calculate percentiles
+        peer_savings.sort()
+        peer_monthly_incomes.sort()
+        peer_transaction_counts.sort()
+        
+        def get_percentile(sorted_list, value):
+            if not sorted_list:
+                return 50
+            position = sum(1 for x in sorted_list if x < value)
+            return min(100, max(0, int((position / len(sorted_list)) * 100)))
+        
+        user_savings_percentile = get_percentile(peer_savings, user_total_savings)
+        user_income_percentile = get_percentile(peer_monthly_incomes, user_monthly_income)
+        user_activity_percentile = get_percentile(peer_transaction_counts, user_transaction_count)
+        
+        # Generate dynamic goals based on peer performance
+        personalized_goals = []
+        
+        # Savings goal
+        if user_savings_percentile < 75:
+            target_savings = max(avg_peer_savings * 1.2, user_total_savings + 2000)
+            if avg_peer_savings > 0:
+                personalized_goals.append({
+                    "type": "savings_catch_up",
+                    "title": f"Match Your {user_university} Peers",
+                    "description": f"Your campus average is ₹{avg_peer_savings:,.0f} in savings. You're at ₹{user_total_savings:,.0f}",
+                    "target_amount": target_savings,
+                    "current_amount": user_total_savings,
+                    "progress": min(100, (user_total_savings / target_savings) * 100),
+                    "peer_context": f"You're in the {user_savings_percentile}th percentile at {user_university}",
+                    "motivation": "🎯 Beat the campus average and climb the leaderboard!",
+                    "category": "peer_comparison",
+                    "deadline": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
+                    "reward_points": 500
+                })
+        else:
+            # User is already above average, set stretch goal
+            top_10_threshold = peer_savings[int(len(peer_savings) * 0.9):] if peer_savings else [user_total_savings * 1.5]
+            target_savings = max(top_10_threshold) if top_10_threshold else user_total_savings * 1.3
+            
+            personalized_goals.append({
+                "type": "excellence_goal",
+                "title": f"Join {user_university} Top 10%",
+                "description": f"You're doing great! Aim for top 10% savings at {user_university}",
+                "target_amount": target_savings,
+                "current_amount": user_total_savings,
+                "progress": min(100, (user_total_savings / target_savings) * 100),
+                "peer_context": f"You're in the {user_savings_percentile}th percentile - excellent!",
+                "motivation": "👑 Become a campus savings leader!",
+                "category": "excellence",
+                "deadline": (datetime.now(timezone.utc) + timedelta(days=45)).isoformat(),
+                "reward_points": 1000
+            })
+        
+        # Activity goal
+        if user_activity_percentile < 60:
+            target_transactions = max(avg_peer_transactions * 1.1, user_transaction_count + 10)
+            personalized_goals.append({
+                "type": "activity_boost",
+                "title": "Increase Financial Activity",
+                "description": f"Your peers track {avg_peer_transactions:.0f} transactions on average",
+                "target_amount": target_transactions,
+                "current_amount": user_transaction_count,
+                "progress": min(100, (user_transaction_count / target_transactions) * 100),
+                "peer_context": f"More tracking leads to better insights and results",
+                "motivation": "📊 Track more, save more!",
+                "category": "activity",
+                "deadline": (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),
+                "reward_points": 200
+            })
+        
+        # Income goal
+        if avg_peer_monthly_income > user_monthly_income and avg_peer_monthly_income > 1000:
+            target_income = avg_peer_monthly_income * 1.1
+            personalized_goals.append({
+                "type": "income_growth",
+                "title": "Boost Your Monthly Income",
+                "description": f"Your campus peers earn ₹{avg_peer_monthly_income:,.0f}/month on average",
+                "target_amount": target_income,
+                "current_amount": user_monthly_income,
+                "progress": min(100, (user_monthly_income / target_income) * 100),
+                "peer_context": f"Explore side hustles and opportunities",
+                "motivation": "💰 Increase your earning potential!",
+                "category": "income",
+                "deadline": (datetime.now(timezone.utc) + timedelta(days=60)).isoformat(),
+                "reward_points": 750
+            })
+        
+        return {
+            "user_performance": {
+                "savings": user_total_savings,
+                "monthly_income": user_monthly_income,
+                "transaction_count": user_transaction_count
+            },
+            "peer_benchmarks": {
+                "university": user_university,
+                "avg_savings": avg_peer_savings,
+                "avg_monthly_income": avg_peer_monthly_income,
+                "avg_transactions": avg_peer_transactions,
+                "peer_count": len(peer_user_ids)
+            },
+            "percentiles": {
+                "savings": user_savings_percentile,
+                "income": user_income_percentile,
+                "activity": user_activity_percentile
+            },
+            "personalized_goals": personalized_goals,
+            "overall_ranking": f"Top {100 - max(user_savings_percentile, user_income_percentile)}% at {user_university}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Personalized goals error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate personalized goals")
+
+# Helper function for monthly income calculation
+async def get_user_monthly_income(user_id: str) -> float:
+    """Calculate user's average monthly income"""
+    try:
+        # Get income transactions from last 3 months
+        three_months_ago = datetime.now(timezone.utc) - timedelta(days=90)
+        
+        income_transactions = await db.transactions.find({
+            "user_id": user_id,
+            "type": "income",
+            "created_at": {"$gte": three_months_ago}
+        }).to_list(None)
+        
+        if not income_transactions:
+            return 0.0
+        
+        # Calculate monthly average
+        total_income = sum(t.get("amount", 0) for t in income_transactions)
+        months = min(3, max(1, len(income_transactions) / 10))  # Estimate months based on transactions
+        
+        return total_income / months
+        
+    except Exception as e:
+        logger.error(f"Monthly income calculation error: {e}")
+        return 0.0
+
+# Habit tracking with social pressure
+@api_router.get("/retention/habit-tracking")
+@limiter.limit("20/minute")
+async def get_habit_tracking_status(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get habit tracking status with social pressure elements"""
+    try:
+        # Get user info
+        user_doc = await get_user_by_id(user_id)
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Define core financial habits to track
+        today = datetime.now(timezone.utc).date()
+        
+        # Get user's activity for last 30 days
+        thirty_days_ago = today - timedelta(days=30)
+        
+        # Track daily check-ins
+        checkin_days = await db.daily_checkins.find({
+            "user_id": user_id,
+            "date": {"$gte": thirty_days_ago.isoformat()}
+        }).to_list(None)
+        
+        checkin_dates = set(c["date"] for c in checkin_days)
+        
+        # Track transaction logging days
+        transaction_days = await db.transactions.distinct("created_at", {
+            "user_id": user_id,
+            "created_at": {"$gte": datetime.combine(thirty_days_ago, datetime.min.time())}
+        })
+        transaction_dates = set(d.date().isoformat() for d in transaction_days)
+        
+        # Track budget adherence days
+        budget_check_days = await db.transactions.find({
+            "user_id": user_id,
+            "type": "expense",
+            "created_at": {"$gte": datetime.combine(thirty_days_ago, datetime.min.time())}
+        }).to_list(None)
+        
+        budget_adherence_dates = set()
+        for transaction in budget_check_days:
+            # Check if expense was within budget (simplified check)
+            date_str = transaction["created_at"].date().isoformat()
+            budget_adherence_dates.add(date_str)
+        
+        # Get friends for social pressure
+        friends = await db.friendships.find({
+            "$or": [
+                {"user_id": user_id, "status": "active"},
+                {"friend_id": user_id, "status": "active"}
+            ]
+        }).to_list(None)
+        
+        friend_ids = []
+        for friendship in friends:
+            friend_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
+            friend_ids.append(friend_id)
+        
+        # Get friends' habit performance for social comparison
+        friends_performance = []
+        for friend_id in friend_ids[:10]:  # Limit for performance
+            friend_checkins = await db.daily_checkins.count_documents({
+                "user_id": friend_id,
+                "date": {"$gte": thirty_days_ago.isoformat()}
+            })
+            
+            friend_transactions = await db.transactions.distinct("created_at", {
+                "user_id": friend_id,
+                "created_at": {"$gte": datetime.combine(thirty_days_ago, datetime.min.time())}
+            })
+            friend_transaction_days = len(set(d.date() for d in friend_transactions))
+            
+            friend_doc = await get_user_by_id(friend_id)
+            friends_performance.append({
+                "friend_id": friend_id,
+                "name": friend_doc.get("name", "Friend") if friend_doc else "Friend",
+                "avatar": friend_doc.get("avatar", "man") if friend_doc else "man",
+                "checkin_days": friend_checkins,
+                "transaction_days": friend_transaction_days,
+                "total_habit_score": friend_checkins + friend_transaction_days
+            })
+        
+        # Calculate user's habit scores
+        user_checkin_days = len(checkin_dates)
+        user_transaction_days = len(transaction_dates)
+        user_budget_days = len(budget_adherence_dates)
+        user_total_score = user_checkin_days + user_transaction_days + user_budget_days
+        
+        # Calculate habit streaks
+        def calculate_habit_streak(date_set, habit_name):
+            """Calculate current streak for a habit"""
+            streak = 0
+            current_date = today
+            
+            while current_date >= thirty_days_ago:
+                if current_date.isoformat() in date_set:
+                    streak += 1
+                    current_date -= timedelta(days=1)
+                else:
+                    break
+            
+            return streak
+        
+        checkin_streak = calculate_habit_streak(checkin_dates, "check-in")
+        transaction_streak = calculate_habit_streak(transaction_dates, "transaction")
+        
+        # Generate social pressure messages
+        friends_performance.sort(key=lambda x: x["total_habit_score"], reverse=True)
+        
+        social_pressure_messages = []
+        
+        if friends_performance:
+            top_performer = friends_performance[0]
+            if top_performer["total_habit_score"] > user_total_score:
+                social_pressure_messages.append({
+                    "type": "competition",
+                    "message": f"{top_performer['name']} is leading with {top_performer['total_habit_score']} habit points this month!",
+                    "action": "Catch up by checking in daily and tracking expenses",
+                    "urgency": "high" if top_performer["total_habit_score"] - user_total_score > 10 else "medium"
+                })
+            
+            avg_friend_score = sum(f["total_habit_score"] for f in friends_performance) / len(friends_performance)
+            if user_total_score < avg_friend_score:
+                social_pressure_messages.append({
+                    "type": "peer_pressure",
+                    "message": f"Your friends average {avg_friend_score:.1f} habit points. You have {user_total_score}",
+                    "action": "Stay consistent with your financial habits",
+                    "urgency": "medium"
+                })
+        
+        # Habit tracking goals with social elements
+        habits = [
+            {
+                "name": "Daily Check-in",
+                "description": "Check in daily to earn points and maintain streaks",
+                "current_streak": checkin_streak,
+                "days_this_month": user_checkin_days,
+                "target_days": 25,  # Target 25 out of 30 days
+                "progress": min(100, (user_checkin_days / 25) * 100),
+                "icon": "✅",
+                "social_ranking": sum(1 for f in friends_performance if f["checkin_days"] < user_checkin_days) + 1,
+                "total_friends": len(friends_performance) + 1
+            },
+            {
+                "name": "Transaction Tracking",
+                "description": "Log your income and expenses regularly",
+                "current_streak": transaction_streak,
+                "days_this_month": user_transaction_days,
+                "target_days": 20,  # Target 20 days of activity
+                "progress": min(100, (user_transaction_days / 20) * 100),
+                "icon": "💰",
+                "social_ranking": sum(1 for f in friends_performance if f["transaction_days"] < user_transaction_days) + 1,
+                "total_friends": len(friends_performance) + 1
+            },
+            {
+                "name": "Budget Awareness",
+                "description": "Stay mindful of your spending limits",
+                "current_streak": len(budget_adherence_dates),
+                "days_this_month": user_budget_days,
+                "target_days": 15,  # Target mindful spending
+                "progress": min(100, (user_budget_days / 15) * 100),
+                "icon": "📊",
+                "social_ranking": "N/A",  # Not compared with friends
+                "total_friends": "N/A"
+            }
+        ]
+        
+        return {
+            "user_habit_score": user_total_score,
+            "habits": habits,
+            "social_comparison": {
+                "friends_performance": friends_performance[:5],  # Top 5 friends
+                "user_ranking": sum(1 for f in friends_performance if f["total_habit_score"] < user_total_score) + 1,
+                "total_participants": len(friends_performance) + 1
+            },
+            "social_pressure_messages": social_pressure_messages,
+            "monthly_summary": {
+                "check_in_days": user_checkin_days,
+                "transaction_days": user_transaction_days,
+                "budget_awareness_days": user_budget_days,
+                "total_score": user_total_score,
+                "month_target": 60,  # Combined target score
+                "progress": min(100, (user_total_score / 60) * 100)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Habit tracking error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get habit tracking status")
+
+# Weekly recap with social comparison elements  
+@api_router.get("/retention/weekly-recap")
+@limiter.limit("10/minute")
+async def get_weekly_recap(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get weekly recap with social comparison elements"""
+    try:
+        # Get user info
+        user_doc = await get_user_by_id(user_id)
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Calculate this week's date range
+        today = datetime.now(timezone.utc).date()
+        week_start = today - timedelta(days=today.weekday())  # Monday
+        week_end = week_start + timedelta(days=6)  # Sunday
+        
+        # Get this week's user activity
+        week_start_dt = datetime.combine(week_start, datetime.min.time()).replace(tzinfo=timezone.utc)
+        week_end_dt = datetime.combine(week_end, datetime.max.time()).replace(tzinfo=timezone.utc)
+        
+        # User's weekly stats
+        weekly_transactions = await db.transactions.find({
+            "user_id": user_id,
+            "created_at": {"$gte": week_start_dt, "$lte": week_end_dt}
+        }).to_list(None)
+        
+        weekly_checkins = await db.daily_checkins.count_documents({
+            "user_id": user_id,
+            "date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()}
+        })
+        
+        # Calculate user metrics
+        weekly_income = sum(t.get("amount", 0) for t in weekly_transactions if t["type"] == "income")
+        weekly_expenses = sum(t.get("amount", 0) for t in weekly_transactions if t["type"] == "expense")
+        weekly_savings = weekly_income - weekly_expenses
+        
+        # Get friends for comparison
+        friends = await db.friendships.find({
+            "$or": [
+                {"user_id": user_id, "status": "active"},
+                {"friend_id": user_id, "status": "active"}
+            ]
+        }).to_list(None)
+        
+        friend_ids = []
+        for friendship in friends:
+            friend_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
+            friend_ids.append(friend_id)
+        
+        # Get friends' weekly performance
+        friends_weekly_stats = []
+        
+        for friend_id in friend_ids[:20]:  # Limit for performance
+            friend_transactions = await db.transactions.find({
+                "user_id": friend_id,
+                "created_at": {"$gte": week_start_dt, "$lte": week_end_dt}
+            }).to_list(None)
+            
+            friend_checkins = await db.daily_checkins.count_documents({
+                "user_id": friend_id,
+                "date": {"$gte": week_start.isoformat(), "$lte": week_end.isoformat()}
+            })
+            
+            friend_income = sum(t.get("amount", 0) for t in friend_transactions if t["type"] == "income")
+            friend_expenses = sum(t.get("amount", 0) for t in friend_transactions if t["type"] == "expense")
+            friend_savings = friend_income - friend_expenses
+            
+            friend_doc = await get_user_by_id(friend_id)
+            
+            friends_weekly_stats.append({
+                "friend_id": friend_id,
+                "name": friend_doc.get("name", "Friend") if friend_doc else "Friend",
+                "avatar": friend_doc.get("avatar", "man") if friend_doc else "man",
+                "savings": friend_savings,
+                "checkins": friend_checkins,
+                "transactions": len(friend_transactions),
+                "activity_score": friend_checkins + len(friend_transactions)
+            })
+        
+        # Calculate comparative metrics
+        if friends_weekly_stats:
+            avg_friend_savings = sum(f["savings"] for f in friends_weekly_stats) / len(friends_weekly_stats)
+            avg_friend_checkins = sum(f["checkins"] for f in friends_weekly_stats) / len(friends_weekly_stats)
+            avg_friend_transactions = sum(f["transactions"] for f in friends_weekly_stats) / len(friends_weekly_stats)
+            
+            # Rankings
+            friends_by_savings = sorted(friends_weekly_stats, key=lambda x: x["savings"], reverse=True)
+            friends_by_activity = sorted(friends_weekly_stats, key=lambda x: x["activity_score"], reverse=True)
+            
+            user_savings_rank = sum(1 for f in friends_weekly_stats if f["savings"] < weekly_savings) + 1
+            user_activity_rank = sum(1 for f in friends_weekly_stats if f["activity_score"] < weekly_checkins + len(weekly_transactions)) + 1
+        else:
+            avg_friend_savings = 0
+            avg_friend_checkins = 0
+            avg_friend_transactions = 0
+            friends_by_savings = []
+            friends_by_activity = []
+            user_savings_rank = 1
+            user_activity_rank = 1
+        
+        # Generate achievements and insights
+        weekly_achievements = []
+        
+        if weekly_checkins >= 6:
+            weekly_achievements.append({
+                "type": "consistency",
+                "title": "Consistency Champion",
+                "description": f"Checked in {weekly_checkins}/7 days this week!",
+                "icon": "🎯"
+            })
+        
+        if weekly_savings > 0:
+            weekly_achievements.append({
+                "type": "savings",
+                "title": "Positive Saver",
+                "description": f"Saved ₹{weekly_savings:.0f} this week!",
+                "icon": "💰"
+            })
+        
+        if weekly_savings > avg_friend_savings and friends_weekly_stats:
+            weekly_achievements.append({
+                "type": "social",
+                "title": "Savings Leader",
+                "description": "You out-saved your friend group this week!",
+                "icon": "🏆"
+            })
+        
+        # Social comparison insights
+        comparison_insights = []
+        
+        if friends_weekly_stats:
+            if weekly_savings > avg_friend_savings:
+                comparison_insights.append({
+                    "type": "positive",
+                    "message": f"You saved ₹{weekly_savings - avg_friend_savings:.0f} more than your friends' average",
+                    "icon": "📈"
+                })
+            elif avg_friend_savings > weekly_savings:
+                comparison_insights.append({
+                    "type": "motivational",
+                    "message": f"Your friends averaged ₹{avg_friend_savings:.0f} in savings. You can catch up!",
+                    "icon": "🎯"
+                })
+            
+            if weekly_checkins > avg_friend_checkins:
+                comparison_insights.append({
+                    "type": "positive",
+                    "message": f"You checked in more consistently than {len([f for f in friends_weekly_stats if f['checkins'] < weekly_checkins])} friends",
+                    "icon": "✅"
+                })
+        
+        return {
+            "week_period": {
+                "start": week_start.isoformat(),
+                "end": week_end.isoformat(),
+                "week_number": week_start.isocalendar()[1]
+            },
+            "user_stats": {
+                "income": weekly_income,
+                "expenses": weekly_expenses,
+                "savings": weekly_savings,
+                "checkins": weekly_checkins,
+                "transactions": len(weekly_transactions),
+                "activity_score": weekly_checkins + len(weekly_transactions)
+            },
+            "social_comparison": {
+                "friend_averages": {
+                    "savings": avg_friend_savings,
+                    "checkins": avg_friend_checkins,
+                    "transactions": avg_friend_transactions
+                },
+                "rankings": {
+                    "savings_rank": user_savings_rank,
+                    "activity_rank": user_activity_rank,
+                    "total_participants": len(friends_weekly_stats) + 1
+                },
+                "top_performers": {
+                    "savings": friends_by_savings[:3],
+                    "activity": friends_by_activity[:3]
+                }
+            },
+            "achievements": weekly_achievements,
+            "insights": comparison_insights,
+            "next_week_goals": [
+                {
+                    "type": "consistency",
+                    "title": "Perfect Week Challenge",
+                    "description": "Check in all 7 days next week",
+                    "target": 7,
+                    "reward_points": 200
+                },
+                {
+                    "type": "savings",
+                    "title": "Beat This Week",
+                    "description": f"Save more than ₹{weekly_savings:.0f} next week",
+                    "target": weekly_savings + 500,
+                    "reward_points": 300
+                },
+                {
+                    "type": "social",
+                    "title": "Friend Challenge",
+                    "description": "Outperform your friend group average",
+                    "target": avg_friend_savings,
+                    "reward_points": 400
+                }
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Weekly recap error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate weekly recap")
 
 # ================================================================================================
 # PHASE 4: SHARING TOOLS IMPLEMENTATION
