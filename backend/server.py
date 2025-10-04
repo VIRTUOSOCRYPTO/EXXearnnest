@@ -4737,7 +4737,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://perf-boost-7.preview.emergentagent.com"
+        base_url = "https://data-stories-1.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7289,7 +7289,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://perf-boost-7.preview.emergentagent.com"
+        base_url = "https://data-stories-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -13839,6 +13839,454 @@ async def shutdown_db_client():
         
     except Exception as e:
         logger.error(f"Shutdown error: {str(e)}")
+
+# ===== VIRAL IMPACT FEATURES =====
+
+# 1. PUBLIC CAMPUS BATTLE DASHBOARD
+@api_router.get("/public/campus-battle")
+async def get_public_campus_battle():
+    """Public campus battle dashboard - no authentication required"""
+    try:
+        # Get all users with their campus data
+        users_cursor = db.users.find(
+            {"university": {"$ne": None}, "is_active": True},
+            {"university": 1, "total_earnings": 1, "net_savings": 1, "current_streak": 1, "last_activity_date": 1, "created_at": 1}
+        )
+        users = await users_cursor.to_list(None)
+        
+        # Get transactions for active spending calculation
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        # Campus aggregation
+        campus_stats = {}
+        
+        for user in users:
+            campus = user.get('university', 'Unknown')
+            if campus not in campus_stats:
+                campus_stats[campus] = {
+                    'total_savings': 0,
+                    'total_users': 0,
+                    'active_users_7d': 0,
+                    'total_earnings': 0,
+                    'recent_activity': 0
+                }
+            
+            campus_stats[campus]['total_savings'] += user.get('net_savings', 0)
+            campus_stats[campus]['total_earnings'] += user.get('total_earnings', 0)
+            campus_stats[campus]['total_users'] += 1
+            
+            # Check if active in last 7 days
+            last_activity = user.get('last_activity_date')
+            if last_activity and last_activity > seven_days_ago:
+                campus_stats[campus]['active_users_7d'] += 1
+                campus_stats[campus]['recent_activity'] += 1
+        
+        # Calculate averages and rankings
+        battle_data = []
+        for campus, stats in campus_stats.items():
+            if stats['total_users'] > 0:  # Only include campuses with users
+                avg_savings = stats['total_savings'] / stats['total_users'] if stats['total_users'] > 0 else 0
+                
+                battle_data.append({
+                    'campus': campus,
+                    'total_savings': round(stats['total_savings'], 2),
+                    'average_monthly_savings': round(avg_savings, 2),
+                    'active_users': stats['active_users_7d'],
+                    'total_users': stats['total_users'],
+                    'recent_activity_score': stats['recent_activity'],
+                    'total_earnings': round(stats['total_earnings'], 2)
+                })
+        
+        # Sort by total savings for ranking
+        battle_data.sort(key=lambda x: x['total_savings'], reverse=True)
+        
+        # Add rankings
+        for i, campus_data in enumerate(battle_data):
+            campus_data['rank'] = i + 1
+        
+        # Find trending campus (most recent activity)
+        trending_campus = max(battle_data, key=lambda x: x['recent_activity_score']) if battle_data else None
+        
+        return {
+            "success": True,
+            "campus_battle": battle_data[:20],  # Top 20 campuses
+            "trending_campus": trending_campus['campus'] if trending_campus else None,
+            "total_campuses": len(battle_data),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "auto_refresh_seconds": 30
+        }
+        
+    except Exception as e:
+        logger.error(f"Campus battle dashboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving campus battle data")
+
+# 2. ANONYMOUS SPENDING INSIGHTS
+@api_router.get("/insights/campus-spending/{campus}")
+async def get_campus_spending_insights(campus: str, current_user = Depends(get_current_user)):
+    """Get anonymous spending insights for a specific campus"""
+    try:
+        # Get all users from this campus
+        campus_users = await db.users.find(
+            {"university": campus, "is_active": True}
+        ).to_list(None)
+        
+        if not campus_users:
+            raise HTTPException(status_code=404, detail="Campus not found or no active users")
+        
+        user_ids = [user["id"] for user in campus_users]
+        
+        # Get last 30 days of expense transactions
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        
+        transactions_cursor = db.transactions.find({
+            "user_id": {"$in": user_ids},
+            "type": "expense",
+            "date": {"$gte": thirty_days_ago}
+        })
+        transactions = await transactions_cursor.to_list(None)
+        
+        # Analyze spending by category
+        category_spending = {}
+        total_spending = 0
+        
+        for transaction in transactions:
+            category = transaction['category']
+            amount = transaction['amount']
+            
+            category_spending[category] = category_spending.get(category, 0) + amount
+            total_spending += amount
+        
+        # Calculate percentages and insights
+        insights = []
+        focus_categories = ['Food', 'Entertainment', 'Shopping', 'Transportation', 'Books']
+        
+        for category in focus_categories:
+            if category in category_spending:
+                percentage = (category_spending[category] / total_spending * 100) if total_spending > 0 else 0
+                amount = category_spending[category]
+                
+                insights.append({
+                    "category": category,
+                    "amount": round(amount, 2),
+                    "percentage": round(percentage, 1),
+                    "insight_text": f"Your campus spends {percentage:.1f}% of its budget on {category.lower()}",
+                    "emoji": {"Food": "🍕", "Entertainment": "🎬", "Shopping": "🛍️", 
+                             "Transportation": "🚗", "Books": "📚"}.get(category, "💰")
+                })
+        
+        # Sort by percentage
+        insights.sort(key=lambda x: x['percentage'], reverse=True)
+        
+        # Generate shareable insight
+        if insights:
+            top_category = insights[0]
+            shareable_text = f"Our {campus} campus spends {top_category['percentage']}% of its budget on {top_category['category'].lower()} {top_category['emoji']} #EarnNest #StudentFinance"
+        else:
+            shareable_text = f"{campus} students are building great financial habits! #EarnNest"
+        
+        return {
+            "success": True,
+            "campus": campus,
+            "total_users": len(campus_users),
+            "total_spending": round(total_spending, 2),
+            "insights": insights,
+            "shareable_text": shareable_text,
+            "period": "Last 30 days"
+        }
+        
+    except Exception as e:
+        logger.error(f"Campus spending insights error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving spending insights")
+
+# 3. VIRAL MILESTONE ANNOUNCEMENTS
+@api_router.get("/milestones/check")
+async def check_viral_milestones():
+    """Check for viral milestones (app-wide and campus-specific)"""
+    try:
+        # Get all users for app-wide stats
+        users_cursor = db.users.find({"is_active": True})
+        users = await users_cursor.to_list(None)
+        
+        # Calculate app-wide totals
+        total_app_savings = sum(user.get('net_savings', 0) for user in users)
+        total_app_earnings = sum(user.get('total_earnings', 0) for user in users)
+        
+        milestones = [100000, 500000, 1000000, 5000000, 10000000, 100000000]  # ₹1L to ₹10 crore
+        
+        # Check app-wide milestones
+        app_milestones = []
+        for milestone in milestones:
+            if total_app_savings >= milestone:
+                milestone_text = f"All EarnNest students have saved ₹{milestone/100000:.0f} lakh total!"
+                if milestone >= 10000000:
+                    milestone_text = f"All EarnNest students have saved ₹{milestone/10000000:.0f} crore total!"
+                
+                app_milestones.append({
+                    "type": "app_wide",
+                    "milestone": milestone,
+                    "current_value": total_app_savings,
+                    "achievement_text": milestone_text,
+                    "celebration_level": "major" if milestone >= 1000000 else "minor"
+                })
+        
+        # Check campus-specific milestones
+        campus_milestones = []
+        campus_totals = {}
+        
+        for user in users:
+            campus = user.get('university', 'Unknown')
+            if campus != 'Unknown':
+                if campus not in campus_totals:
+                    campus_totals[campus] = {'savings': 0, 'users': 0}
+                campus_totals[campus]['savings'] += user.get('net_savings', 0)
+                campus_totals[campus]['users'] += 1
+        
+        for campus, data in campus_totals.items():
+            for milestone in milestones:
+                if data['savings'] >= milestone and data['users'] >= 5:  # Minimum 5 users for campus milestone
+                    milestone_text = f"{campus} crossed ₹{milestone/100000:.0f}L in total student savings!"
+                    if milestone >= 10000000:
+                        milestone_text = f"{campus} crossed ₹{milestone/10000000:.0f} crore in total student savings!"
+                    
+                    campus_milestones.append({
+                        "type": "campus_specific",
+                        "campus": campus,
+                        "milestone": milestone,
+                        "current_value": data['savings'],
+                        "achievement_text": milestone_text,
+                        "celebration_level": "major" if milestone >= 1000000 else "minor"
+                    })
+        
+        return {
+            "success": True,
+            "app_wide_milestones": app_milestones[-3:] if app_milestones else [],  # Latest 3
+            "campus_milestones": campus_milestones[-5:] if campus_milestones else [],  # Latest 5
+            "total_app_savings": round(total_app_savings, 2),
+            "total_app_users": len(users),
+            "celebration_ready": len(app_milestones) > 0 or len(campus_milestones) > 0
+        }
+        
+    except Exception as e:
+        logger.error(f"Viral milestones check error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error checking milestones")
+
+# 4. FRIEND COMPARISONS (Anonymous)
+@api_router.get("/insights/friend-comparison")
+async def get_friend_comparison_insights(current_user = Depends(get_current_user)):
+    """Get anonymous friend spending comparisons"""
+    try:
+        user_id = current_user["id"]
+        
+        # Get user's friends
+        friends_cursor = db.friends.find({"user_id": user_id})
+        friends = await friends_cursor.to_list(None)
+        
+        if not friends:
+            return {
+                "success": True,
+                "has_friends": False,
+                "message": "Add friends to see spending comparisons!",
+                "comparisons": []
+            }
+        
+        friend_ids = [friend["friend_id"] for friend in friends]
+        friend_ids.append(user_id)  # Include current user
+        
+        # Get last 30 days transactions for user and friends
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        
+        transactions_cursor = db.transactions.find({
+            "user_id": {"$in": friend_ids},
+            "type": "expense",
+            "date": {"$gte": thirty_days_ago}
+        })
+        transactions = await transactions_cursor.to_list(None)
+        
+        # Calculate spending by user
+        user_spending = {}
+        for friend_id in friend_ids:
+            user_spending[friend_id] = {
+                'total': 0,
+                'Food': 0,
+                'Entertainment': 0,
+                'Shopping': 0,
+                'categories': {}
+            }
+        
+        for transaction in transactions:
+            user_tx_id = transaction['user_id']
+            category = transaction['category']
+            amount = transaction['amount']
+            
+            user_spending[user_tx_id]['total'] += amount
+            user_spending[user_tx_id]['categories'][category] = user_spending[user_tx_id]['categories'].get(category, 0) + amount
+            
+            if category in ['Food', 'Entertainment', 'Shopping']:
+                user_spending[user_tx_id][category] += amount
+        
+        # Calculate comparisons
+        current_user_spending = user_spending[user_id]
+        friend_spending_values = [user_spending[fid] for fid in friend_ids if fid != user_id]
+        
+        if not friend_spending_values:
+            return {
+                "success": True,
+                "has_friends": True,
+                "message": "Your friends haven't recorded any expenses yet!",
+                "comparisons": []
+            }
+        
+        # Calculate friend averages
+        friend_totals = {
+            'total': sum(fs['total'] for fs in friend_spending_values) / len(friend_spending_values),
+            'Food': sum(fs['Food'] for fs in friend_spending_values) / len(friend_spending_values),
+            'Entertainment': sum(fs['Entertainment'] for fs in friend_spending_values) / len(friend_spending_values),
+            'Shopping': sum(fs['Shopping'] for fs in friend_spending_values) / len(friend_spending_values)
+        }
+        
+        # Generate comparisons
+        comparisons = []
+        categories_to_compare = ['total', 'Food', 'Entertainment', 'Shopping']
+        
+        for category in categories_to_compare:
+            user_amount = current_user_spending.get(category, 0)
+            friend_avg = friend_totals[category]
+            
+            if friend_avg > 0:
+                percentage_diff = ((user_amount - friend_avg) / friend_avg) * 100
+                
+                if abs(percentage_diff) >= 10:  # Only show significant differences
+                    if percentage_diff > 0:
+                        comparison_text = f"You spend {abs(percentage_diff):.0f}% more on {category.lower()} than your friends"
+                        trend = "higher"
+                    else:
+                        comparison_text = f"You spend {abs(percentage_diff):.0f}% less on {category.lower()} than your friends"
+                        trend = "lower"
+                    
+                    comparisons.append({
+                        "category": category,
+                        "user_amount": round(user_amount, 2),
+                        "friend_average": round(friend_avg, 2),
+                        "percentage_difference": round(percentage_diff, 1),
+                        "comparison_text": comparison_text,
+                        "trend": trend,
+                        "emoji": {"total": "💰", "Food": "🍕", "Entertainment": "🎬", "Shopping": "🛍️"}.get(category, "💸")
+                    })
+        
+        return {
+            "success": True,
+            "has_friends": True,
+            "friend_count": len(friend_ids) - 1,
+            "comparisons": comparisons,
+            "period": "Last 30 days"
+        }
+        
+    except Exception as e:
+        logger.error(f"Friend comparison insights error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving friend comparisons")
+
+# 5. MEDIA-READY DATA STORIES
+@api_router.get("/public/impact-stats")
+async def get_media_ready_impact_stats():
+    """Generate media-ready data stories for press/sharing"""
+    try:
+        # Get all users and transactions for comprehensive stats
+        users_cursor = db.users.find({"is_active": True})
+        users = await users_cursor.to_list(None)
+        
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+        transactions_cursor = db.transactions.find({
+            "date": {"$gte": thirty_days_ago}
+        })
+        transactions = await transactions_cursor.to_list(None)
+        
+        # Calculate comprehensive statistics
+        total_users = len(users)
+        total_savings = sum(user.get('net_savings', 0) for user in users)
+        total_earnings = sum(user.get('total_earnings', 0) for user in users)
+        
+        # Monthly activity
+        monthly_transactions = len([t for t in transactions if t['date'] > thirty_days_ago])
+        monthly_volume = sum(t['amount'] for t in transactions if t['date'] > thirty_days_ago)
+        
+        # Campus analysis
+        campus_spending = {}
+        for user in users:
+            campus = user.get('university', 'Unknown')
+            if campus != 'Unknown':
+                user_transactions = [t for t in transactions if t['user_id'] == user['id'] and t['type'] == 'expense']
+                campus_total = sum(t['amount'] for t in user_transactions)
+                
+                if campus not in campus_spending:
+                    campus_spending[campus] = {'total': 0, 'users': 0}
+                campus_spending[campus]['total'] += campus_total
+                campus_spending[campus]['users'] += 1
+        
+        # Calculate average spending per campus
+        campus_averages = {}
+        for campus, data in campus_spending.items():
+            if data['users'] > 0:
+                campus_averages[campus] = data['total'] / data['users']
+        
+        # Find top spending cities
+        top_spending_campus = max(campus_averages.items(), key=lambda x: x[1]) if campus_averages else None
+        
+        # Generate press-worthy stories
+        stories = [
+            {
+                "headline": f"Students across India saved ₹{total_savings/100000:.1f} lakh through financial tracking",
+                "stat": f"₹{total_savings/100000:.1f}L",
+                "description": f"Over {total_users} students have collectively saved ₹{total_savings/100000:.1f} lakh using smart financial tracking tools",
+                "category": "savings_milestone",
+                "shareable": True
+            },
+            {
+                "headline": f"Indian students earned ₹{total_earnings/100000:.1f} lakh through side hustles last month",
+                "stat": f"₹{total_earnings/100000:.1f}L",
+                "description": f"Student entrepreneurs generated ₹{total_earnings/100000:.1f} lakh in additional income through verified side hustles",
+                "category": "earnings_report", 
+                "shareable": True
+            }
+        ]
+        
+        if top_spending_campus:
+            campus_name, avg_spending = top_spending_campus
+            stories.append({
+                "headline": f"{campus_name} students lead in financial activity with ₹{avg_spending:.0f} average monthly transactions",
+                "stat": f"₹{avg_spending:.0f}",
+                "description": f"{campus_name} shows highest student financial engagement with ₹{avg_spending:.0f} average monthly activity",
+                "category": "campus_comparison",
+                "shareable": True
+            })
+        
+        # Add growth statistics
+        stories.append({
+            "headline": f"{monthly_transactions} financial transactions worth ₹{monthly_volume/100000:.1f}L recorded this month",
+            "stat": f"{monthly_transactions} transactions",
+            "description": f"Students are actively managing finances with {monthly_transactions} transactions totaling ₹{monthly_volume/100000:.1f} lakh this month",
+            "category": "activity_report",
+            "shareable": True
+        })
+        
+        return {
+            "success": True,
+            "impact_stories": stories,
+            "summary_stats": {
+                "total_users": total_users,
+                "total_savings": round(total_savings, 2),
+                "total_earnings": round(total_earnings, 2),
+                "monthly_transactions": monthly_transactions,
+                "monthly_volume": round(monthly_volume, 2),
+                "active_campuses": len(campus_spending)
+            },
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "refresh_schedule": "weekly"
+        }
+        
+    except Exception as e:
+        logger.error(f"Impact stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error retrieving impact statistics")
 
 # Health check endpoint
 @app.get("/health")
