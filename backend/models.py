@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr, validator, root_validator
 from typing import List, Optional, Dict, Any, Union
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import re
 
@@ -1292,17 +1292,20 @@ class CampusAmbassadorApplicationRequest(BaseModel):
 class SocialShare(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
-    platform: str  # "instagram", "whatsapp", "twitter", "facebook"
+    platform: str  # "instagram", "whatsapp", "twitter", "facebook", "linkedin", "snapchat"
     achievement_type: str  # "savings_milestone", "streak_achievement", "badge_earned", etc.
     milestone_text: str
     image_filename: str
     amount: Optional[float] = None
     shared_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     engagement_count: int = 0  # likes, comments, shares from platform
+    click_count: int = 0  # clicks on shared content links
+    conversion_count: int = 0  # actual signups from shared content
+    viral_coefficient: float = 0.0  # engagement/conversion metrics
     
     @validator('platform')
     def validate_platform(cls, v):
-        allowed_platforms = ["instagram", "whatsapp", "twitter", "facebook", "snapchat"]
+        allowed_platforms = ["instagram", "whatsapp", "twitter", "facebook", "linkedin", "snapchat"]
         if v not in allowed_platforms:
             raise ValueError(f'Platform must be one of: {", ".join(allowed_platforms)}')
         return v
@@ -1323,6 +1326,142 @@ class SocialShareRequest(BaseModel):
     milestone_text: str
     image_filename: str
     amount: Optional[float] = None
+
+# ===== ENHANCED SHARING & TRACKING MODELS =====
+
+class ViralReferralLink(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    referral_code: str
+    shortened_url: str
+    original_url: str
+    click_count: int = 0
+    conversion_count: int = 0
+    platform_source: Optional[str] = None  # where the link was shared
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None
+    is_active: bool = True
+    viral_coefficient: float = 0.0  # conversions/clicks ratio
+
+class ReferralClick(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    referral_link_id: str
+    user_agent: Optional[str] = None
+    ip_address: Optional[str] = None
+    platform_source: Optional[str] = None
+    clicked_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    converted: bool = False
+    converted_user_id: Optional[str] = None
+    geographic_location: Optional[Dict[str, Any]] = None
+
+class LinkedInPost(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    achievement_type: str
+    milestone_text: str
+    professional_content: str  # LinkedIn-optimized text
+    hashtags: List[str] = []
+    image_filename: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    shared_manually: bool = True  # since we're doing copy-to-clipboard
+
+class ExpenseReceipt(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    transaction_id: Optional[str] = None
+    filename: str
+    original_filename: str
+    merchant_name: Optional[str] = None
+    amount: Optional[float] = None
+    category: Optional[str] = None
+    date_extracted: Optional[datetime] = None
+    ocr_text: Optional[str] = None
+    uploaded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    shared_count: int = 0
+    shared_platforms: List[str] = []
+
+# ===== CAMPUS AMBASSADOR MODELS =====
+
+class CampusAmbassador(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    university: str
+    status: str = "pending"  # "pending", "active", "inactive", "suspended"
+    applied_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    approved_at: Optional[datetime] = None
+    total_referrals: int = 0
+    monthly_referrals: int = 0
+    performance_score: float = 0.0
+    special_privileges: List[str] = []  # ["unlimited_invites", "beta_access", "custom_rewards"]
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["pending", "active", "inactive", "suspended"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+# ===== GROUP EXPENSE SPLITTING MODELS =====
+
+class GroupExpense(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    creator_id: str
+    title: str
+    description: Optional[str] = None
+    total_amount: float
+    category: str
+    receipt_filename: Optional[str] = None
+    participants: List[Dict[str, Any]] = []  # [{"user_id": "abc", "amount": 150.0, "paid": True}]
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    settled: bool = False
+    settlement_method: Optional[str] = None  # "equal", "custom", "percentage"
+
+class ExpenseSettlement(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    group_expense_id: str
+    payer_id: str
+    payee_id: str
+    amount: float
+    status: str = "pending"  # "pending", "completed", "disputed"
+    settled_at: Optional[datetime] = None
+    payment_method: Optional[str] = None
+    
+    @validator('status')
+    def validate_settlement_status(cls, v):
+        allowed_statuses = ["pending", "completed", "disputed"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+# ===== GROWTH MECHANICS MODELS =====
+
+class InviteQuota(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    monthly_limit: int = 5  # starts with 5 invites per month
+    used_this_month: int = 0
+    bonus_invites: int = 0  # earned through achievements
+    reset_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(day=1) + timedelta(days=32))
+    total_earned: int = 0  # lifetime bonus invites earned
+
+class FeatureWaitlist(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    feature_name: str
+    priority_score: float = 0.0  # calculated based on user activity/status
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    granted_access: bool = False
+    granted_at: Optional[datetime] = None
+    position: Optional[int] = None
+
+class BetaFeatureAccess(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    feature_name: str
+    access_criteria_met: List[str] = []  # ["top_saver", "campus_ambassador", "high_referrals"]
+    granted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None
+    usage_count: int = 0
 
 # ===== FRIEND NETWORK & CAMPUS CHALLENGES SYSTEM MODELS =====
 
