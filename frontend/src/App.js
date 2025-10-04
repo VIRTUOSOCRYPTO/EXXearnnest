@@ -41,6 +41,13 @@ import InterCollegeCompetitions from './components/InterCollegeCompetitions';
 import PrizeChallenges from './components/PrizeChallenges';
 import CampusReputation from './components/CampusReputation';
 
+// Viral Impact Features
+import PublicCampusBattle from './components/PublicCampusBattle';
+import SpendingInsights from './components/SpendingInsights';
+import ViralMilestones from './components/ViralMilestones';
+import FriendComparisons from './components/FriendComparisons';
+import ImpactStats from './components/ImpactStats';
+
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
@@ -283,6 +290,29 @@ function App() {
                 path="/campus-reputation" 
                 element={user ? <CampusReputation /> : <Navigate to="/login" />} 
               />
+              
+              {/* Viral Impact Features */}
+              <Route 
+                path="/public/campus-battle" 
+                element={<PublicCampusBattle />} 
+              />
+              <Route 
+                path="/spending-insights" 
+                element={user ? <SpendingInsights userCampus={user?.university} /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/viral-milestones" 
+                element={<ViralMilestones />} 
+              />
+              <Route 
+                path="/friend-comparisons" 
+                element={user ? <FriendComparisons /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/public/impact-stats" 
+                element={<ImpactStats />} 
+              />
+              
               <Route 
                 path="/" 
                 element={<Navigate to={user ? "/dashboard" : "/login"} />} 
