@@ -18,7 +18,10 @@ import {
   XMarkIcon,
   UsersIcon,
   BellIcon,
-  UserGroupIcon
+  UserGroupIcon,
+  AcademicCapIcon,
+  RocketLaunchIcon,
+  DocumentIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
 
@@ -53,6 +56,10 @@ const Navigation = () => {
     { path: '/timeline', label: 'Timeline', icon: FireIcon },
     { path: '/photo-sharing', label: 'Photo Sharing', icon: UserCircleIcon },
     { path: '/notifications', label: 'Notifications', icon: BellIcon },
+    { path: '/campus-ambassador', label: 'Campus Ambassador', icon: AcademicCapIcon },
+    { path: '/growth-mechanics', label: 'Growth & Beta', icon: RocketLaunchIcon },
+    { path: '/expense-receipts', label: 'Expense Receipts', icon: DocumentIcon },
+    { path: '/group-expenses', label: 'Group Expenses', icon: UsersIcon },
   ];
 
   const handleLogout = () => {
