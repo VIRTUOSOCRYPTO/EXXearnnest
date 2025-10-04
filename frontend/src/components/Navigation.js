@@ -21,7 +21,9 @@ import {
   UserGroupIcon,
   AcademicCapIcon,
   RocketLaunchIcon,
-  DocumentIcon
+  DocumentIcon,
+  BuildingOffice2Icon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
 
@@ -60,6 +62,12 @@ const Navigation = () => {
     { path: '/growth-mechanics', label: 'Growth & Beta', icon: RocketLaunchIcon },
     { path: '/expense-receipts', label: 'Expense Receipts', icon: DocumentIcon },
     { path: '/group-expenses', label: 'Group Expenses', icon: UsersIcon },
+  ];
+
+  const campusItems = [
+    { path: '/inter-college-competitions', label: 'Inter-College Competitions', icon: TrophyIcon },
+    { path: '/prize-challenges', label: 'Prize Challenges', icon: SparklesIcon },
+    { path: '/campus-reputation', label: 'Campus Reputation', icon: TrophyIcon },
   ];
 
   const handleLogout = () => {
@@ -111,7 +119,8 @@ const Navigation = () => {
 
           {/* Navigation Links - Desktop */}
           <div className="hidden lg:flex items-center space-x-1">
-            {navItems.map((item) => {
+            {/* Core Navigation Items */}
+            {navItems.slice(0, 8).map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
               
@@ -119,17 +128,66 @@ const Navigation = () => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                     isActive
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-4 h-4" />
                   {item.label}
                 </Link>
               );
             })}
+            
+            {/* Campus Dropdown */}
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-emerald-600 hover:bg-gray-50 transition-all duration-200">
+                <BuildingOffice2Icon className="w-4 h-4" />
+                Campus
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {/* Campus Dropdown Menu */}
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <div className="p-2 space-y-1">
+                  {campusItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location.pathname === item.path;
+                    
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          isActive
+                            ? 'bg-purple-100 text-purple-700'
+                            : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            {/* Profile Link */}
+            <Link
+              to="/profile"
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                location.pathname === '/profile'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
+              }`}
+            >
+              <UserCircleIcon className="w-4 h-4" />
+              Profile
+            </Link>
           </div>
 
           {/* User Menu */}
@@ -200,8 +258,9 @@ const Navigation = () => {
         {isMobileMenuOpen && (
           <div className="lg:hidden border-t border-gray-100 bg-white shadow-lg">
             {/* Navigation Items */}
-            <div className="px-4 py-4 space-y-2">
-              {navItems.map((item) => {
+            <div className="px-4 py-4 space-y-2 max-h-96 overflow-y-auto">
+              {/* Core Navigation */}
+              {navItems.slice(0, 8).map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
                 
@@ -221,6 +280,36 @@ const Navigation = () => {
                   </Link>
                 );
               })}
+
+              {/* Campus Section */}
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <div className="px-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                    <BuildingOffice2Icon className="w-4 h-4" />
+                    Campus Features
+                  </h3>
+                </div>
+                {campusItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={closeMobileMenu}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        isActive
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
               
               {/* Profile Section */}
               <div className="border-t border-gray-100 pt-4 mt-4">
