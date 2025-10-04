@@ -4710,7 +4710,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://share-hub-5.preview.emergentagent.com"
+        base_url = "https://campus-ambassador-1.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -5997,6 +5997,1186 @@ async def request_beta_feature_access_endpoint(
         logger.error(f"Request beta access error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to request beta feature access")
 
+# ===== INTER-COLLEGE COMPETITION SYSTEM =====
+
+@api_router.post("/inter-college/competitions")
+@limiter.limit("3/day")  # Limited to prevent spam
+async def create_inter_college_competition(
+    request: Request,
+    competition_data: InterCollegeCompetitionCreate,
+    current_user: str = Depends(get_current_user)
+):
+    """Create a new inter-college competition (Admin only)"""
+    try:
+        db = await get_database()
+        
+        # Check if user is admin
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Calculate duration
+        duration_days = (competition_data.end_date - competition_data.start_date).days
+        
+        # Create competition
+        competition_dict = competition_data.dict()
+        competition_dict.update({
+            "id": str(uuid.uuid4()),
+            "duration_days": duration_days,
+            "created_by": current_user,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
+        })
+        
+        competition = InterCollegeCompetition(**competition_dict)
+        await db.inter_college_competitions.insert_one(competition.dict())
+        
+        # Initialize campus leaderboards for eligible universities
+        eligible_unis = competition_data.eligible_universities if competition_data.eligible_universities else []
+        if not eligible_unis:
+            # Get all universities if no specific list provided
+            all_users = await db.users.distinct("university")
+            eligible_unis = [uni for uni in all_users if uni]
+        
+        for university in eligible_unis:
+            leaderboard = CampusLeaderboard(
+                competition_id=competition.id,
+                campus=university
+            )
+            await db.campus_leaderboards.insert_one(leaderboard.dict())
+        
+        return {
+            "message": "Inter-college competition created successfully",
+            "competition_id": competition.id,
+            "eligible_universities": eligible_unis,
+            "registration_period": {
+                "start": competition_data.registration_start,
+                "end": competition_data.registration_end
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Create inter-college competition error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create competition")
+
+@api_router.get("/inter-college/competitions")
+@limiter.limit("20/minute")
+async def get_inter_college_competitions(
+    request: Request,
+    status: Optional[str] = None,
+    current_user: str = Depends(get_current_user)
+):
+    """Get all inter-college competitions"""
+    try:
+        db = await get_database()
+        
+        # Build filter
+        filter_query = {}
+        if status:
+            filter_query["status"] = status
+        
+        competitions = await db.inter_college_competitions.find(filter_query).sort("created_at", -1).to_list(None)
+        
+        # Enhance with user's participation status
+        user = await get_user_by_id(current_user)
+        user_university = user.get("university") if user else None
+        
+        enhanced_competitions = []
+        for competition in competitions:
+            # Check if user's university is eligible
+            eligible_unis = competition.get("eligible_universities", [])
+            is_eligible = not eligible_unis or user_university in eligible_unis
+            
+            # Check if user is registered
+            user_participation = await db.campus_competition_participations.find_one({
+                "competition_id": competition["id"],
+                "user_id": current_user
+            })
+            
+            # Get campus leaderboard stats
+            campus_stats = await db.campus_leaderboards.find_one({
+                "competition_id": competition["id"],
+                "campus": user_university
+            }) if user_university else None
+            
+            enhanced_competition = {
+                **competition,
+                "is_eligible": is_eligible,
+                "is_registered": bool(user_participation),
+                "user_campus": user_university,
+                "campus_rank": campus_stats.get("campus_rank", 0) if campus_stats else 0,
+                "campus_participants": campus_stats.get("total_participants", 0) if campus_stats else 0,
+                "registration_open": (
+                    competition.get("registration_start", datetime.now(timezone.utc)) <= datetime.now(timezone.utc) <= 
+                    competition.get("registration_end", datetime.now(timezone.utc))
+                )
+            }
+            enhanced_competitions.append(enhanced_competition)
+        
+        return {
+            "competitions": enhanced_competitions,
+            "user_university": user_university
+        }
+        
+    except Exception as e:
+        logger.error(f"Get inter-college competitions error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get competitions")
+
+@api_router.post("/inter-college/competitions/{competition_id}/register")
+@limiter.limit("10/minute")
+async def register_for_inter_college_competition(
+    request: Request,
+    competition_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Register for an inter-college competition"""
+    try:
+        db = await get_database()
+        user = await get_user_by_id(current_user)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_university = user.get("university")
+        if not user_university:
+            raise HTTPException(status_code=400, detail="University information required to participate")
+        
+        # Get competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Check if registration is open
+        now = datetime.now(timezone.utc)
+        reg_start = competition.get("registration_start", now)
+        reg_end = competition.get("registration_end", now)
+        
+        if now < reg_start:
+            raise HTTPException(status_code=400, detail="Registration has not started yet")
+        if now > reg_end:
+            raise HTTPException(status_code=400, detail="Registration period has ended")
+        
+        # Check eligibility
+        eligible_unis = competition.get("eligible_universities", [])
+        if eligible_unis and user_university not in eligible_unis:
+            raise HTTPException(status_code=400, detail="Your university is not eligible for this competition")
+        
+        # Check user level requirement
+        min_level = competition.get("min_user_level", 1)
+        user_level = user.get("level", 1)
+        if user_level < min_level:
+            raise HTTPException(status_code=400, detail=f"Minimum level {min_level} required")
+        
+        # Check if already registered
+        existing_participation = await db.campus_competition_participations.find_one({
+            "competition_id": competition_id,
+            "user_id": current_user
+        })
+        
+        if existing_participation:
+            raise HTTPException(status_code=400, detail="Already registered for this competition")
+        
+        # Check campus participant limits
+        campus_participants = await db.campus_competition_participations.count_documents({
+            "competition_id": competition_id,
+            "campus": user_university
+        })
+        
+        max_per_campus = competition.get("max_participants_per_campus", 100)
+        if campus_participants >= max_per_campus:
+            raise HTTPException(status_code=400, detail=f"Campus has reached maximum participants ({max_per_campus})")
+        
+        min_per_campus = competition.get("min_participants_per_campus", 10)
+        
+        # Create participation record
+        participation = CampusCompetitionParticipation(
+            competition_id=competition_id,
+            user_id=current_user,
+            campus=user_university
+        )
+        
+        await db.campus_competition_participations.insert_one(participation.dict())
+        
+        # Update campus leaderboard
+        await db.campus_leaderboards.update_one(
+            {"competition_id": competition_id, "campus": user_university},
+            {
+                "$inc": {"total_participants": 1, "active_participants": 1},
+                "$set": {"last_updated": datetime.now(timezone.utc)}
+            },
+            upsert=True
+        )
+        
+        # Check if campus now meets minimum requirements
+        new_campus_count = campus_participants + 1
+        campus_qualified = new_campus_count >= min_per_campus
+        
+        # Award registration points
+        await db.users.update_one(
+            {"id": current_user},
+            {"$inc": {"experience_points": 25}}  # Registration bonus
+        )
+        
+        return {
+            "message": "Successfully registered for inter-college competition",
+            "competition_id": competition_id,
+            "campus": user_university,
+            "campus_participants": new_campus_count,
+            "campus_qualified": campus_qualified,
+            "min_required": min_per_campus,
+            "points_earned": 25
+        }
+        
+    except Exception as e:
+        logger.error(f"Register for competition error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to register for competition")
+
+@api_router.get("/inter-college/competitions/{competition_id}/leaderboard")
+@limiter.limit("20/minute")
+async def get_inter_college_leaderboard(
+    request: Request,
+    competition_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Get inter-college competition leaderboard"""
+    try:
+        db = await get_database()
+        
+        # Get competition details
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Get campus leaderboards
+        campus_leaderboards = await db.campus_leaderboards.find({
+            "competition_id": competition_id
+        }).sort("campus_total_score", -1).to_list(None)
+        
+        # Update ranks
+        for idx, campus in enumerate(campus_leaderboards):
+            await db.campus_leaderboards.update_one(
+                {"_id": campus["_id"]},
+                {"$set": {"campus_rank": idx + 1}}
+            )
+            campus["campus_rank"] = idx + 1
+        
+        # Get user's campus and individual stats
+        user = await get_user_by_id(current_user)
+        user_campus = user.get("university") if user else None
+        
+        user_participation = None
+        user_campus_rank = None
+        
+        if user_campus:
+            user_participation = await db.campus_competition_participations.find_one({
+                "competition_id": competition_id,
+                "user_id": current_user
+            })
+            
+            user_campus_stats = next((c for c in campus_leaderboards if c["campus"] == user_campus), None)
+            user_campus_rank = user_campus_stats["campus_rank"] if user_campus_stats else None
+        
+        # Get top individual performers across all campuses
+        top_individuals = await db.campus_competition_participations.find({
+            "competition_id": competition_id
+        }).sort("individual_score", -1).limit(20).to_list(None)
+        
+        # Enhance with user details
+        enhanced_individuals = []
+        for participant in top_individuals:
+            user_detail = await get_user_by_id(participant["user_id"])
+            if user_detail:
+                enhanced_individuals.append({
+                    **participant,
+                    "user_name": user_detail.get("full_name", "Unknown"),
+                    "avatar": user_detail.get("avatar", "man"),
+                    "user_level": user_detail.get("level", 1)
+                })
+        
+        return {
+            "competition": {
+                "id": competition["id"],
+                "title": competition["title"],
+                "competition_type": competition["competition_type"],
+                "target_metric": competition["target_metric"],
+                "status": competition["status"],
+                "end_date": competition["end_date"]
+            },
+            "campus_leaderboard": campus_leaderboards,
+            "top_individuals": enhanced_individuals,
+            "user_stats": {
+                "campus": user_campus,
+                "campus_rank": user_campus_rank,
+                "individual_participation": user_participation,
+                "is_registered": bool(user_participation)
+            },
+            "prize_distribution": competition.get("prize_distribution", {}),
+            "campus_reputation_rewards": competition.get("campus_reputation_points", {})
+        }
+        
+    except Exception as e:
+        logger.error(f"Get inter-college leaderboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+
+# ===== PRIZE-BASED CHALLENGE SYSTEM =====
+
+@api_router.post("/prize-challenges")
+@limiter.limit("5/day")  # Limited to prevent spam
+async def create_prize_challenge(
+    request: Request,
+    challenge_data: PrizeChallengeCreate,
+    current_user: str = Depends(get_current_user)
+):
+    """Create a new prize-based challenge (Admin only)"""
+    try:
+        db = await get_database()
+        
+        # Check if user is admin
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Calculate duration hours if not provided
+        if not challenge_data.duration_hours:
+            duration_hours = int((challenge_data.end_date - challenge_data.start_date).total_seconds() / 3600)
+            challenge_data.duration_hours = duration_hours
+        
+        # Create challenge
+        challenge_dict = challenge_data.dict()
+        challenge_dict.update({
+            "id": str(uuid.uuid4()),
+            "created_by": current_user,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
+        })
+        
+        challenge = PrizeChallenge(**challenge_dict)
+        await db.prize_challenges.insert_one(challenge.dict())
+        
+        return {
+            "message": "Prize-based challenge created successfully",
+            "challenge_id": challenge.id,
+            "challenge_type": challenge_data.challenge_type,
+            "prize_type": challenge_data.prize_type,
+            "total_prize_value": challenge_data.total_prize_value
+        }
+        
+    except Exception as e:
+        logger.error(f"Create prize challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create prize challenge")
+
+@api_router.get("/prize-challenges")
+@limiter.limit("20/minute")
+async def get_prize_challenges(
+    request: Request,
+    challenge_type: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: str = Depends(get_current_user)
+):
+    """Get all prize-based challenges"""
+    try:
+        db = await get_database()
+        
+        # Build filter
+        filter_query = {}
+        if challenge_type:
+            filter_query["challenge_type"] = challenge_type
+        if status:
+            filter_query["status"] = status
+        
+        challenges = await db.prize_challenges.find(filter_query).sort("created_at", -1).to_list(None)
+        
+        # Enhance with user's participation status
+        user = await get_user_by_id(current_user)
+        
+        enhanced_challenges = []
+        for challenge in challenges:
+            # Check if user is participating
+            user_participation = await db.prize_challenge_participations.find_one({
+                "challenge_id": challenge["id"],
+                "user_id": current_user
+            })
+            
+            # Check entry requirements
+            meets_requirements = True
+            requirements_details = {}
+            
+            entry_reqs = challenge.get("entry_requirements", {})
+            if entry_reqs.get("min_level"):
+                user_level = user.get("level", 1)
+                meets_requirements &= user_level >= entry_reqs["min_level"]
+                requirements_details["level"] = {"required": entry_reqs["min_level"], "current": user_level}
+            
+            if entry_reqs.get("min_streak"):
+                user_streak = user.get("current_streak", 0)
+                meets_requirements &= user_streak >= entry_reqs["min_streak"]
+                requirements_details["streak"] = {"required": entry_reqs["min_streak"], "current": user_streak}
+            
+            # Calculate time remaining
+            now = datetime.now(timezone.utc)
+            start_date = challenge.get("start_date")
+            end_date = challenge.get("end_date")
+            
+            if isinstance(start_date, str):
+                start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if isinstance(end_date, str):
+                end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            
+            time_to_start = (start_date - now).total_seconds() if start_date > now else 0
+            time_to_end = (end_date - now).total_seconds() if end_date > now else 0
+            
+            enhanced_challenge = {
+                **challenge,
+                "is_participating": bool(user_participation),
+                "user_participation": user_participation,
+                "meets_requirements": meets_requirements,
+                "requirements_details": requirements_details,
+                "time_to_start_seconds": max(0, time_to_start),
+                "time_to_end_seconds": max(0, time_to_end),
+                "is_active": challenge.get("status") == "active" and time_to_end > 0,
+                "can_join": (
+                    meets_requirements and 
+                    not user_participation and 
+                    time_to_start <= 0 and 
+                    time_to_end > 0 and
+                    (not challenge.get("max_participants") or challenge.get("current_participants", 0) < challenge.get("max_participants"))
+                )
+            }
+            enhanced_challenges.append(enhanced_challenge)
+        
+        return {
+            "challenges": enhanced_challenges,
+            "user_level": user.get("level", 1),
+            "user_streak": user.get("current_streak", 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get prize challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get prize challenges")
+
+@api_router.post("/prize-challenges/{challenge_id}/join")
+@limiter.limit("10/minute")
+async def join_prize_challenge(
+    request: Request,
+    challenge_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Join a prize-based challenge"""
+    try:
+        db = await get_database()
+        user = await get_user_by_id(current_user)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get challenge
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Check if challenge is active and accepting participants
+        now = datetime.now(timezone.utc)
+        start_date = challenge.get("start_date")
+        end_date = challenge.get("end_date")
+        
+        if isinstance(start_date, str):
+            start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        if isinstance(end_date, str):
+            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        
+        if now < start_date:
+            raise HTTPException(status_code=400, detail="Challenge has not started yet")
+        if now > end_date:
+            raise HTTPException(status_code=400, detail="Challenge has ended")
+        
+        # Check entry requirements
+        entry_reqs = challenge.get("entry_requirements", {})
+        
+        if entry_reqs.get("min_level", 0) > user.get("level", 1):
+            raise HTTPException(status_code=400, detail=f"Minimum level {entry_reqs['min_level']} required")
+        
+        if entry_reqs.get("min_streak", 0) > user.get("current_streak", 0):
+            raise HTTPException(status_code=400, detail=f"Minimum streak {entry_reqs['min_streak']} days required")
+        
+        # Check if already participating
+        existing_participation = await db.prize_challenge_participations.find_one({
+            "challenge_id": challenge_id,
+            "user_id": current_user
+        })
+        
+        if existing_participation:
+            raise HTTPException(status_code=400, detail="Already participating in this challenge")
+        
+        # Check participant limit
+        if challenge.get("max_participants"):
+            current_participants = challenge.get("current_participants", 0)
+            if current_participants >= challenge["max_participants"]:
+                raise HTTPException(status_code=400, detail="Challenge is full")
+        
+        # Create participation record
+        participation = PrizeChallengeParticipation(
+            challenge_id=challenge_id,
+            user_id=current_user,
+            target_progress=challenge["target_value"]
+        )
+        
+        await db.prize_challenge_participations.insert_one(participation.dict())
+        
+        # Update challenge participant count
+        await db.prize_challenges.update_one(
+            {"id": challenge_id},
+            {"$inc": {"current_participants": 1}}
+        )
+        
+        # Award joining points
+        join_points = 10
+        await db.users.update_one(
+            {"id": current_user},
+            {"$inc": {"experience_points": join_points}}
+        )
+        
+        return {
+            "message": "Successfully joined prize challenge",
+            "challenge_id": challenge_id,
+            "challenge_title": challenge["title"],
+            "target_value": challenge["target_value"],
+            "prize_type": challenge["prize_type"],
+            "total_prize_value": challenge["total_prize_value"],
+            "points_earned": join_points
+        }
+        
+    except Exception as e:
+        logger.error(f"Join prize challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to join challenge")
+
+@api_router.get("/prize-challenges/{challenge_id}/leaderboard")
+@limiter.limit("20/minute")
+async def get_prize_challenge_leaderboard(
+    request: Request,
+    challenge_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Get prize challenge leaderboard"""
+    try:
+        db = await get_database()
+        
+        # Get challenge details
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Get all participants sorted by progress
+        participants = await db.prize_challenge_participations.find({
+            "challenge_id": challenge_id
+        }).sort("current_progress", -1).to_list(None)
+        
+        # Update ranks and enhance with user details
+        leaderboard = []
+        for idx, participant in enumerate(participants):
+            # Update participant rank
+            rank = idx + 1
+            await db.prize_challenge_participations.update_one(
+                {"_id": participant["_id"]},
+                {"$set": {"current_rank": rank}}
+            )
+            
+            # Get user details
+            user_detail = await get_user_by_id(participant["user_id"])
+            if user_detail:
+                # Calculate progress percentage
+                progress_percentage = min(100, (participant["current_progress"] / challenge["target_value"]) * 100) if challenge["target_value"] > 0 else 0
+                
+                leaderboard_entry = {
+                    "rank": rank,
+                    "user_id": participant["user_id"],
+                    "user_name": user_detail.get("full_name", "Unknown"),
+                    "avatar": user_detail.get("avatar", "man"),
+                    "campus": user_detail.get("university"),
+                    "current_progress": participant["current_progress"],
+                    "progress_percentage": progress_percentage,
+                    "is_completed": participant.get("participation_status") == "completed",
+                    "joined_at": participant["joined_at"],
+                    "is_current_user": participant["user_id"] == current_user
+                }
+                leaderboard.append(leaderboard_entry)
+        
+        # Find user's position
+        user_rank = None
+        user_entry = None
+        for entry in leaderboard:
+            if entry["is_current_user"]:
+                user_rank = entry["rank"]
+                user_entry = entry
+                break
+        
+        return {
+            "challenge": {
+                "id": challenge["id"],
+                "title": challenge["title"],
+                "description": challenge["description"],
+                "challenge_type": challenge["challenge_type"],
+                "target_value": challenge["target_value"],
+                "target_metric": challenge["target_metric"],
+                "prize_type": challenge["prize_type"],
+                "total_prize_value": challenge["total_prize_value"],
+                "end_date": challenge["end_date"],
+                "status": challenge["status"]
+            },
+            "leaderboard": leaderboard[:50],  # Top 50
+            "user_stats": {
+                "rank": user_rank,
+                "entry": user_entry,
+                "is_participating": bool(user_entry)
+            },
+            "prize_structure": challenge.get("prize_structure", {}),
+            "campus_reputation_rewards": challenge.get("campus_reputation_rewards", {}),
+            "total_participants": len(participants)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get prize challenge leaderboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+
+# ===== CAMPUS REPUTATION SYSTEM =====
+
+@api_router.get("/campus/reputation")
+@limiter.limit("20/minute")
+async def get_campus_reputation_leaderboard(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
+    """Get campus reputation leaderboard"""
+    try:
+        db = await get_database()
+        
+        # Get all campus reputation records
+        campus_reputations = await db.campus_reputations.find({}).sort("total_reputation_points", -1).to_list(None)
+        
+        # Update ranks
+        for idx, campus in enumerate(campus_reputations):
+            new_rank = idx + 1
+            if campus.get("current_rank") != new_rank:
+                await db.campus_reputations.update_one(
+                    {"_id": campus["_id"]},
+                    {"$set": {"current_rank": new_rank, "previous_rank": campus.get("current_rank", new_rank)}}
+                )
+                campus["current_rank"] = new_rank
+        
+        # Get user's campus
+        user = await get_user_by_id(current_user)
+        user_campus = user.get("university") if user else None
+        user_campus_stats = None
+        
+        if user_campus:
+            user_campus_stats = await db.campus_reputations.find_one({"campus": user_campus})
+        
+        # Get recent reputation transactions for context
+        recent_transactions = await db.reputation_transactions.find({}).sort("created_at", -1).limit(20).to_list(None)
+        
+        return {
+            "campus_leaderboard": campus_reputations,
+            "user_campus": user_campus,
+            "user_campus_stats": user_campus_stats,
+            "recent_activities": recent_transactions,
+            "leaderboard_updated": datetime.now(timezone.utc)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get campus reputation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get campus reputation")
+
+@api_router.get("/campus/reputation/{campus_name}")
+@limiter.limit("20/minute")
+async def get_campus_reputation_details(
+    request: Request,
+    campus_name: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Get detailed reputation information for a specific campus"""
+    try:
+        db = await get_database()
+        
+        # Get campus reputation details
+        campus_reputation = await db.campus_reputations.find_one({"campus": campus_name})
+        if not campus_reputation:
+            # Create initial record if campus doesn't exist
+            campus_reputation = CampusReputation(campus=campus_name).dict()
+            await db.campus_reputations.insert_one(campus_reputation)
+        
+        # Get campus reputation history (last 12 months)
+        reputation_history = await db.reputation_transactions.find({
+            "campus": campus_name
+        }).sort("created_at", -1).limit(100).to_list(None)
+        
+        # Get campus students statistics
+        campus_users = await db.users.find({"university": campus_name}).to_list(None)
+        active_users = [u for u in campus_users if u.get("is_active", True)]
+        
+        # Get campus ambassadors
+        campus_ambassadors = await db.campus_ambassadors.find({
+            "university": campus_name,
+            "status": "active"
+        }).to_list(None)
+        
+        # Calculate monthly statistics
+        current_month = datetime.now(timezone.utc).replace(day=1)
+        monthly_transactions = [t for t in reputation_history if t["created_at"] >= current_month]
+        monthly_points = sum(t["points"] for t in monthly_transactions if t["transaction_type"] == "earned")
+        
+        return {
+            "campus_info": {
+                "name": campus_name,
+                "total_students": len(campus_users),
+                "active_students": len(active_users),
+                "ambassadors_count": len(campus_ambassadors),
+                "reputation": campus_reputation
+            },
+            "monthly_stats": {
+                "points_earned": monthly_points,
+                "transactions_count": len(monthly_transactions),
+                "month": current_month
+            },
+            "reputation_history": reputation_history,
+            "ambassadors": [
+                {
+                    "user_id": amb["user_id"],
+                    "performance_score": amb.get("performance_score", 0),
+                    "monthly_referrals": amb.get("monthly_referrals", 0)
+                } for amb in campus_ambassadors
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Get campus reputation details error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get campus reputation details")
+
+# ===== HELPER FUNCTIONS FOR NEW SYSTEMS =====
+
+async def update_competition_progress():
+    """Background function to update competition progress for all active participants"""
+    try:
+        db = await get_database()
+        
+        # Get all active competitions
+        active_competitions = await db.inter_college_competitions.find({
+            "status": "active",
+            "end_date": {"$gte": datetime.now(timezone.utc)}
+        }).to_list(None)
+        
+        for competition in active_competitions:
+            await update_single_competition_progress(competition["id"])
+            
+    except Exception as e:
+        logger.error(f"Update competition progress error: {str(e)}")
+
+async def update_single_competition_progress(competition_id: str):
+    """Update progress for a single competition"""
+    try:
+        db = await get_database()
+        
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            return
+        
+        participants = await db.campus_competition_participations.find({
+            "competition_id": competition_id,
+            "registration_status": "active"
+        }).to_list(None)
+        
+        competition_type = competition["competition_type"]
+        target_metric = competition["target_metric"]
+        
+        for participant in participants:
+            user_id = participant["user_id"]
+            campus = participant["campus"]
+            
+            # Calculate new score based on competition type
+            new_score = await calculate_competition_score(user_id, competition_type, target_metric, participant["registered_at"])
+            
+            # Update individual score
+            await db.campus_competition_participations.update_one(
+                {"_id": participant["_id"]},
+                {
+                    "$set": {
+                        "individual_score": new_score,
+                        "campus_contribution": new_score
+                    }
+                }
+            )
+        
+        # Update campus totals
+        await update_campus_leaderboards(competition_id)
+        
+    except Exception as e:
+        logger.error(f"Update single competition progress error: {str(e)}")
+
+async def calculate_competition_score(user_id: str, competition_type: str, target_metric: str, start_date: datetime) -> float:
+    """Calculate user's score for competition based on type"""
+    try:
+        db = await get_database()
+        score = 0.0
+        
+        if competition_type == "campus_savings":
+            if target_metric == "total_savings":
+                # Calculate net savings since competition start
+                income_pipeline = [
+                    {"$match": {"user_id": user_id, "type": "income", "timestamp": {"$gte": start_date}}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]
+                income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+                total_income = income_result[0]["total"] if income_result else 0.0
+                
+                expense_pipeline = [
+                    {"$match": {"user_id": user_id, "type": "expense", "timestamp": {"$gte": start_date}}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]
+                expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
+                total_expenses = expense_result[0]["total"] if expense_result else 0.0
+                
+                score = max(0, total_income - total_expenses)
+        
+        elif competition_type == "campus_streak":
+            if target_metric == "average_streak":
+                user = await db.users.find_one({"id": user_id})
+                score = float(user.get("current_streak", 0)) if user else 0.0
+        
+        elif competition_type == "campus_referrals":
+            if target_metric == "referral_count":
+                referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+                score = float(referral_program.get("successful_referrals", 0)) if referral_program else 0.0
+        
+        elif competition_type == "campus_goals":
+            if target_metric == "goals_completed":
+                completed_goals = await db.financial_goals.count_documents({
+                    "user_id": user_id,
+                    "is_completed": True,
+                    "updated_at": {"$gte": start_date}
+                })
+                score = float(completed_goals)
+        
+        return score
+        
+    except Exception as e:
+        logger.error(f"Calculate competition score error: {str(e)}")
+        return 0.0
+
+async def update_campus_leaderboards(competition_id: str):
+    """Update campus leaderboards for a competition"""
+    try:
+        db = await get_database()
+        
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            return
+        
+        scoring_method = competition.get("scoring_method", "total")
+        
+        # Get all campuses in this competition
+        campuses = await db.campus_competition_participations.distinct("campus", {"competition_id": competition_id})
+        
+        campus_scores = []
+        
+        for campus in campuses:
+            # Get all participants for this campus
+            campus_participants = await db.campus_competition_participations.find({
+                "competition_id": competition_id,
+                "campus": campus,
+                "registration_status": "active"
+            }).to_list(None)
+            
+            if not campus_participants:
+                continue
+            
+            # Calculate campus score based on method
+            individual_scores = [p["individual_score"] for p in campus_participants]
+            
+            if scoring_method == "total":
+                campus_score = sum(individual_scores)
+            elif scoring_method == "average":
+                campus_score = sum(individual_scores) / len(individual_scores)
+            elif scoring_method == "top_performers":
+                # Use top 10 or all if less than 10
+                top_scores = sorted(individual_scores, reverse=True)[:10]
+                campus_score = sum(top_scores)
+            else:
+                campus_score = sum(individual_scores)
+            
+            campus_scores.append({
+                "campus": campus,
+                "score": campus_score,
+                "participants": len(campus_participants),
+                "active_participants": len([p for p in campus_participants if p.get("registration_status") == "active"])
+            })
+        
+        # Sort campuses by score
+        campus_scores.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Update leaderboards
+        for idx, campus_data in enumerate(campus_scores):
+            rank = idx + 1
+            await db.campus_leaderboards.update_one(
+                {"competition_id": competition_id, "campus": campus_data["campus"]},
+                {
+                    "$set": {
+                        "campus_total_score": campus_data["score"],
+                        "campus_average_score": campus_data["score"] / max(1, campus_data["participants"]),
+                        "campus_rank": rank,
+                        "total_participants": campus_data["participants"],
+                        "active_participants": campus_data["active_participants"],
+                        "last_updated": datetime.now(timezone.utc)
+                    }
+                },
+                upsert=True
+            )
+        
+    except Exception as e:
+        logger.error(f"Update campus leaderboards error: {str(e)}")
+
+async def update_prize_challenge_progress():
+    """Background function to update prize challenge progress"""
+    try:
+        db = await get_database()
+        
+        # Get all active prize challenges
+        active_challenges = await db.prize_challenges.find({
+            "status": "active",
+            "end_date": {"$gte": datetime.now(timezone.utc)}
+        }).to_list(None)
+        
+        for challenge in active_challenges:
+            await update_single_prize_challenge_progress(challenge["id"])
+            
+    except Exception as e:
+        logger.error(f"Update prize challenge progress error: {str(e)}")
+
+async def update_single_prize_challenge_progress(challenge_id: str):
+    """Update progress for a single prize challenge"""
+    try:
+        db = await get_database()
+        
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            return
+        
+        participants = await db.prize_challenge_participations.find({
+            "challenge_id": challenge_id,
+            "participation_status": "active"
+        }).to_list(None)
+        
+        challenge_category = challenge["challenge_category"]
+        target_metric = challenge["target_metric"]
+        
+        for participant in participants:
+            user_id = participant["user_id"]
+            
+            # Calculate new progress based on challenge category
+            new_progress = await calculate_prize_challenge_progress(
+                user_id, challenge_category, target_metric, participant["joined_at"]
+            )
+            
+            # Update progress
+            progress_percentage = min(100, (new_progress / challenge["target_value"]) * 100) if challenge["target_value"] > 0 else 0
+            is_completed = new_progress >= challenge["target_value"]
+            
+            update_data = {
+                "current_progress": new_progress,
+                "progress_percentage": progress_percentage
+            }
+            
+            # Mark as completed if target reached
+            if is_completed and participant.get("participation_status") != "completed":
+                update_data["participation_status"] = "completed"
+                
+                # Award completion reward
+                await award_prize_challenge_completion(challenge_id, user_id, participant["current_rank"])
+            
+            await db.prize_challenge_participations.update_one(
+                {"_id": participant["_id"]},
+                {"$set": update_data}
+            )
+        
+    except Exception as e:
+        logger.error(f"Update single prize challenge progress error: {str(e)}")
+
+async def calculate_prize_challenge_progress(user_id: str, challenge_category: str, target_metric: str, start_date: datetime) -> float:
+    """Calculate user's progress for prize challenge"""
+    try:
+        db = await get_database()
+        progress = 0.0
+        
+        if challenge_category == "savings":
+            if target_metric == "amount_saved":
+                # Same logic as competition savings
+                income_pipeline = [
+                    {"$match": {"user_id": user_id, "type": "income", "timestamp": {"$gte": start_date}}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]
+                income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+                total_income = income_result[0]["total"] if income_result else 0.0
+                
+                expense_pipeline = [
+                    {"$match": {"user_id": user_id, "type": "expense", "timestamp": {"$gte": start_date}}},
+                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+                ]
+                expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
+                total_expenses = expense_result[0]["total"] if expense_result else 0.0
+                
+                progress = max(0, total_income - total_expenses)
+        
+        elif challenge_category == "streak":
+            if target_metric == "days_streak":
+                user = await db.users.find_one({"id": user_id})
+                progress = float(user.get("current_streak", 0)) if user else 0.0
+        
+        elif challenge_category == "referrals":
+            if target_metric == "referrals_made":
+                referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+                if referral_program:
+                    # Count successful referrals since challenge start
+                    recent_referrals = await db.referred_users.count_documents({
+                        "referrer_id": user_id,
+                        "status": "completed",
+                        "completed_at": {"$gte": start_date}
+                    })
+                    progress = float(recent_referrals)
+        
+        elif challenge_category == "goals":
+            if target_metric == "goals_completed":
+                completed_goals = await db.financial_goals.count_documents({
+                    "user_id": user_id,
+                    "is_completed": True,
+                    "updated_at": {"$gte": start_date}
+                })
+                progress = float(completed_goals)
+        
+        elif challenge_category == "engagement":
+            # Count transactions, logins, or other engagement metrics
+            transaction_count = await db.transactions.count_documents({
+                "user_id": user_id,
+                "timestamp": {"$gte": start_date}
+            })
+            progress = float(transaction_count)
+        
+        return progress
+        
+    except Exception as e:
+        logger.error(f"Calculate prize challenge progress error: {str(e)}")
+        return 0.0
+
+async def award_prize_challenge_completion(challenge_id: str, user_id: str, rank: int):
+    """Award prizes for challenge completion"""
+    try:
+        db = await get_database()
+        
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            return
+        
+        prize_structure = challenge.get("prize_structure", {})
+        
+        # Determine prize based on rank
+        prize_key = f"{rank}st" if rank == 1 else f"{rank}nd" if rank == 2 else f"{rank}rd" if rank == 3 else f"{rank}th"
+        if prize_key not in prize_structure:
+            # Check for participation prize
+            prize_key = "participation"
+        
+        if prize_key not in prize_structure:
+            return
+        
+        prize_info = prize_structure[prize_key]
+        
+        # Create reward record
+        reward = ChallengeReward(
+            challenge_id=challenge_id,
+            user_id=user_id,
+            reward_type=challenge["prize_type"],
+            reward_value=prize_info.get("amount", prize_info.get("points", 0)),
+            reward_rank=rank
+        )
+        
+        if challenge["prize_type"] == "monetary":
+            reward.amount_inr = float(prize_info.get("amount", 0))
+        elif challenge["prize_type"] == "scholarship":
+            reward.scholarship_info = challenge.get("scholarship_details", {})
+        elif challenge["prize_type"] == "campus_reputation":
+            user = await get_user_by_id(user_id)
+            campus = user.get("university") if user else None
+            if campus:
+                points = int(prize_info.get("reputation_points", 0))
+                await add_campus_reputation_points(campus, points, "prize_challenge", challenge_id, user_id)
+                reward.campus_reputation_points = points
+                reward.campus_affected = campus
+        
+        await db.challenge_rewards.insert_one(reward.dict())
+        
+        # Notify user
+        await create_notification(
+            user_id,
+            "challenge_reward",
+            f"🏆 Prize Challenge Reward!",
+            f"You finished #{rank} in '{challenge['title']}' and earned a reward!",
+            related_id=reward.id
+        )
+        
+    except Exception as e:
+        logger.error(f"Award prize challenge completion error: {str(e)}")
+
+async def add_campus_reputation_points(campus: str, points: int, category: str, source_id: str, user_id: str = None):
+    """Add reputation points to a campus"""
+    try:
+        db = await get_database()
+        
+        # Update or create campus reputation record
+        await db.campus_reputations.update_one(
+            {"campus": campus},
+            {
+                "$inc": {
+                    "total_reputation_points": points,
+                    "monthly_reputation_points": points,
+                    f"{category}_points": points
+                },
+                "$set": {"last_updated": datetime.now(timezone.utc)}
+            },
+            upsert=True
+        )
+        
+        # Create reputation transaction record
+        transaction = ReputationTransaction(
+            campus=campus,
+            transaction_type="earned",
+            points=points,
+            reason=f"Prize challenge completion - {source_id}",
+            category=category,
+            source_type="challenge",
+            source_id=source_id,
+            user_id=user_id
+        )
+        
+        await db.reputation_transactions.insert_one(transaction.dict())
+        
+    except Exception as e:
+        logger.error(f"Add campus reputation points error: {str(e)}")
+
+# Helper function for creating notifications (reuse existing function)
+async def create_notification(user_id: str, notification_type: str, title: str, message: str, action_url: str = None, related_id: str = None):
+    """Create an in-app notification for user"""
+    try:
+        db = await get_database()
+        
+        notification = InAppNotification(
+            user_id=user_id,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            action_url=action_url,
+            related_id=related_id
+        )
+        
+        await db.notifications.insert_one(notification.dict())
+        
+    except Exception as e:
+        logger.error(f"Create notification error: {str(e)}")
+
 # Helper functions for growth mechanics
 async def calculate_waitlist_priority_score(user_id: str, user: Dict[str, Any]) -> float:
     """Calculate priority score for waitlist positioning"""
@@ -6079,7 +7259,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://share-hub-5.preview.emergentagent.com"
+        base_url = "https://campus-ambassador-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
