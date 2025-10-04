@@ -152,29 +152,26 @@ class UserCreate(BaseModel):
         if not v or len(v) == 0:
             raise ValueError('At least one skill is required')
         
-        # Check if all skills are valid (not empty)
-        valid_skills = [skill.strip() for skill in v if skill.strip()]
-        if len(valid_skills) == 0:
+        if len(v) > 20:
+            raise ValueError('Cannot have more than 20 skills')
+        
+        # Check if all skills are valid (not empty) and clean them
+        cleaned_skills = []
+        for skill in v:
+            cleaned = skill.strip()
+            if cleaned and len(cleaned) <= 50:
+                cleaned_skills.append(cleaned)
+        
+        if len(cleaned_skills) == 0:
             raise ValueError('At least one valid skill is required')
         
-        return valid_skills
+        return cleaned_skills
 
     @validator('bio')
     def validate_bio(cls, v):
         if v and len(v) > 500:
             raise ValueError('Bio cannot exceed 500 characters')
         return v
-
-    @validator('skills')
-    def validate_skills(cls, v):
-        if len(v) > 20:
-            raise ValueError('Cannot have more than 20 skills')
-        cleaned_skills = []
-        for skill in v:
-            cleaned = skill.strip()
-            if cleaned and len(cleaned) <= 50:
-                cleaned_skills.append(cleaned)
-        return cleaned_skills
 
     @validator('avatar')
     def validate_avatar(cls, v):
@@ -1380,26 +1377,7 @@ class ExpenseReceipt(BaseModel):
     shared_count: int = 0
     shared_platforms: List[str] = []
 
-# ===== CAMPUS AMBASSADOR MODELS =====
-
-class CampusAmbassador(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
-    university: str
-    status: str = "pending"  # "pending", "active", "inactive", "suspended"
-    applied_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    approved_at: Optional[datetime] = None
-    total_referrals: int = 0
-    monthly_referrals: int = 0
-    performance_score: float = 0.0
-    special_privileges: List[str] = []  # ["unlimited_invites", "beta_access", "custom_rewards"]
-    
-    @validator('status')
-    def validate_status(cls, v):
-        allowed_statuses = ["pending", "active", "inactive", "suspended"]
-        if v not in allowed_statuses:
-            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
-        return v
+# ===== CAMPUS AMBASSADOR MODELS (MOVED TO REFERRAL SECTION) =====
 
 # ===== GROUP EXPENSE SPLITTING MODELS =====
 
@@ -2020,3 +1998,348 @@ class DailyTipInteraction(BaseModel):
         if v not in allowed_types:
             raise ValueError(f'Interaction type must be one of: {", ".join(allowed_types)}')
         return v
+
+# ===== INTER-COLLEGE COMPETITION MODELS =====
+
+class InterCollegeCompetition(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    competition_type: str  # "campus_savings", "campus_streak", "campus_referrals", "campus_goals"
+    # Competition details
+    start_date: datetime
+    end_date: datetime
+    registration_start: datetime
+    registration_end: datetime
+    duration_days: int
+    # Participation criteria
+    min_participants_per_campus: int = 10
+    max_participants_per_campus: int = 100
+    eligible_universities: List[str] = []  # Empty = all universities
+    min_user_level: int = 1
+    # Competition mechanics
+    scoring_method: str = "total"  # "total", "average", "percentage", "top_performers"
+    target_metric: str  # "total_savings", "average_streak", "referral_count", "goals_completed"
+    target_value: Optional[float] = None
+    # Prizes and rewards
+    prize_pool: float  # Total monetary prize pool
+    prize_distribution: Dict[str, Any] = {}  # {"1st": 50000, "2nd": 30000, "3rd": 20000}
+    campus_reputation_points: Dict[str, int] = {}  # Points awarded to winning campuses
+    participation_rewards: Dict[str, Any] = {}  # Rewards for all participants
+    # Status and visibility
+    status: str = "upcoming"  # "upcoming", "registration_open", "active", "completed", "cancelled"
+    is_featured: bool = False
+    visibility: str = "public"  # "public", "invited_only"
+    created_by: str  # Admin who created the competition
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('competition_type')
+    def validate_competition_type(cls, v):
+        allowed_types = ["campus_savings", "campus_streak", "campus_referrals", "campus_goals"]
+        if v not in allowed_types:
+            raise ValueError(f'Competition type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["upcoming", "registration_open", "active", "completed", "cancelled"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+    
+    @validator('scoring_method')
+    def validate_scoring_method(cls, v):
+        allowed_methods = ["total", "average", "percentage", "top_performers"]
+        if v not in allowed_methods:
+            raise ValueError(f'Scoring method must be one of: {", ".join(allowed_methods)}')
+        return v
+
+class CampusCompetitionParticipation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    competition_id: str
+    user_id: str
+    campus: str  # University name
+    # Registration details
+    registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    registration_status: str = "registered"  # "registered", "active", "disqualified", "withdrawn"
+    # Performance tracking
+    individual_score: float = 0.0
+    individual_rank: int = 0
+    campus_contribution: float = 0.0  # This user's contribution to campus total
+    # Progress tracking
+    daily_progress: Dict[str, float] = {}  # Date -> progress value
+    milestones_achieved: List[str] = []
+    # Rewards
+    individual_rewards: List[Dict[str, Any]] = []
+    reward_eligibility: Dict[str, bool] = {}
+    
+    @validator('registration_status')
+    def validate_registration_status(cls, v):
+        allowed_statuses = ["registered", "active", "disqualified", "withdrawn"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Registration status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class CampusLeaderboard(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    competition_id: str
+    campus: str
+    # Team statistics
+    total_participants: int = 0
+    active_participants: int = 0
+    # Performance metrics
+    campus_total_score: float = 0.0
+    campus_average_score: float = 0.0
+    campus_rank: int = 0
+    # Progress tracking
+    daily_totals: Dict[str, float] = {}  # Date -> daily total
+    milestone_achievements: List[Dict[str, Any]] = []
+    # Campus reputation
+    reputation_points_earned: int = 0
+    bonus_points: int = 0  # Extra points for achievements
+    # Last updated timestamp
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# ===== PRIZE-BASED CHALLENGE MODELS =====
+
+class PrizeChallenge(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    description: str
+    challenge_type: str  # "weekly", "monthly", "flash", "seasonal"
+    # Challenge mechanics
+    challenge_category: str  # "savings", "streak", "referrals", "goals", "engagement", "mixed"
+    difficulty_level: str = "medium"  # "easy", "medium", "hard", "extreme"
+    target_metric: str  # "amount_saved", "days_streak", "referrals_made", "goals_completed"
+    target_value: float
+    # Timing
+    start_date: datetime
+    end_date: datetime
+    duration_hours: int  # For flash challenges
+    # Participation
+    max_participants: Optional[int] = None  # None = unlimited
+    current_participants: int = 0
+    entry_requirements: Dict[str, Any] = {}  # Level, streak, etc.
+    # Prizes and rewards
+    prize_type: str  # "monetary", "scholarship", "points", "badge", "mixed"
+    total_prize_value: float  # In rupees for monetary prizes
+    prize_structure: Dict[str, Any] = {}  # Detailed prize breakdown
+    scholarship_details: Optional[Dict[str, Any]] = None  # For scholarship prizes
+    # Campus reputation rewards
+    campus_reputation_rewards: Dict[str, int] = {}  # Winner's campus gets reputation points
+    # Status and management
+    status: str = "upcoming"  # "upcoming", "active", "completed", "cancelled"
+    is_featured: bool = False
+    created_by: str  # Admin ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('challenge_type')
+    def validate_challenge_type(cls, v):
+        allowed_types = ["weekly", "monthly", "flash", "seasonal"]
+        if v not in allowed_types:
+            raise ValueError(f'Challenge type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('challenge_category')
+    def validate_challenge_category(cls, v):
+        allowed_categories = ["savings", "streak", "referrals", "goals", "engagement", "mixed"]
+        if v not in allowed_categories:
+            raise ValueError(f'Challenge category must be one of: {", ".join(allowed_categories)}')
+        return v
+    
+    @validator('difficulty_level')
+    def validate_difficulty_level(cls, v):
+        allowed_levels = ["easy", "medium", "hard", "extreme"]
+        if v not in allowed_levels:
+            raise ValueError(f'Difficulty level must be one of: {", ".join(allowed_levels)}')
+        return v
+    
+    @validator('prize_type')
+    def validate_prize_type(cls, v):
+        allowed_types = ["monetary", "scholarship", "points", "badge", "mixed"]
+        if v not in allowed_types:
+            raise ValueError(f'Prize type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class PrizeChallengeParticipation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    challenge_id: str
+    user_id: str
+    # Participation details
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    participation_status: str = "active"  # "active", "completed", "disqualified", "withdrawn"
+    # Performance tracking
+    current_progress: float = 0.0
+    target_progress: float = 0.0
+    progress_percentage: float = 0.0
+    current_rank: int = 0
+    # Timeline tracking
+    progress_history: Dict[str, float] = {}  # Timestamp -> progress value
+    milestones_achieved: List[Dict[str, Any]] = []
+    # Rewards earned
+    rewards_earned: List[Dict[str, Any]] = []
+    prize_eligibility: Dict[str, bool] = {}
+    final_reward: Optional[Dict[str, Any]] = None
+    
+    @validator('participation_status')
+    def validate_participation_status(cls, v):
+        allowed_statuses = ["active", "completed", "disqualified", "withdrawn"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Participation status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class ChallengeReward(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    challenge_id: str
+    user_id: str
+    # Reward details
+    reward_type: str  # "monetary", "scholarship", "points", "badge", "campus_reputation"
+    reward_value: Union[float, int, str]  # Amount, points, or description
+    reward_rank: int  # 1st place, 2nd place, etc.
+    # Monetary reward details (if applicable)
+    amount_inr: Optional[float] = None
+    payment_method: Optional[str] = None  # "upi", "bank_transfer", "paytm"
+    payment_status: str = "pending"  # "pending", "processing", "completed", "failed"
+    payment_details: Optional[Dict[str, Any]] = None
+    # Scholarship details (if applicable)
+    scholarship_info: Optional[Dict[str, Any]] = None
+    scholarship_provider: Optional[str] = None
+    # Campus reputation (if applicable)
+    campus_reputation_points: int = 0
+    campus_affected: Optional[str] = None
+    # Status and timeline
+    awarded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    claimed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    status: str = "awarded"  # "awarded", "claimed", "expired", "cancelled"
+    
+    @validator('reward_type')
+    def validate_reward_type(cls, v):
+        allowed_types = ["monetary", "scholarship", "points", "badge", "campus_reputation"]
+        if v not in allowed_types:
+            raise ValueError(f'Reward type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('payment_status')
+    def validate_payment_status(cls, v):
+        allowed_statuses = ["pending", "processing", "completed", "failed"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Payment status must be one of: {", ".join(allowed_statuses)}')
+        return v
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["awarded", "claimed", "expired", "cancelled"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+# ===== CAMPUS REPUTATION SYSTEM =====
+
+class CampusReputation(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    campus: str  # University name
+    # Reputation metrics
+    total_reputation_points: int = 0
+    monthly_reputation_points: int = 0
+    current_rank: int = 0
+    previous_rank: int = 0
+    # Performance categories
+    academic_performance: int = 0  # Points from academic-related achievements
+    financial_literacy: int = 0   # Points from financial goal achievements
+    social_engagement: int = 0    # Points from social activities and referrals
+    competition_wins: int = 0     # Points from inter-college competition wins
+    innovation_points: int = 0    # Points from unique achievements
+    # Historical tracking
+    reputation_history: Dict[str, int] = {}  # Month-Year -> points
+    achievements: List[Dict[str, Any]] = []  # Notable campus achievements
+    # Campus statistics
+    total_students: int = 0
+    active_students: int = 0
+    ambassador_count: int = 0
+    # Rankings and comparisons
+    national_rank: int = 0
+    regional_rank: int = 0
+    category_rankings: Dict[str, int] = {}  # Category -> rank
+    # Last updated
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    monthly_reset_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ReputationTransaction(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    campus: str
+    # Transaction details
+    transaction_type: str  # "earned", "deducted", "bonus", "penalty"
+    points: int
+    reason: str
+    category: str  # "academic", "financial", "social", "competition", "innovation"
+    # Source information
+    source_type: str  # "competition", "challenge", "user_achievement", "admin_action"
+    source_id: Optional[str] = None  # Related entity ID
+    user_id: Optional[str] = None  # User who contributed (if applicable)
+    # Timestamp
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('transaction_type')
+    def validate_transaction_type(cls, v):
+        allowed_types = ["earned", "deducted", "bonus", "penalty"]
+        if v not in allowed_types:
+            raise ValueError(f'Transaction type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('category')
+    def validate_category(cls, v):
+        allowed_categories = ["academic", "financial", "social", "competition", "innovation"]
+        if v not in allowed_categories:
+            raise ValueError(f'Category must be one of: {", ".join(allowed_categories)}')
+        return v
+    
+    @validator('source_type')
+    def validate_source_type(cls, v):
+        allowed_sources = ["competition", "challenge", "user_achievement", "admin_action"]
+        if v not in allowed_sources:
+            raise ValueError(f'Source type must be one of: {", ".join(allowed_sources)}')
+        return v
+
+# ===== REQUEST MODELS FOR NEW FEATURES =====
+
+class InterCollegeCompetitionCreate(BaseModel):
+    title: str
+    description: str
+    competition_type: str
+    start_date: datetime
+    end_date: datetime
+    registration_start: datetime
+    registration_end: datetime
+    min_participants_per_campus: int = 10
+    max_participants_per_campus: int = 100
+    eligible_universities: List[str] = []
+    min_user_level: int = 1
+    scoring_method: str = "total"
+    target_metric: str
+    target_value: Optional[float] = None
+    prize_pool: float
+    prize_distribution: Dict[str, Any] = {}
+    campus_reputation_points: Dict[str, int] = {}
+    participation_rewards: Dict[str, Any] = {}
+
+class PrizeChallengeCreate(BaseModel):
+    title: str
+    description: str
+    challenge_type: str
+    challenge_category: str
+    difficulty_level: str = "medium"
+    target_metric: str
+    target_value: float
+    start_date: datetime
+    end_date: datetime
+    duration_hours: int = 0
+    max_participants: Optional[int] = None
+    entry_requirements: Dict[str, Any] = {}
+    prize_type: str
+    total_prize_value: float
+    prize_structure: Dict[str, Any] = {}
+    scholarship_details: Optional[Dict[str, Any]] = None
+    campus_reputation_rewards: Dict[str, int] = {}
