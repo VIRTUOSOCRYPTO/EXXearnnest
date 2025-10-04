@@ -33,6 +33,10 @@ import EnhancedPhotoSharing from './components/EnhancedPhotoSharing';
 import HabitTracking from './components/HabitTracking';
 import WeeklyRecap from './components/WeeklyRecap';
 import PersonalizedGoals from './components/PersonalizedGoals';
+import CampusAmbassador from './components/CampusAmbassador';
+import GrowthMechanics from './components/GrowthMechanics';
+import ExpenseReceipts from './components/ExpenseReceipts';
+import GroupExpenses from './components/GroupExpenses';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -247,6 +251,22 @@ function App() {
               <Route 
                 path="/personalized-goals" 
                 element={user ? <PersonalizedGoals /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/campus-ambassador" 
+                element={user ? <CampusAmbassador /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/growth-mechanics" 
+                element={user ? <GrowthMechanics /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/expense-receipts" 
+                element={user ? <ExpenseReceipts /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/group-expenses" 
+                element={user ? <GroupExpenses /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/" 
