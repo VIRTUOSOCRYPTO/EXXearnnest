@@ -7,7 +7,10 @@ import {
   SparklesIcon,
   XMarkIcon,
   CheckCircleIcon,
-  ClipboardDocumentIcon
+  ClipboardDocumentIcon,
+  LinkIcon,
+  ChartBarIcon,
+  GlobeAltIcon
 } from '@heroicons/react/24/outline';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -74,6 +77,50 @@ const SocialSharing = ({ achievement, onClose }) => {
     // Open WhatsApp share URL if available
     if (shareContent.share_url) {
       window.open(shareContent.share_url, '_blank');
+    }
+  };
+
+  const handleLinkedInShare = async () => {
+    await generateShareContent('linkedin');
+  };
+
+  const handleTwitterShare = async () => {
+    await generateShareContent('twitter');
+  };
+
+  const handleFacebookShare = async () => {
+    await generateShareContent('facebook');
+  };
+
+  const handleMultiPlatformShare = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.post(`${API}/social/multi-platform-share`, {
+        achievement_type: achievement.type || 'badge_earned',
+        milestone_text: achievement.title || achievement.milestone_text,
+        amount: achievement.amount || null
+      });
+
+      setShareContent(response.data);
+      setSelectedPlatform('multi-platform');
+    } catch (error) {
+      console.error('Error generating multi-platform content:', error);
+      alert('Failed to generate multi-platform content. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createViralReferralLink = async (platform) => {
+    try {
+      const response = await axios.post(`${API}/social/viral-referral-link`, {
+        platform_source: platform
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error creating viral referral link:', error);
+      return null;
     }
   };
 
@@ -175,8 +222,18 @@ const SocialSharing = ({ achievement, onClose }) => {
           {/* Sharing Platforms */}
           {imageGenerated && (
             <div className="mb-6">
-              <h4 className="font-semibold text-gray-900 mb-3">Share On</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-gray-900">Share On</h4>
+                <button
+                  onClick={handleMultiPlatformShare}
+                  className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all text-sm"
+                >
+                  <GlobeAltIcon className="w-4 h-4" />
+                  <span>All Platforms</span>
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 {/* Instagram */}
                 <button
                   onClick={handleInstagramShare}
@@ -184,11 +241,11 @@ const SocialSharing = ({ achievement, onClose }) => {
                 >
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-bold">IG</span>
+                      <span className="text-white font-bold text-xs">IG</span>
                     </div>
                     <div className="text-left">
-                      <p className="font-semibold text-gray-900">Instagram</p>
-                      <p className="text-sm text-gray-600">Share to Stories</p>
+                      <p className="font-semibold text-gray-900 text-sm">Instagram</p>
+                      <p className="text-xs text-gray-600">Share to Stories</p>
                     </div>
                   </div>
                 </button>
@@ -200,11 +257,81 @@ const SocialSharing = ({ achievement, onClose }) => {
                 >
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-bold">WA</span>
+                      <span className="text-white font-bold text-xs">WA</span>
                     </div>
                     <div className="text-left">
-                      <p className="font-semibold text-gray-900">WhatsApp</p>
-                      <p className="text-sm text-gray-600">Share Status</p>
+                      <p className="font-semibold text-gray-900 text-sm">WhatsApp</p>
+                      <p className="text-xs text-gray-600">Share to Status</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* LinkedIn */}
+                <button
+                  onClick={handleLinkedInShare}
+                  className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">Li</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-900 text-sm">LinkedIn</p>
+                      <p className="text-xs text-gray-600">Professional</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Twitter */}
+                <button
+                  onClick={handleTwitterShare}
+                  className="p-4 border border-gray-200 rounded-xl hover:border-sky-300 hover:bg-sky-50 transition-colors group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-sky-500 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">X</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-900 text-sm">Twitter</p>
+                      <p className="text-xs text-gray-600">Share Tweet</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Facebook */}
+                <button
+                  onClick={handleFacebookShare}
+                  className="p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-blue-700 rounded-lg flex items-center justify-center">
+                      <span className="text-white font-bold text-xs">FB</span>
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-900 text-sm">Facebook</p>
+                      <p className="text-xs text-gray-600">Share Post</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Viral Referral Link */}
+                <button
+                  onClick={async () => {
+                    const viralLink = await createViralReferralLink('achievement_share');
+                    if (viralLink) {
+                      await copyToClipboard(viralLink.viral_link);
+                      alert('Viral referral link copied! Share it anywhere to get credit for referrals.');
+                    }
+                  }}
+                  className="p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-colors group"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                      <LinkIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-gray-900 text-sm">Viral Link</p>
+                      <p className="text-xs text-gray-600">Trackable</p>
                     </div>
                   </div>
                 </button>
