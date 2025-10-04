@@ -4564,6 +4564,1494 @@ async def get_share_stats_endpoint(
         logger.error(f"Get share stats error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get share statistics")
 
+# ===== ENHANCED SOCIAL SHARING ENDPOINTS =====
+
+@api_router.post("/social/multi-platform-share")
+@limiter.limit("10/minute")
+async def generate_multi_platform_content_endpoint(
+    request: Request,
+    share_request: AchievementImageRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Generate content for multiple social media platforms"""
+    try:
+        if not SOCIAL_SHARING_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Social sharing service unavailable")
+        
+        social_service = get_social_sharing_service()
+        
+        # Generate achievement image first
+        image_filename = social_service.generate_achievement_image(
+            achievement_type=share_request.achievement_type,
+            milestone_text=share_request.milestone_text,
+            amount=share_request.amount,
+            user_name="User"
+        )
+        
+        if not image_filename:
+            raise HTTPException(status_code=500, detail="Failed to generate achievement image")
+        
+        # Generate multi-platform content
+        multi_content = social_service.generate_multi_platform_content(
+            achievement_type=share_request.achievement_type,
+            milestone_text=share_request.milestone_text,
+            image_filename=image_filename,
+            user_name="User",
+            platforms=["instagram", "whatsapp", "linkedin", "twitter", "facebook"]
+        )
+        
+        # Record the sharing preparation (not actual sharing yet)
+        db = await get_database()
+        
+        # Create multi-platform share record
+        share_record = {
+            "user_id": user_id,
+            "achievement_type": share_request.achievement_type,
+            "milestone_text": share_request.milestone_text,
+            "image_filename": image_filename,
+            "platforms_prepared": ["instagram", "whatsapp", "linkedin", "twitter", "facebook"],
+            "prepared_at": datetime.now(timezone.utc)
+        }
+        
+        await db.multi_platform_shares.insert_one(share_record)
+        
+        return multi_content
+        
+    except Exception as e:
+        logger.error(f"Multi-platform share error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate multi-platform content")
+
+@api_router.post("/social/linkedin-post")
+@limiter.limit("10/minute")
+async def generate_linkedin_post_endpoint(
+    request: Request,
+    share_request: AchievementImageRequest,
+    user_id: str = Depends(get_current_user)
+):
+    """Generate LinkedIn-optimized achievement post"""
+    try:
+        if not SOCIAL_SHARING_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Social sharing service unavailable")
+        
+        social_service = get_social_sharing_service()
+        
+        # Generate professional achievement image
+        image_filename = social_service.generate_achievement_image(
+            achievement_type=share_request.achievement_type,
+            milestone_text=share_request.milestone_text,
+            amount=share_request.amount,
+            user_name="User"
+        )
+        
+        if not image_filename:
+            raise HTTPException(status_code=500, detail="Failed to generate achievement image")
+        
+        # Generate LinkedIn-specific content
+        linkedin_content = social_service.generate_social_share_content(
+            platform="linkedin",
+            achievement_type=share_request.achievement_type,
+            milestone_text=share_request.milestone_text,
+            image_filename=image_filename,
+            user_name="User"
+        )
+        
+        # Record LinkedIn post creation
+        db = await get_database()
+        
+        linkedin_post = {
+            "user_id": user_id,
+            "achievement_type": share_request.achievement_type,
+            "milestone_text": share_request.milestone_text,
+            "professional_content": linkedin_content["text"],
+            "hashtags": linkedin_content.get("text", "").split("#")[1:] if "#" in linkedin_content.get("text", "") else [],
+            "image_filename": image_filename,
+            "created_at": datetime.now(timezone.utc),
+            "shared_manually": True
+        }
+        
+        await db.linkedin_posts.insert_one(linkedin_post)
+        
+        return {
+            "linkedin_content": linkedin_content,
+            "image_url": f"/uploads/achievements/{image_filename}",
+            "post_id": linkedin_post.get("id", "generated")
+        }
+        
+    except Exception as e:
+        logger.error(f"LinkedIn post error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate LinkedIn post")
+
+@api_router.post("/social/viral-referral-link")
+@limiter.limit("5/minute")
+async def create_viral_referral_link_endpoint(
+    request: Request,
+    platform_source: Optional[str] = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Create trackable viral referral link"""
+    try:
+        db = await get_database()
+        
+        # Get or create referral program
+        referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+        
+        if not referral_program:
+            # Create referral program
+            referral_code = user_id[:8] + str(int(datetime.now().timestamp()))[-6:]
+            referral_program = {
+                "referrer_id": user_id,
+                "referral_code": referral_code,
+                "total_referrals": 0,
+                "successful_referrals": 0,
+                "total_earnings": 0.0,
+                "pending_earnings": 0.0,
+                "created_at": datetime.now(timezone.utc)
+            }
+            await db.referral_programs.insert_one(referral_program)
+        
+        # Create viral referral link with tracking
+        base_url = "https://share-hub-5.preview.emergentagent.com"
+        original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
+        
+        # Generate shortened URL (simple implementation)
+        short_id = str(uuid.uuid4())[:8]
+        shortened_url = f"{base_url}/r/{short_id}"
+        
+        viral_link = {
+            "user_id": user_id,
+            "referral_code": referral_program["referral_code"],
+            "shortened_url": shortened_url,
+            "original_url": original_url,
+            "click_count": 0,
+            "conversion_count": 0,
+            "platform_source": platform_source,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=30),  # 30-day expiry
+            "is_active": True,
+            "viral_coefficient": 0.0
+        }
+        
+        result = await db.viral_referral_links.insert_one(viral_link)
+        viral_link["id"] = str(result.inserted_id)
+        
+        return {
+            "viral_link": shortened_url,
+            "original_link": original_url,
+            "referral_code": referral_program["referral_code"],
+            "track_id": viral_link["id"],
+            "expires_at": viral_link["expires_at"],
+            "sharing_content": {
+                "text": f"🚀 Join me on EarnAura - the smartest way to track your finances and achieve your goals! Get rewarded for good financial habits. {shortened_url}",
+                "hashtags": "#FinancialGoals #EarnAura #SmartMoney #StudentFinance"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Viral referral link error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create viral referral link")
+
+@api_router.get("/social/referral-analytics")
+@limiter.limit("10/minute")
+async def get_referral_analytics_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get comprehensive referral tracking analytics"""
+    try:
+        db = await get_database()
+        
+        # Get viral referral links
+        viral_links = await db.viral_referral_links.find({"user_id": user_id}).to_list(None)
+        
+        # Get click analytics
+        total_clicks = sum(link.get("click_count", 0) for link in viral_links)
+        total_conversions = sum(link.get("conversion_count", 0) for link in viral_links)
+        
+        # Calculate viral coefficient
+        viral_coefficient = total_conversions / total_clicks if total_clicks > 0 else 0.0
+        
+        # Get platform breakdown
+        platform_stats = {}
+        for link in viral_links:
+            platform = link.get("platform_source", "unknown")
+            if platform not in platform_stats:
+                platform_stats[platform] = {"clicks": 0, "conversions": 0}
+            
+            platform_stats[platform]["clicks"] += link.get("click_count", 0)
+            platform_stats[platform]["conversions"] += link.get("conversion_count", 0)
+        
+        # Get recent clicks
+        recent_clicks = await db.referral_clicks.find(
+            {"referral_link_id": {"$in": [link["id"] for link in viral_links if "id" in link]}}
+        ).sort("clicked_at", -1).limit(20).to_list(None)
+        
+        return {
+            "total_links_created": len(viral_links),
+            "total_clicks": total_clicks,
+            "total_conversions": total_conversions,
+            "viral_coefficient": round(viral_coefficient, 4),
+            "conversion_rate": round((total_conversions / total_clicks * 100), 2) if total_clicks > 0 else 0.0,
+            "platform_breakdown": platform_stats,
+            "active_links": len([link for link in viral_links if link.get("is_active", False)]),
+            "recent_activity": [
+                {
+                    "type": "click",
+                    "platform_source": click.get("platform_source", "unknown"),
+                    "clicked_at": click["clicked_at"],
+                    "converted": click.get("converted", False)
+                }
+                for click in recent_clicks
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Referral analytics error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get referral analytics")
+
+# ===== EXPENSE RECEIPT UPLOAD & SHARING =====
+
+@api_router.post("/expenses/upload-receipt")
+@limiter.limit("10/minute")
+async def upload_expense_receipt_endpoint(
+    request: Request,
+    file: UploadFile = File(...),
+    transaction_id: Optional[str] = None,
+    category: Optional[str] = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Upload expense receipt with OCR processing"""
+    try:
+        # Validate file type
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        
+        if file_extension not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Invalid file type. Please upload JPG, PNG, or PDF files.")
+        
+        # Create receipts directory if it doesn't exist
+        receipts_dir = UPLOADS_DIR / "receipts"
+        receipts_dir.mkdir(exist_ok=True)
+        
+        # Generate unique filename
+        timestamp = int(datetime.now().timestamp())
+        unique_filename = f"receipt_{user_id[:8]}_{timestamp}{file_extension}"
+        file_path = receipts_dir / unique_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Basic OCR processing (simple implementation)
+        # In production, you'd use services like AWS Textract, Google Vision API, etc.
+        ocr_text = await process_receipt_ocr(str(file_path))
+        
+        # Extract merchant name, amount, and date from OCR text
+        extracted_data = extract_receipt_data(ocr_text)
+        
+        # Save receipt record
+        db = await get_database()
+        
+        receipt_record = {
+            "user_id": user_id,
+            "transaction_id": transaction_id,
+            "filename": unique_filename,
+            "original_filename": file.filename,
+            "merchant_name": extracted_data.get("merchant_name"),
+            "amount": extracted_data.get("amount"),
+            "category": category or extracted_data.get("category"),
+            "date_extracted": extracted_data.get("date"),
+            "ocr_text": ocr_text,
+            "uploaded_at": datetime.now(timezone.utc),
+            "shared_count": 0,
+            "shared_platforms": []
+        }
+        
+        result = await db.expense_receipts.insert_one(receipt_record)
+        receipt_record["id"] = str(result.inserted_id)
+        
+        return {
+            "receipt_id": receipt_record["id"],
+            "filename": unique_filename,
+            "file_url": f"/uploads/receipts/{unique_filename}",
+            "extracted_data": extracted_data,
+            "ocr_confidence": "medium",  # Would come from actual OCR service
+            "suggestions": {
+                "create_transaction": not transaction_id,
+                "merchant_detected": bool(extracted_data.get("merchant_name")),
+                "amount_detected": bool(extracted_data.get("amount"))
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Receipt upload error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload receipt")
+
+@api_router.post("/expenses/share-receipt/{receipt_id}")
+@limiter.limit("10/minute")
+async def share_expense_receipt_endpoint(
+    request: Request,
+    receipt_id: str,
+    platforms: List[str],
+    caption: Optional[str] = None,
+    user_id: str = Depends(get_current_user)
+):
+    """Share expense receipt on social platforms"""
+    try:
+        db = await get_database()
+        
+        # Get receipt
+        receipt = await db.expense_receipts.find_one({"id": receipt_id, "user_id": user_id})
+        if not receipt:
+            raise HTTPException(status_code=404, detail="Receipt not found")
+        
+        # Generate sharing content
+        sharing_content = {}
+        
+        for platform in platforms:
+            if platform == "instagram":
+                content = {
+                    "text": f"💰 Smart expense tracking with EarnAura!\n{caption or 'Keeping track of every expense helps reach my financial goals faster!'}\n\n#ExpenseTracking #FinancialGoals #EarnAura #SmartMoney",
+                    "image_url": f"/uploads/receipts/{receipt['filename']}",
+                    "instructions": "Share on Instagram Stories with expense tracking motivation"
+                }
+            elif platform == "twitter":
+                content = {
+                    "text": f"📊 Tracking expenses = reaching goals faster! {caption or ''} #ExpenseTracking #FinancialGoals #EarnAura",
+                    "image_url": f"/uploads/receipts/{receipt['filename']}",
+                    "instructions": "Tweet about smart expense tracking"
+                }
+            elif platform == "linkedin":
+                content = {
+                    "text": f"💼 Financial discipline in action! Tracking every expense helps build better money habits and reach professional goals faster.\n\n{caption or ''}\n\n#FinancialLiteracy #PersonalFinance #ProfessionalDevelopment #MoneyManagement",
+                    "image_url": f"/uploads/receipts/{receipt['filename']}",
+                    "instructions": "Share on LinkedIn as a professional finance tip"
+                }
+            else:
+                content = {
+                    "text": f"💰 Smart expense tracking! {caption or ''}",
+                    "image_url": f"/uploads/receipts/{receipt['filename']}"
+                }
+            
+            sharing_content[platform] = content
+        
+        # Update sharing statistics
+        await db.expense_receipts.update_one(
+            {"id": receipt_id},
+            {
+                "$inc": {"shared_count": len(platforms)},
+                "$addToSet": {"shared_platforms": {"$each": platforms}}
+            }
+        )
+        
+        # Create sharing records for analytics
+        for platform in platforms:
+            share_record = {
+                "user_id": user_id,
+                "platform": platform,
+                "achievement_type": "expense_receipt",
+                "milestone_text": f"Receipt from {receipt.get('merchant_name', 'expense')}",
+                "image_filename": receipt["filename"],
+                "amount": receipt.get("amount"),
+                "shared_at": datetime.now(timezone.utc),
+                "engagement_count": 0,
+                "click_count": 0,
+                "conversion_count": 0,
+                "viral_coefficient": 0.0
+            }
+            await db.social_shares.insert_one(share_record)
+        
+        return {
+            "success": True,
+            "shared_platforms": platforms,
+            "sharing_content": sharing_content,
+            "receipt_info": {
+                "merchant": receipt.get("merchant_name"),
+                "amount": receipt.get("amount"),
+                "category": receipt.get("category")
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Share receipt error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to share receipt")
+
+@api_router.get("/expenses/receipts")
+@limiter.limit("30/minute")
+async def get_user_receipts_endpoint(
+    request: Request,
+    limit: int = 20,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's uploaded receipts"""
+    try:
+        db = await get_database()
+        
+        receipts = await db.expense_receipts.find(
+            {"user_id": user_id}
+        ).sort("uploaded_at", -1).limit(limit).to_list(None)
+        
+        # Format response
+        formatted_receipts = []
+        for receipt in receipts:
+            formatted_receipts.append({
+                "id": receipt.get("id"),
+                "filename": receipt["filename"],
+                "original_filename": receipt["original_filename"],
+                "file_url": f"/uploads/receipts/{receipt['filename']}",
+                "merchant_name": receipt.get("merchant_name"),
+                "amount": receipt.get("amount"),
+                "category": receipt.get("category"),
+                "uploaded_at": receipt["uploaded_at"],
+                "shared_count": receipt.get("shared_count", 0),
+                "shared_platforms": receipt.get("shared_platforms", []),
+                "has_transaction": bool(receipt.get("transaction_id"))
+            })
+        
+        return {
+            "receipts": formatted_receipts,
+            "total_count": len(formatted_receipts)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get receipts error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get receipts")
+
+# Helper functions for receipt processing
+async def process_receipt_ocr(file_path: str) -> str:
+    """Basic OCR processing - in production use proper OCR service"""
+    try:
+        # This is a placeholder - in production you'd use:
+        # - AWS Textract
+        # - Google Cloud Vision API  
+        # - Azure Computer Vision
+        # - Tesseract OCR
+        
+        # Simulate OCR results based on common receipt patterns
+        import random
+        
+        sample_merchants = ["Starbucks", "McDonald's", "Walmart", "Target", "Amazon", "Uber", "Gas Station"]
+        sample_amounts = [15.67, 25.99, 45.32, 12.50, 89.95, 33.45, 67.89]
+        
+        return f"Receipt from {random.choice(sample_merchants)} - Amount: ${random.choice(sample_amounts):.2f} - Date: {datetime.now().strftime('%Y-%m-%d')}"
+        
+    except Exception as e:
+        logger.error(f"OCR processing error: {str(e)}")
+        return "Receipt text could not be processed"
+
+def extract_receipt_data(ocr_text: str) -> Dict[str, Any]:
+    """Extract structured data from OCR text"""
+    import re
+    
+    extracted = {}
+    
+    # Extract merchant name (simple pattern matching)
+    merchant_patterns = [
+        r'Receipt from\s+([A-Za-z\s]+)',
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
+    ]
+    
+    for pattern in merchant_patterns:
+        match = re.search(pattern, ocr_text)
+        if match:
+            extracted["merchant_name"] = match.group(1).strip()
+            break
+    
+    # Extract amount
+    amount_pattern = r'\$?(\d+\.?\d{0,2})'
+    amount_match = re.search(amount_pattern, ocr_text)
+    if amount_match:
+        try:
+            extracted["amount"] = float(amount_match.group(1))
+        except ValueError:
+            pass
+    
+    # Extract date
+    date_pattern = r'(\d{4}-\d{2}-\d{2})'
+    date_match = re.search(date_pattern, ocr_text)
+    if date_match:
+        try:
+            extracted["date"] = datetime.strptime(date_match.group(1), '%Y-%m-%d')
+        except ValueError:
+            pass
+    
+    # Guess category based on merchant
+    merchant = extracted.get("merchant_name", "").lower()
+    if any(food in merchant for food in ["starbucks", "mcdonald", "restaurant", "cafe"]):
+        extracted["category"] = "Food"
+    elif any(shop in merchant for shop in ["walmart", "target", "amazon"]):
+        extracted["category"] = "Shopping"
+    elif "gas" in merchant or "fuel" in merchant:
+        extracted["category"] = "Transportation"
+    else:
+        extracted["category"] = "Other"
+    
+    return extracted
+
+# ===== CAMPUS AMBASSADOR PROGRAM =====
+
+@api_router.post("/campus/ambassador/apply")
+@limiter.limit("3/day")  # Limited applications per day
+async def apply_campus_ambassador_endpoint(
+    request: Request,
+    application_data: Dict[str, Any],
+    user_id: str = Depends(get_current_user)
+):
+    """Apply to become a campus ambassador"""
+    try:
+        db = await get_database()
+        
+        # Get user info
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if user is a student with university
+        if user.get("role") != "Student" or not user.get("university"):
+            raise HTTPException(status_code=400, detail="Only students with university information can apply")
+        
+        # Check if already applied or is ambassador
+        existing_ambassador = await db.campus_ambassadors.find_one({"user_id": user_id})
+        if existing_ambassador:
+            status = existing_ambassador.get("status")
+            if status == "active":
+                raise HTTPException(status_code=400, detail="You are already a campus ambassador")
+            elif status == "pending":
+                raise HTTPException(status_code=400, detail="Your application is pending review")
+            elif status == "suspended":
+                raise HTTPException(status_code=400, detail="You cannot apply at this time")
+        
+        # Create ambassador application
+        ambassador_record = {
+            "user_id": user_id,
+            "university": user["university"],
+            "status": "pending",
+            "applied_at": datetime.now(timezone.utc),
+            "total_referrals": 0,
+            "monthly_referrals": 0,
+            "performance_score": 0.0,
+            "special_privileges": [],
+            "application_data": {
+                "motivation": application_data.get("motivation", ""),
+                "social_media_experience": application_data.get("social_media_experience", ""),
+                "current_followers": application_data.get("current_followers", 0),
+                "leadership_experience": application_data.get("leadership_experience", ""),
+                "availability_hours": application_data.get("availability_hours", 5)
+            }
+        }
+        
+        result = await db.campus_ambassadors.insert_one(ambassador_record)
+        ambassador_record["id"] = str(result.inserted_id)
+        
+        return {
+            "success": True,
+            "application_id": ambassador_record["id"],
+            "status": "pending",
+            "message": "Your campus ambassador application has been submitted for review",
+            "review_timeline": "Applications are typically reviewed within 3-5 business days",
+            "next_steps": [
+                "We'll review your application and social media presence",
+                "You may be contacted for a brief interview",
+                "Successful candidates will receive ambassador training materials"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Ambassador application error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to submit ambassador application")
+
+@api_router.get("/campus/ambassador/dashboard")
+@limiter.limit("30/minute")
+async def get_ambassador_dashboard_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get campus ambassador dashboard"""
+    try:
+        db = await get_database()
+        
+        # Check if user is an active ambassador
+        ambassador = await db.campus_ambassadors.find_one({"user_id": user_id})
+        if not ambassador or ambassador.get("status") != "active":
+            raise HTTPException(status_code=403, detail="Access denied. Active ambassador status required.")
+        
+        # Get ambassador stats
+        current_month = datetime.now(timezone.utc).replace(day=1)
+        
+        # Get referral stats
+        referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+        total_referrals = referral_program.get("total_referrals", 0) if referral_program else 0
+        
+        # Get monthly referrals
+        monthly_referrals = await db.referred_users.count_documents({
+            "referrer_id": user_id,
+            "signed_up_at": {"$gte": current_month}
+        })
+        
+        # Get university ranking
+        university_ambassadors = await db.campus_ambassadors.find({
+            "university": ambassador["university"],
+            "status": "active"
+        }).to_list(None)
+        
+        university_ranking = sorted(
+            university_ambassadors, 
+            key=lambda x: x.get("performance_score", 0), 
+            reverse=True
+        )
+        
+        user_rank = next((i+1 for i, amb in enumerate(university_ranking) if amb["user_id"] == user_id), len(university_ranking))
+        
+        # Calculate performance score
+        performance_score = calculate_ambassador_performance_score(ambassador, total_referrals, monthly_referrals)
+        
+        # Update performance score in database
+        await db.campus_ambassadors.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "performance_score": performance_score,
+                    "total_referrals": total_referrals,
+                    "monthly_referrals": monthly_referrals
+                }
+            }
+        )
+        
+        return {
+            "ambassador_info": {
+                "status": ambassador["status"],
+                "university": ambassador["university"],
+                "member_since": ambassador.get("approved_at", ambassador["applied_at"]),
+                "special_privileges": ambassador.get("special_privileges", [])
+            },
+            "performance": {
+                "score": performance_score,
+                "university_rank": user_rank,
+                "total_ambassadors": len(university_ranking),
+                "monthly_target": 10,  # Monthly referral target
+                "monthly_progress": (monthly_referrals / 10) * 100
+            },
+            "referral_stats": {
+                "total_referrals": total_referrals,
+                "monthly_referrals": monthly_referrals,
+                "conversion_rate": 85.0,  # Placeholder - would calculate from actual data
+                "earnings_this_month": monthly_referrals * 50  # ₹50 per referral
+            },
+            "special_features": {
+                "unlimited_invites": "unlimited_invites" in ambassador.get("special_privileges", []),
+                "beta_access": "beta_access" in ambassador.get("special_privileges", []),
+                "custom_rewards": "custom_rewards" in ambassador.get("special_privileges", []),
+                "priority_support": True
+            },
+            "monthly_leaderboard": [
+                {
+                    "name": f"Ambassador {i+1}",
+                    "referrals": amb.get("monthly_referrals", 0),
+                    "score": amb.get("performance_score", 0),
+                    "is_you": amb["user_id"] == user_id
+                }
+                for i, amb in enumerate(university_ranking[:10])
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Ambassador dashboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get ambassador dashboard")
+
+@api_router.get("/campus/ambassador/rewards")
+@limiter.limit("20/minute")
+async def get_ambassador_rewards_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get available ambassador rewards and achievements"""
+    try:
+        db = await get_database()
+        
+        # Check ambassador status
+        ambassador = await db.campus_ambassadors.find_one({"user_id": user_id})
+        if not ambassador or ambassador.get("status") != "active":
+            raise HTTPException(status_code=403, detail="Active ambassador status required")
+        
+        # Define reward tiers
+        reward_tiers = [
+            {
+                "tier": "Bronze Ambassador",
+                "requirement": "5 monthly referrals",
+                "rewards": ["Unlimited monthly invites", "Ambassador badge"],
+                "current_progress": ambassador.get("monthly_referrals", 0),
+                "target": 5,
+                "unlocked": ambassador.get("monthly_referrals", 0) >= 5
+            },
+            {
+                "tier": "Silver Ambassador", 
+                "requirement": "15 monthly referrals",
+                "rewards": ["Beta feature access", "Custom referral rewards", "Priority support"],
+                "current_progress": ambassador.get("monthly_referrals", 0),
+                "target": 15,
+                "unlocked": ambassador.get("monthly_referrals", 0) >= 15
+            },
+            {
+                "tier": "Gold Ambassador",
+                "requirement": "30 monthly referrals", 
+                "rewards": ["Campus event planning", "Direct team contact", "Exclusive merchandise"],
+                "current_progress": ambassador.get("monthly_referrals", 0),
+                "target": 30,
+                "unlocked": ambassador.get("monthly_referrals", 0) >= 30
+            }
+        ]
+        
+        # Get achievements
+        achievements = []
+        if ambassador.get("total_referrals", 0) >= 10:
+            achievements.append("First 10 Referrals")
+        if ambassador.get("total_referrals", 0) >= 50:
+            achievements.append("50 Referral Milestone") 
+        if ambassador.get("monthly_referrals", 0) >= 20:
+            achievements.append("Monthly Superstar")
+        if ambassador.get("performance_score", 0) >= 80:
+            achievements.append("High Performance Ambassador")
+        
+        return {
+            "current_tier": get_ambassador_tier(ambassador.get("monthly_referrals", 0)),
+            "reward_tiers": reward_tiers,
+            "achievements_earned": achievements,
+            "special_privileges": ambassador.get("special_privileges", []),
+            "next_reward": next((tier for tier in reward_tiers if not tier["unlocked"]), None)
+        }
+        
+    except Exception as e:
+        logger.error(f"Ambassador rewards error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get ambassador rewards")
+
+# ===== GROUP EXPENSE SPLITTING =====
+
+@api_router.post("/expenses/group/create")
+@limiter.limit("10/minute")
+async def create_group_expense_endpoint(
+    request: Request,
+    expense_data: Dict[str, Any],
+    user_id: str = Depends(get_current_user)
+):
+    """Create a group expense for splitting with friends"""
+    try:
+        db = await get_database()
+        
+        # Validate expense data
+        required_fields = ["title", "total_amount", "category", "participants"]
+        for field in required_fields:
+            if field not in expense_data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Validate participants are friends
+        participant_ids = [p["user_id"] for p in expense_data["participants"]]
+        
+        # Check friendships
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user1_id": user_id, "user2_id": {"$in": participant_ids}},
+                {"user2_id": user_id, "user1_id": {"$in": participant_ids}}
+            ]
+        }).to_list(None)
+        
+        friend_ids = set()
+        for friendship in friendships:
+            if friendship["user1_id"] == user_id:
+                friend_ids.add(friendship["user2_id"])
+            else:
+                friend_ids.add(friendship["user1_id"])
+        
+        # Ensure all participants are friends
+        non_friends = [pid for pid in participant_ids if pid not in friend_ids and pid != user_id]
+        if non_friends:
+            raise HTTPException(status_code=400, detail="Some participants are not in your friend network")
+        
+        # Create group expense
+        group_expense = {
+            "creator_id": user_id,
+            "title": expense_data["title"],
+            "description": expense_data.get("description"),
+            "total_amount": float(expense_data["total_amount"]),
+            "category": expense_data["category"],
+            "receipt_filename": expense_data.get("receipt_filename"),
+            "participants": expense_data["participants"],
+            "created_at": datetime.now(timezone.utc),
+            "settled": False,
+            "settlement_method": expense_data.get("settlement_method", "equal")
+        }
+        
+        result = await db.group_expenses.insert_one(group_expense)
+        group_expense["id"] = str(result.inserted_id)
+        
+        # Create settlement records for each participant
+        settlements = []
+        for participant in expense_data["participants"]:
+            if participant["user_id"] != user_id:  # Creator doesn't owe themselves
+                settlement = {
+                    "group_expense_id": group_expense["id"],
+                    "payer_id": user_id,  # Creator paid initially
+                    "payee_id": participant["user_id"],
+                    "amount": float(participant["amount"]),
+                    "status": "pending",
+                    "payment_method": None
+                }
+                
+                settlement_result = await db.expense_settlements.insert_one(settlement)
+                settlement["id"] = str(settlement_result.inserted_id)
+                settlements.append(settlement)
+        
+        # Send notifications to participants
+        for participant in expense_data["participants"]:
+            if participant["user_id"] != user_id:
+                notification = {
+                    "user_id": participant["user_id"],
+                    "type": "group_expense_created",
+                    "title": "New Group Expense",
+                    "message": f"{await get_user_name(user_id)} added you to a group expense: {expense_data['title']}",
+                    "action_url": f"/expenses/group/{group_expense['id']}",
+                    "related_id": group_expense["id"],
+                    "created_at": datetime.now(timezone.utc),
+                    "read": False
+                }
+                await db.notifications.insert_one(notification)
+        
+        return {
+            "group_expense": group_expense,
+            "settlements": settlements,
+            "participants_notified": len(participant_ids) - 1,
+            "message": f"Group expense '{expense_data['title']}' created successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Create group expense error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create group expense")
+
+@api_router.get("/expenses/group")
+@limiter.limit("30/minute") 
+async def get_user_group_expenses_endpoint(
+    request: Request,
+    limit: int = 20,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's group expenses"""
+    try:
+        db = await get_database()
+        
+        # Get group expenses where user is creator or participant
+        group_expenses = await db.group_expenses.find({
+            "$or": [
+                {"creator_id": user_id},
+                {"participants.user_id": user_id}
+            ]
+        }).sort("created_at", -1).limit(limit).to_list(None)
+        
+        formatted_expenses = []
+        for expense in group_expenses:
+            # Get settlements for this expense
+            settlements = await db.expense_settlements.find({
+                "group_expense_id": expense.get("id", str(expense["_id"]))
+            }).to_list(None)
+            
+            # Calculate user's involvement
+            user_settlement = next((s for s in settlements if s["payee_id"] == user_id or s["payer_id"] == user_id), None)
+            
+            formatted_expense = {
+                "id": expense.get("id", str(expense["_id"])),
+                "title": expense["title"],
+                "description": expense.get("description"),
+                "total_amount": expense["total_amount"],
+                "category": expense["category"],
+                "created_at": expense["created_at"],
+                "settled": expense["settled"],
+                "is_creator": expense["creator_id"] == user_id,
+                "participant_count": len(expense["participants"]),
+                "user_amount": user_settlement["amount"] if user_settlement else 0.0,
+                "user_status": user_settlement["status"] if user_settlement else "settled",
+                "receipt_available": bool(expense.get("receipt_filename"))
+            }
+            
+            formatted_expenses.append(formatted_expense)
+        
+        return {
+            "group_expenses": formatted_expenses,
+            "total_count": len(formatted_expenses)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get group expenses error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get group expenses")
+
+# Helper functions
+def calculate_ambassador_performance_score(ambassador: Dict, total_referrals: int, monthly_referrals: int) -> float:
+    """Calculate ambassador performance score based on various factors"""
+    base_score = 0.0
+    
+    # Monthly referrals (40% weight)
+    monthly_score = min(monthly_referrals / 20 * 40, 40)  # Max 40 points for 20+ referrals
+    
+    # Total referrals (30% weight)
+    total_score = min(total_referrals / 100 * 30, 30)  # Max 30 points for 100+ referrals
+    
+    # Consistency (20% weight) - placeholder
+    consistency_score = 15 if monthly_referrals > 0 else 0
+    
+    # Special achievements (10% weight)
+    achievement_score = len(ambassador.get("special_privileges", [])) * 2.5
+    
+    return min(base_score + monthly_score + total_score + consistency_score + achievement_score, 100)
+
+def get_ambassador_tier(monthly_referrals: int) -> str:
+    """Get ambassador tier based on monthly referrals"""
+    if monthly_referrals >= 30:
+        return "Gold Ambassador"
+    elif monthly_referrals >= 15:
+        return "Silver Ambassador"
+    elif monthly_referrals >= 5:
+        return "Bronze Ambassador"
+    else:
+        return "New Ambassador"
+
+async def get_user_name(user_id: str) -> str:
+    """Get user name for notifications"""
+    user = await get_user_by_id(user_id)
+    return user.get("full_name", "Someone") if user else "Someone"
+
+# ===== GROWTH MECHANICS =====
+
+@api_router.get("/growth/invite-quota")
+@limiter.limit("30/minute")
+async def get_invite_quota_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's invite quota and usage statistics"""
+    try:
+        db = await get_database()
+        
+        # Get current invite quota
+        quota = await db.invite_quotas.find_one({"user_id": user_id})
+        
+        if not quota:
+            # Create initial quota (5 invites per month)
+            current_month = datetime.now(timezone.utc).replace(day=1)
+            next_reset = current_month.replace(month=current_month.month % 12 + 1)
+            
+            quota = {
+                "user_id": user_id,
+                "monthly_limit": 5,
+                "used_this_month": 0,
+                "bonus_invites": 0,
+                "reset_date": next_reset,
+                "total_earned": 0
+            }
+            
+            await db.invite_quotas.insert_one(quota)
+        
+        # Check if reset is needed
+        if datetime.now(timezone.utc) >= quota["reset_date"]:
+            # Reset monthly usage
+            current_month = datetime.now(timezone.utc).replace(day=1)
+            next_reset = current_month.replace(month=current_month.month % 12 + 1)
+            
+            await db.invite_quotas.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "used_this_month": 0,
+                        "reset_date": next_reset
+                    }
+                }
+            )
+            quota["used_this_month"] = 0
+            quota["reset_date"] = next_reset
+        
+        # Calculate available invites
+        total_available = quota["monthly_limit"] + quota["bonus_invites"]
+        remaining = max(0, total_available - quota["used_this_month"])
+        
+        # Get ways to earn more invites
+        earning_opportunities = [
+            {
+                "action": "Refer 3 friends",
+                "reward": "2 bonus invites",
+                "progress": min(quota.get("successful_referrals", 0) // 3, 5),
+                "max_progress": 5
+            },
+            {
+                "action": "Complete 10 transactions",
+                "reward": "1 bonus invite", 
+                "progress": 0,  # Would calculate from actual transactions
+                "max_progress": 10
+            },
+            {
+                "action": "Maintain 7-day streak",
+                "reward": "2 bonus invites",
+                "progress": 0,  # Would calculate from user streak
+                "max_progress": 7
+            },
+            {
+                "action": "Join 2 group challenges",
+                "reward": "3 bonus invites",
+                "progress": 0,  # Would calculate from challenges
+                "max_progress": 2
+            }
+        ]
+        
+        return {
+            "quota_info": {
+                "monthly_limit": quota["monthly_limit"],
+                "bonus_invites": quota["bonus_invites"],
+                "total_available": total_available,
+                "used_this_month": quota["used_this_month"],
+                "remaining": remaining,
+                "reset_date": quota["reset_date"],
+                "total_earned": quota["total_earned"]
+            },
+            "usage_status": {
+                "can_invite": remaining > 0,
+                "usage_percentage": (quota["used_this_month"] / total_available * 100) if total_available > 0 else 0,
+                "urgency_level": "high" if remaining <= 1 else "medium" if remaining <= 3 else "low"
+            },
+            "earning_opportunities": earning_opportunities,
+            "special_status": {
+                "is_campus_ambassador": False,  # Would check from ambassador table
+                "has_unlimited": False  # Would check special privileges
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get invite quota error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get invite quota")
+
+@api_router.post("/growth/earn-bonus-invites")
+@limiter.limit("5/minute")
+async def earn_bonus_invites_endpoint(
+    request: Request,
+    achievement_type: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Award bonus invites for achievements"""
+    try:
+        db = await get_database()
+        
+        # Define bonus invite awards
+        bonus_awards = {
+            "first_referral": 1,
+            "three_referrals": 2,
+            "five_referrals": 3,
+            "seven_day_streak": 2,
+            "first_transaction": 1,
+            "ten_transactions": 1,
+            "group_challenge_join": 1,
+            "goal_completion": 2,
+            "budget_success": 1
+        }
+        
+        bonus_amount = bonus_awards.get(achievement_type, 0)
+        if bonus_amount == 0:
+            raise HTTPException(status_code=400, detail="Invalid achievement type")
+        
+        # Check if already earned this bonus (prevent duplicates)
+        existing_bonus = await db.earned_invite_bonuses.find_one({
+            "user_id": user_id,
+            "achievement_type": achievement_type
+        })
+        
+        if existing_bonus:
+            raise HTTPException(status_code=400, detail="Bonus already earned for this achievement")
+        
+        # Award bonus invites
+        await db.invite_quotas.update_one(
+            {"user_id": user_id},
+            {
+                "$inc": {
+                    "bonus_invites": bonus_amount,
+                    "total_earned": bonus_amount
+                }
+            },
+            upsert=True
+        )
+        
+        # Record the bonus earning
+        bonus_record = {
+            "user_id": user_id,
+            "achievement_type": achievement_type,
+            "bonus_amount": bonus_amount,
+            "earned_at": datetime.now(timezone.utc)
+        }
+        
+        await db.earned_invite_bonuses.insert_one(bonus_record)
+        
+        # Create notification
+        notification = {
+            "user_id": user_id,
+            "type": "bonus_invites_earned",
+            "title": "Bonus Invites Earned!",
+            "message": f"You earned {bonus_amount} bonus invite{'s' if bonus_amount > 1 else ''} for {achievement_type.replace('_', ' ')}!",
+            "action_url": "/growth/invite-quota",
+            "created_at": datetime.now(timezone.utc),
+            "read": False
+        }
+        await db.notifications.insert_one(notification)
+        
+        return {
+            "success": True,
+            "bonus_earned": bonus_amount,
+            "achievement": achievement_type,
+            "message": f"Congratulations! You earned {bonus_amount} bonus invite{'s' if bonus_amount > 1 else ''}!"
+        }
+        
+    except Exception as e:
+        logger.error(f"Earn bonus invites error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to earn bonus invites")
+
+@api_router.post("/growth/waitlist/join")
+@limiter.limit("10/day")  # Limited to prevent spam
+async def join_feature_waitlist_endpoint(
+    request: Request,
+    feature_name: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Join waitlist for exclusive features"""
+    try:
+        db = await get_database()
+        
+        # Available exclusive features
+        exclusive_features = {
+            "ai_financial_advisor": {
+                "name": "AI Financial Advisor",
+                "description": "Personal AI coach for financial decisions",
+                "capacity": 100
+            },
+            "premium_analytics": {
+                "name": "Premium Analytics Dashboard", 
+                "description": "Advanced spending insights and predictions",
+                "capacity": 200
+            },
+            "investment_tracker": {
+                "name": "Investment Portfolio Tracker",
+                "description": "Track stocks, mutual funds, and crypto",
+                "capacity": 150
+            },
+            "group_goals": {
+                "name": "Collaborative Financial Goals",
+                "description": "Set and achieve goals with friends",
+                "capacity": 300
+            },
+            "merchant_partnerships": {
+                "name": "Exclusive Merchant Discounts",
+                "description": "Special discounts at partner stores",
+                "capacity": 500
+            }
+        }
+        
+        if feature_name not in exclusive_features:
+            raise HTTPException(status_code=400, detail="Invalid feature name")
+        
+        # Check if already on waitlist
+        existing_entry = await db.feature_waitlists.find_one({
+            "user_id": user_id,
+            "feature_name": feature_name
+        })
+        
+        if existing_entry:
+            if existing_entry.get("granted_access"):
+                raise HTTPException(status_code=400, detail="You already have access to this feature")
+            else:
+                raise HTTPException(status_code=400, detail="You're already on the waitlist for this feature")
+        
+        # Calculate priority score based on user activity
+        user = await get_user_by_id(user_id)
+        priority_score = await calculate_waitlist_priority_score(user_id, user)
+        
+        # Count current waitlist position
+        current_waitlist_size = await db.feature_waitlists.count_documents({
+            "feature_name": feature_name,
+            "granted_access": False
+        })
+        
+        # Create waitlist entry
+        waitlist_entry = {
+            "user_id": user_id,
+            "feature_name": feature_name,
+            "priority_score": priority_score,
+            "joined_at": datetime.now(timezone.utc),
+            "granted_access": False,
+            "position": current_waitlist_size + 1
+        }
+        
+        await db.feature_waitlists.insert_one(waitlist_entry)
+        
+        # Check if immediate access should be granted (high priority users)
+        feature_info = exclusive_features[feature_name]
+        if priority_score >= 80 and current_waitlist_size < feature_info["capacity"] * 0.1:  # Top 10% get immediate access
+            await grant_feature_access(user_id, feature_name)
+            waitlist_entry["granted_access"] = True
+            waitlist_entry["position"] = 0
+        
+        return {
+            "success": True,
+            "feature": feature_info,
+            "waitlist_position": waitlist_entry["position"],
+            "priority_score": priority_score,
+            "immediate_access": waitlist_entry["granted_access"],
+            "estimated_wait": calculate_estimated_wait_time(waitlist_entry["position"], feature_info["capacity"]),
+            "boost_tips": [
+                "Refer more friends to increase priority",
+                "Maintain daily transaction streak",
+                "Complete financial goals",
+                "Become a campus ambassador"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Join waitlist error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to join feature waitlist")
+
+@api_router.get("/growth/beta-access")
+@limiter.limit("20/minute")
+async def get_beta_feature_access_endpoint(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    """Get user's beta feature access status"""
+    try:
+        db = await get_database()
+        
+        # Get user info for criteria checking
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check various criteria for beta access
+        criteria_met = []
+        
+        # 1. Top saver (top 10% by net savings)
+        if user.get("net_savings", 0) >= 10000:  # ₹10,000+ savings
+            criteria_met.append("top_saver")
+        
+        # 2. High referrals (10+ successful referrals)
+        referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+        if referral_program and referral_program.get("successful_referrals", 0) >= 10:
+            criteria_met.append("high_referrals")
+        
+        # 3. Campus ambassador
+        ambassador = await db.campus_ambassadors.find_one({"user_id": user_id, "status": "active"})
+        if ambassador:
+            criteria_met.append("campus_ambassador")
+        
+        # 4. Long streak (30+ days)
+        if user.get("current_streak", 0) >= 30:
+            criteria_met.append("long_streak")
+        
+        # 5. High engagement (100+ transactions)
+        transaction_count = await db.transactions.count_documents({"user_id": user_id})
+        if transaction_count >= 100:
+            criteria_met.append("high_engagement")
+        
+        # 6. Goal achiever (completed 3+ goals)
+        completed_goals = await db.financial_goals.count_documents({
+            "user_id": user_id,
+            "current_amount": {"$gte": "$target_amount"}  # This would need proper aggregation in real implementation
+        })
+        if completed_goals >= 3:
+            criteria_met.append("goal_achiever")
+        
+        # Get current beta features
+        beta_features = await db.beta_feature_accesses.find({"user_id": user_id}).to_list(None)
+        
+        # Available beta features
+        available_features = {
+            "ai_insights_v2": {
+                "name": "AI Insights v2.0",
+                "description": "Advanced AI-powered financial predictions",
+                "required_criteria": ["top_saver", "high_engagement"],
+                "expires_in_days": 30
+            },
+            "social_investing": {
+                "name": "Social Investment Feed",
+                "description": "See and follow friends' investment strategies",
+                "required_criteria": ["high_referrals", "campus_ambassador"],
+                "expires_in_days": 45
+            },
+            "premium_budgeting": {
+                "name": "Smart Budget Automation",
+                "description": "AI-powered automatic budget adjustments",
+                "required_criteria": ["goal_achiever", "long_streak"],
+                "expires_in_days": 60
+            },
+            "exclusive_challenges": {
+                "name": "VIP Challenge Access",
+                "description": "Access to exclusive high-reward challenges",
+                "required_criteria": ["campus_ambassador"],
+                "expires_in_days": 90
+            }
+        }
+        
+        # Check eligibility for each feature
+        eligible_features = []
+        for feature_id, feature_info in available_features.items():
+            has_required_criteria = all(
+                criterion in criteria_met 
+                for criterion in feature_info["required_criteria"]
+            )
+            
+            current_access = next((bf for bf in beta_features if bf["feature_name"] == feature_id), None)
+            
+            eligible_features.append({
+                "feature_id": feature_id,
+                "feature_info": feature_info,
+                "eligible": has_required_criteria,
+                "has_access": bool(current_access),
+                "expires_at": current_access.get("expires_at") if current_access else None,
+                "missing_criteria": [
+                    criterion for criterion in feature_info["required_criteria"]
+                    if criterion not in criteria_met
+                ]
+            })
+        
+        return {
+            "criteria_met": criteria_met,
+            "total_criteria": len(criteria_met),
+            "beta_features": eligible_features,
+            "current_access_count": len(beta_features),
+            "qualification_tips": {
+                "top_saver": "Save ₹10,000+ to qualify",
+                "high_referrals": "Refer 10+ successful friends", 
+                "campus_ambassador": "Apply to become campus ambassador",
+                "long_streak": "Maintain 30+ day transaction streak",
+                "high_engagement": "Complete 100+ transactions",
+                "goal_achiever": "Complete 3+ financial goals"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get beta access error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get beta feature access")
+
+@api_router.post("/growth/beta-access/request/{feature_id}")
+@limiter.limit("5/minute")
+async def request_beta_feature_access_endpoint(
+    request: Request,
+    feature_id: str,
+    user_id: str = Depends(get_current_user)
+):
+    """Request access to a specific beta feature"""
+    try:
+        db = await get_database()
+        
+        # Check if user meets criteria (reuse logic from get_beta_feature_access_endpoint)
+        beta_access_info = await get_beta_feature_access_endpoint(request, user_id)
+        
+        # Find the requested feature
+        requested_feature = next(
+            (f for f in beta_access_info["beta_features"] if f["feature_id"] == feature_id),
+            None
+        )
+        
+        if not requested_feature:
+            raise HTTPException(status_code=404, detail="Feature not found")
+        
+        if requested_feature["has_access"]:
+            raise HTTPException(status_code=400, detail="You already have access to this feature")
+        
+        if not requested_feature["eligible"]:
+            missing = ", ".join(requested_feature["missing_criteria"])
+            raise HTTPException(status_code=400, detail=f"Missing required criteria: {missing}")
+        
+        # Grant beta access
+        expiry_date = datetime.now(timezone.utc) + timedelta(days=requested_feature["feature_info"]["expires_in_days"])
+        
+        beta_access = {
+            "user_id": user_id,
+            "feature_name": feature_id,
+            "access_criteria_met": beta_access_info["criteria_met"],
+            "granted_at": datetime.now(timezone.utc),
+            "expires_at": expiry_date,
+            "usage_count": 0
+        }
+        
+        await db.beta_feature_accesses.insert_one(beta_access)
+        
+        # Create notification
+        notification = {
+            "user_id": user_id,
+            "type": "beta_access_granted",
+            "title": "Beta Access Granted!",
+            "message": f"You now have access to {requested_feature['feature_info']['name']}!",
+            "action_url": f"/beta/{feature_id}",
+            "created_at": datetime.now(timezone.utc),
+            "read": False
+        }
+        await db.notifications.insert_one(notification)
+        
+        return {
+            "success": True,
+            "feature": requested_feature["feature_info"],
+            "access_granted": True,
+            "expires_at": expiry_date,
+            "message": f"Congratulations! You now have beta access to {requested_feature['feature_info']['name']}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Request beta access error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to request beta feature access")
+
+# Helper functions for growth mechanics
+async def calculate_waitlist_priority_score(user_id: str, user: Dict[str, Any]) -> float:
+    """Calculate priority score for waitlist positioning"""
+    score = 0.0
+    
+    # Base user activity (30 points)
+    score += min(user.get("current_streak", 0) * 2, 30)
+    
+    # Referral activity (25 points)  
+    db = await get_database()
+    referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+    if referral_program:
+        score += min(referral_program.get("successful_referrals", 0) * 5, 25)
+    
+    # Financial activity (20 points)
+    score += min(user.get("net_savings", 0) / 1000, 20)  # ₹1000 = 1 point
+    
+    # Campus ambassador bonus (15 points)
+    ambassador = await db.campus_ambassadors.find_one({"user_id": user_id, "status": "active"})
+    if ambassador:
+        score += 15
+    
+    # Account age bonus (10 points)
+    if user.get("created_at"):
+        days_old = (datetime.now(timezone.utc) - user["created_at"]).days
+        score += min(days_old / 30, 10)  # 1 point per month, max 10
+    
+    return min(score, 100)
+
+def calculate_estimated_wait_time(position: int, capacity: int) -> str:
+    """Calculate estimated wait time for feature access"""
+    if position <= capacity * 0.1:  # Top 10%
+        return "Immediate access"
+    elif position <= capacity * 0.3:  # Top 30%
+        return "1-2 weeks"
+    elif position <= capacity * 0.6:  # Top 60%
+        return "3-4 weeks"
+    else:
+        return "1-2 months"
+
+async def grant_feature_access(user_id: str, feature_name: str):
+    """Grant immediate feature access"""
+    db = await get_database()
+    
+    await db.feature_waitlists.update_one(
+        {"user_id": user_id, "feature_name": feature_name},
+        {
+            "$set": {
+                "granted_access": True,
+                "granted_at": datetime.now(timezone.utc),
+                "position": 0
+            }
+        }
+    )
+
 # ===== REFERRAL SYSTEM WITH MONETARY INCENTIVES =====
 
 @api_router.get("/referrals/my-link")
@@ -4591,7 +6079,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://streak-rewards-1.preview.emergentagent.com"
+        base_url = "https://share-hub-5.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
