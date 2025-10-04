@@ -24,6 +24,12 @@ from slowapi.errors import RateLimitExceeded
 from cache_service import cache_service
 from fallback_hospital_db import fallback_db
 from gamification_service import get_gamification_service
+
+# Performance optimization imports
+from performance_cache import advanced_cache, cache_result
+from database_optimization import db_optimizer
+from api_optimization import api_optimizer, PerformanceTrackingMiddleware
+from background_tasks import background_processor, TaskPriority, cache_warming_task, database_maintenance_task
 try:
     from social_sharing_service import get_social_sharing_service
     SOCIAL_SHARING_AVAILABLE = True
@@ -91,6 +97,9 @@ if os.environ.get("ENVIRONMENT") == "production":
         TrustedHostMiddleware,
         allowed_hosts=os.environ.get("ALLOWED_HOSTS", "localhost").split(',')
     )
+
+# Add performance tracking middleware
+app.add_middleware(PerformanceTrackingMiddleware)
 
 # Add rate limiting error handler
 @app.exception_handler(RateLimitExceeded)
@@ -709,8 +718,14 @@ async def get_local_emergency_contacts(city: str = "Bangalore") -> Dict[str, Lis
     return contacts
 # Enhanced Authentication Routes with Comprehensive OTP Security
 @api_router.get("/auth/trending-skills")
+@cache_result("trending_skills", 3600)  # Cache for 1 hour
 async def get_trending_skills():
     """Get trending skills for registration and profile updates"""
+    # Check cache first
+    cached_skills = await advanced_cache.get("trending_skills")
+    if cached_skills:
+        return api_optimizer.optimize_json_response({"trending_skills": cached_skills})
+    
     trending_skills = [
         {"name": "Freelancing", "category": "Business", "icon": "💼"},
         {"name": "Graphic Design", "category": "Creative", "icon": "🎨"},
@@ -721,11 +736,20 @@ async def get_trending_skills():
         {"name": "AI Tools & Automation", "category": "Technical", "icon": "🤖"},
         {"name": "Social Media Management", "category": "Marketing", "icon": "📊"}
     ]
-    return {"trending_skills": trending_skills}
+    
+    # Cache the result
+    await advanced_cache.set("trending_skills", trending_skills)
+    return api_optimizer.optimize_json_response({"trending_skills": trending_skills})
 
 @api_router.get("/auth/avatars")
+@cache_result("static_data", 86400)  # Cache for 24 hours
 async def get_available_avatars():
     """Get available avatar options"""
+    # Check cache first
+    cached_avatars = await advanced_cache.get("static_data", "avatars")
+    if cached_avatars:
+        return api_optimizer.optimize_json_response({"avatars": cached_avatars})
+    
     avatars = [
         {"value": "boy", "label": "Boy", "category": "youth"},
         {"value": "man", "label": "Man", "category": "adult"},
@@ -734,7 +758,10 @@ async def get_available_avatars():
         {"value": "grandfather", "label": "Grandfather (GF)", "category": "senior"},
         {"value": "grandmother", "label": "Grandmother (GM)", "category": "senior"}
     ]
-    return {"avatars": avatars}
+    
+    # Cache the result
+    await advanced_cache.set("static_data", avatars, "avatars")
+    return api_optimizer.optimize_json_response({"avatars": avatars})
 
 @api_router.post("/auth/register")
 @limiter.limit("5/minute")
@@ -4710,7 +4737,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://campus-engage-5.preview.emergentagent.com"
+        base_url = "https://perf-boost-7.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7262,7 +7289,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://campus-engage-5.preview.emergentagent.com"
+        base_url = "https://perf-boost-7.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -13639,6 +13666,114 @@ async def get_engagement_friend_activities_endpoint(
 
 # ==================== END ENGAGEMENT FEATURES ====================
 
+# ==================== PERFORMANCE MONITORING ENDPOINTS ====================
+
+@api_router.get("/admin/performance/cache")
+@limiter.limit("5/minute")
+async def get_cache_statistics(request: Request, current_user: str = Depends(get_current_user)):
+    """Get comprehensive cache performance statistics (Admin only)"""
+    try:
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Get cache statistics
+        cache_stats = await advanced_cache.get_stats()
+        
+        # Get database optimizer stats
+        db_stats = await db_optimizer.get_performance_stats()
+        
+        # Get API optimizer stats
+        api_stats = api_optimizer.get_performance_stats()
+        
+        # Get background task stats
+        task_stats = background_processor.get_statistics()
+        
+        return api_optimizer.optimize_json_response({
+            "cache_performance": cache_stats,
+            "database_performance": db_stats,
+            "api_performance": api_stats,
+            "background_tasks": task_stats,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Get performance stats error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get performance statistics")
+
+@api_router.post("/admin/performance/cache/warm")
+@limiter.limit("2/hour")
+async def warm_application_cache(request: Request, current_user: str = Depends(get_current_user)):
+    """Warm up application caches (Admin only)"""
+    try:
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Add cache warming task to background processor
+        task_id = await background_processor.create_and_add_task(
+            "cache_warming",
+            cache_warming_task,
+            priority=TaskPriority.HIGH
+        )
+        
+        return {
+            "message": "Cache warming initiated",
+            "task_id": task_id,
+            "status": "queued"
+        }
+        
+    except Exception as e:
+        logger.error(f"Cache warming error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to initiate cache warming")
+
+@api_router.post("/admin/performance/database/optimize")
+@limiter.limit("1/hour")
+async def optimize_database_performance(request: Request, current_user: str = Depends(get_current_user)):
+    """Run database optimization tasks (Admin only)"""
+    try:
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Add database maintenance task to background processor
+        task_id = await background_processor.create_and_add_task(
+            "database_maintenance",
+            database_maintenance_task,
+            priority=TaskPriority.MEDIUM
+        )
+        
+        return {
+            "message": "Database optimization initiated",
+            "task_id": task_id,
+            "status": "queued"
+        }
+        
+    except Exception as e:
+        logger.error(f"Database optimization error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to initiate database optimization")
+
+@api_router.get("/admin/performance/tasks/{task_id}")
+@limiter.limit("10/minute")
+async def get_task_status(request: Request, task_id: str, current_user: str = Depends(get_current_user)):
+    """Get background task status (Admin only)"""
+    try:
+        user = await get_user_by_id(current_user)
+        if not user or user.get("role") != "admin":
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        task_status = await background_processor.get_task_status(task_id)
+        if not task_status:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        return task_status
+        
+    except Exception as e:
+        logger.error(f"Get task status error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get task status")
+
+# ==================== END PERFORMANCE MONITORING ====================
+
 # Include the router in the main app (after all endpoints are defined)
 app.include_router(api_router)
 
@@ -13649,13 +13784,61 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Database initialization is now handled in the consolidated startup event above
+# Performance optimization startup and shutdown events
+@app.on_event("startup")
+async def startup_performance_services():
+    """Initialize performance optimization services"""
+    try:
+        # Initialize database optimizer and create indexes
+        await db_optimizer.create_performance_indexes()
+        logger.info("✅ Database performance indexes created")
+        
+        # Start background task processor
+        asyncio.create_task(background_processor.start_processing())
+        logger.info("✅ Background task processor started")
+        
+        # Warm up critical caches
+        await background_processor.create_and_add_task(
+            "initial_cache_warming",
+            cache_warming_task,
+            priority=TaskPriority.HIGH
+        )
+        logger.info("✅ Initial cache warming queued")
+        
+        # Schedule periodic maintenance tasks
+        await background_processor.create_and_add_task(
+            "database_maintenance",
+            database_maintenance_task,
+            priority=TaskPriority.LOW,
+            scheduled_for=datetime.now(timezone.utc) + timedelta(hours=1)
+        )
+        logger.info("✅ Periodic maintenance scheduled")
+        
+        logger.info("🚀 Performance optimization services initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Performance services startup error: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    """Close database connection on shutdown"""
-    client.close()
-    logger.info("Database connection closed")
+    """Close database connection and performance services on shutdown"""
+    try:
+        # Stop background task processor
+        await background_processor.stop_processing()
+        logger.info("✅ Background task processor stopped")
+        
+        # Close database connection
+        client.close()
+        logger.info("✅ Database connection closed")
+        
+        # Clean up thread pools
+        advanced_cache.thread_pool.shutdown(wait=True)
+        logger.info("✅ Thread pools shut down")
+        
+        logger.info("🛑 All services shut down successfully")
+        
+    except Exception as e:
+        logger.error(f"Shutdown error: {str(e)}")
 
 # Health check endpoint
 @app.get("/health")
