@@ -50,6 +50,11 @@ const FeatureUnlock = () => {
     const requirement = feature.requirement.toLowerCase();
     const userStats = unlockStatus?.user_stats;
     
+    if (requirement.includes('friend')) {
+      const required = parseInt(requirement.match(/(\d+)\s*friend/)?.[1] || 0);
+      return Math.min((userStats?.friend_count / required) * 100, 100);
+    }
+    
     if (requirement.includes('transaction')) {
       const required = parseInt(requirement.match(/\d+/)?.[0] || 0);
       return Math.min((userStats?.transactions / required) * 100, 100);
@@ -98,7 +103,7 @@ const FeatureUnlock = () => {
         </h2>
         
         {unlockStatus && (
-          <div className="grid md:grid-cols-4 gap-4 mb-6">
+          <div className="grid md:grid-cols-5 gap-4 mb-6">
             <div className="bg-blue-50 rounded-lg p-4 text-center">
               <div className="text-2xl font-bold text-blue-600">{unlockStatus.user_stats.transactions}</div>
               <div className="text-sm text-blue-800">Transactions</div>
@@ -106,6 +111,10 @@ const FeatureUnlock = () => {
             <div className="bg-green-50 rounded-lg p-4 text-center">
               <div className="text-2xl font-bold text-green-600">{unlockStatus.user_stats.days_active}</div>
               <div className="text-sm text-green-800">Days Active</div>
+            </div>
+            <div className="bg-pink-50 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-pink-600">{unlockStatus.user_stats.friend_count}</div>
+              <div className="text-sm text-pink-800">Friends</div>
             </div>
             <div className="bg-purple-50 rounded-lg p-4 text-center">
               <div className="text-2xl font-bold text-purple-600">₹{unlockStatus.user_stats.total_income.toLocaleString()}</div>
@@ -187,6 +196,58 @@ const FeatureUnlock = () => {
           </div>
         ))}
       </div>
+
+      {/* Social Features Progress */}
+      {unlockStatus?.social_progress && (
+        <div className="bg-gradient-to-r from-pink-100 to-blue-100 rounded-lg shadow-lg p-6">
+          <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
+            👥 Social Features Progress
+          </h3>
+          
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="bg-white rounded-lg p-4">
+              <h4 className="font-semibold text-gray-900 mb-3">Your Friend Network</h4>
+              <div className="text-center">
+                <div className="text-4xl font-bold text-pink-600 mb-2">
+                  {unlockStatus.user_stats.friend_count}
+                </div>
+                <div className="text-sm text-gray-600">Friends Connected</div>
+              </div>
+              
+              {unlockStatus.social_progress.next_unlock_at && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                  <div className="text-sm font-medium text-blue-800">Next Unlock:</div>
+                  <div className="text-xs text-blue-600">{unlockStatus.social_progress.next_unlock_at}</div>
+                </div>
+              )}
+            </div>
+            
+            <div className="bg-white rounded-lg p-4">
+              <h4 className="font-semibold text-gray-900 mb-3">Social Features</h4>
+              <div className="space-y-2">
+                {unlockStatus.features
+                  .filter(f => f.category === 'social')
+                  .slice(0, 4)
+                  .map((feature, index) => (
+                  <div key={index} className={`flex items-center justify-between p-2 rounded ${
+                    feature.requirement_met ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-600'
+                  }`}>
+                    <div className="flex items-center">
+                      <span className="text-sm mr-2">{feature.icon}</span>
+                      <span className="text-xs">{feature.name}</span>
+                    </div>
+                    {feature.requirement_met ? (
+                      <span className="text-xs font-medium">✅</span>
+                    ) : (
+                      <span className="text-xs">🔒</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Invite Quota Section */}
       {inviteQuota && (
