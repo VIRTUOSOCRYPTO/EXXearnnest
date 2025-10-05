@@ -170,8 +170,8 @@ const EnhancedPhotoSharing = ({ userId, achievementId, achievementData }) => {
   const sharePhoto = (photo) => {
     if (navigator.share) {
       navigator.share({
-        title: 'My Achievement Photo - EarnNest',
-        text: `Check out my achievement on EarnNest!`,
+        title: 'My Achievement Photo - EarnAura',
+        text: `Check out my achievement on EarnAura!`,
         url: `${window.location.origin}${photo.final_photo_url}`,
       });
     } else {
