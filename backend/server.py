@@ -4765,7 +4765,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://live-system-deploy.preview.emergentagent.com"
+        base_url = "https://go-live-deploy.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7317,7 +7317,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://live-system-deploy.preview.emergentagent.com"
+        base_url = "https://go-live-deploy.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14317,6 +14317,94 @@ async def get_media_ready_impact_stats():
     except Exception as e:
         logger.error(f"Impact stats error: {str(e)}")
         raise HTTPException(status_code=500, detail="Error retrieving impact statistics")
+
+# ===== ADDITIONAL VIRAL FEATURE ENDPOINTS =====
+
+@api_router.get("/campus/battle-arena")
+async def get_campus_battle_arena(current_user: str = Depends(get_current_user)):
+    """Get campus battle arena data"""
+    try:
+        battles = await db.campus_battle_arena.find({"status": "active"}).to_list(None)
+        
+        # Clean MongoDB ObjectIds
+        for battle in battles:
+            battle["_id"] = str(battle["_id"])
+        
+        return {
+            "success": True,
+            "battles": battles,
+            "total_active_battles": len(battles)
+        }
+        
+    except Exception as e:
+        logger.error(f"Campus battle arena error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get battle arena data")
+
+@api_router.get("/insights/spending/{campus}")
+async def get_campus_spending_insights(campus: str, current_user: str = Depends(get_current_user)):
+    """Get spending insights for a specific campus"""
+    try:
+        # Get campus spending insights
+        insight = await db.campus_spending_insights.find_one({"campus": campus})
+        
+        if not insight:
+            # Generate basic insight if not found
+            insight = {
+                "campus": campus,
+                "insights": [
+                    {
+                        "category": "Food",
+                        "percentage": 32.0,
+                        "amount": 8500,
+                        "emoji": "🍕",
+                        "trend": "stable",
+                        "insight_text": f"{campus} students spend 32% of their budget on food"
+                    }
+                ],
+                "total_users": 25,
+                "total_spending": 26500,
+                "period": "Last 30 days",
+                "shareable_text": f"{campus} students are building great financial habits! #EarnNest",
+                "updated_at": datetime.now(timezone.utc)
+            }
+        else:
+            insight["_id"] = str(insight["_id"])
+        
+        return {
+            "success": True,
+            **insight
+        }
+        
+    except Exception as e:
+        logger.error(f"Campus spending insights error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get spending insights")
+
+@api_router.get("/viral-milestones/live")
+async def get_live_viral_milestones():
+    """Get live viral milestones (public endpoint)"""
+    try:
+        # Get recent viral milestones
+        milestones = await db.viral_milestones.find().sort("created_at", -1).limit(10).to_list(10)
+        
+        # Clean MongoDB ObjectIds
+        for milestone in milestones:
+            milestone["_id"] = str(milestone["_id"])
+            
+        # Separate app-wide and campus milestones
+        app_milestones = [m for m in milestones if m["type"] == "app_wide"]
+        campus_milestones = [m for m in milestones if m["type"] == "campus"]
+        
+        return {
+            "success": True,
+            "app_wide_milestones": app_milestones,
+            "campus_milestones": campus_milestones,
+            "celebration_ready": len(milestones) > 0,
+            "total_milestones": len(milestones)
+        }
+        
+    except Exception as e:
+        logger.error(f"Live viral milestones error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get viral milestones")
 
 # Include ALL API routes after endpoint definitions
 app.include_router(api_router)
