@@ -2333,10 +2333,10 @@ class SystemAdminNotification(BaseModel):
 class CampusAdminRequestCreate(BaseModel):
     # Personal information
     full_name: str = Field(..., min_length=2, max_length=100)
-    phone_number: Optional[str] = Field(None, regex=r'^\+?[1-9]\d{1,14}$')
+    phone_number: Optional[str] = Field(None, pattern=r'^\+?[1-9]\d{1,14}$')
     # College and club information
     college_name: str = Field(..., min_length=2, max_length=200)
-    institutional_email: Optional[str] = Field(None, regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    institutional_email: Optional[str] = Field(None, pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     club_name: Optional[str] = Field(None, max_length=200)
     club_type: str = Field(default="student_organization")
     requested_admin_type: str = Field(default="club_admin")
@@ -2360,7 +2360,7 @@ class CampusAdminRequestCreate(BaseModel):
         return v
 
 class AdminRequestReview(BaseModel):
-    decision: str = Field(..., regex=r'^(approve|reject)$')
+    decision: str = Field(..., pattern=r'^(approve|reject)$')
     review_notes: Optional[str] = Field(None, max_length=1000)
     rejection_reason: Optional[str] = Field(None, max_length=500)
     approval_conditions: Optional[str] = Field(None, max_length=500)
@@ -2373,49 +2373,15 @@ class AdminRequestReview(BaseModel):
 
 class DocumentUploadRequest(BaseModel):
     request_id: str
-    document_type: str = Field(..., regex=r'^(college_id|club_registration|faculty_endorsement)$')
+    document_type: str = Field(..., pattern=r'^(college_id|club_registration|faculty_endorsement)$')
     document_description: Optional[str] = None
 
 class AdminPrivilegeUpdate(BaseModel):
     admin_id: str
-    action: str = Field(..., regex=r'^(suspend|reactivate|revoke|update_permissions)$')
+    action: str = Field(..., pattern=r'^(suspend|reactivate|revoke|update_permissions)$')
     reason: str = Field(..., min_length=10, max_length=500)
     new_permissions: Optional[List[str]] = None
-    suspension_duration_days: Optional[int] = Field(None, ge=1, le=365)  # Winner's campus gets reputation points
-    # Status and management
-    status: str = "upcoming"  # "upcoming", "active", "completed", "cancelled"
-    is_featured: bool = False
-    created_by: str  # Admin ID
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
-    @validator('challenge_type')
-    def validate_challenge_type(cls, v):
-        allowed_types = ["weekly", "monthly", "flash", "seasonal"]
-        if v not in allowed_types:
-            raise ValueError(f'Challenge type must be one of: {", ".join(allowed_types)}')
-        return v
-    
-    @validator('challenge_category')
-    def validate_challenge_category(cls, v):
-        allowed_categories = ["savings", "streak", "referrals", "goals", "engagement", "mixed"]
-        if v not in allowed_categories:
-            raise ValueError(f'Challenge category must be one of: {", ".join(allowed_categories)}')
-        return v
-    
-    @validator('difficulty_level')
-    def validate_difficulty_level(cls, v):
-        allowed_levels = ["easy", "medium", "hard", "extreme"]
-        if v not in allowed_levels:
-            raise ValueError(f'Difficulty level must be one of: {", ".join(allowed_levels)}')
-        return v
-    
-    @validator('prize_type')
-    def validate_prize_type(cls, v):
-        allowed_types = ["monetary", "scholarship", "points", "badge", "mixed"]
-        if v not in allowed_types:
-            raise ValueError(f'Prize type must be one of: {", ".join(allowed_types)}')
-        return v
+    suspension_duration_days: Optional[int] = Field(None, ge=1, le=365)
 
 class PrizeChallengeParticipation(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
