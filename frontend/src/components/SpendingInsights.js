@@ -45,7 +45,7 @@ const SpendingInsights = ({ userCampus }) => {
 
   const shareInsight = async (insight) => {
     const text = insight ? 
-      `${insight.insight_text} ${insight.emoji} #EarnNest #StudentFinance` : 
+      `${insight.insight_text} ${insight.emoji} #EarnAura #StudentFinance` : 
       shareableText;
     
     if (navigator.share) {
