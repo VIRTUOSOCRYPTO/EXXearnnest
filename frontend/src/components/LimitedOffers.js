@@ -4,16 +4,29 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 
-const LimitedOffers = ({ userId }) => {
+const LimitedOffers = ({ userId, refreshData, liveOffers = [], isRefreshing = false }) => {
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [participatingOffer, setParticipatingOffer] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [offerHistory, setOfferHistory] = useState([]);
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
 
   useEffect(() => {
     fetchActiveOffers();
   }, [userId]);
+
+  // Use live offers from parent component
+  useEffect(() => {
+    if (liveOffers && liveOffers.length > 0) {
+      setOffers(liveOffers.map(offer => ({
+        ...offer,
+        time_remaining: calculateTimeRemaining(offer.expires_at)
+      })));
+      setLoading(false);
+      setLastUpdate(Date.now());
+    }
+  }, [liveOffers]);
 
   useEffect(() => {
     // Update countdown timers every second
@@ -33,22 +46,40 @@ const LimitedOffers = ({ userId }) => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/offers`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      
+      // Try multiple endpoints for live offers
+      const endpoints = [
+        `${process.env.REACT_APP_BACKEND_URL}/api/offers`,
+        `${process.env.REACT_APP_BACKEND_URL}/api/engagement/limited-offers`
+      ];
+      
+      let offersData = [];
+      
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
 
-      if (response.ok) {
-        const data = await response.json();
-        setOffers(data.offers.map(offer => ({
-          ...offer,
-          time_remaining: calculateTimeRemaining(offer.expires_at)
-        })));
-      } else {
-        console.error('Failed to fetch offers');
+          if (response.ok) {
+            const data = await response.json();
+            offersData = Array.isArray(data) ? data : (data.offers || []);
+            break;
+          }
+        } catch (endpointError) {
+          console.warn(`Failed to fetch from ${endpoint}:`, endpointError);
+        }
       }
+
+      setOffers(offersData.map(offer => ({
+        ...offer,
+        time_remaining: calculateTimeRemaining(offer.expires_at)
+      })));
+      setLastUpdate(Date.now());
+      
     } catch (error) {
       console.error('Error fetching offers:', error);
     } finally {
@@ -79,7 +110,7 @@ const LimitedOffers = ({ userId }) => {
     try {
       setParticipatingOffer(offerId);
       const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/offers/${offerId}/participate`, {
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/offers/${offerId}/participate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -97,14 +128,21 @@ const LimitedOffers = ({ userId }) => {
             offer.id === offerId 
               ? { 
                   ...offer, 
-                  spots_claimed: offer.spots_claimed + 1,
-                  user_participated: true
+                  spots_claimed: (offer.spots_claimed || 0) + 1,
+                  user_participated: true,
+                  spots_remaining: Math.max(0, (offer.spots_remaining || 0) - 1)
                 }
               : offer
           )
         );
+        
+        // Refresh parent data to update dashboard
+        if (refreshData) {
+          refreshData(false);
+        }
+        
       } else {
-        alert(result.message);
+        alert(result.message || 'Failed to join offer');
       }
     } catch (error) {
       console.error('Error participating in offer:', error);
@@ -193,12 +231,26 @@ const LimitedOffers = ({ userId }) => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">🔥 Limited-Time Offers</h2>
-        <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-          🔄 Refresh
-        </Button>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">🔥 Live Offers</h2>
+          <p className="text-xs sm:text-sm text-gray-600">
+            Last updated: {new Date(lastUpdate).toLocaleTimeString()}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">LIVE</span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={fetchActiveOffers}
+            disabled={isRefreshing}
+            className="text-xs sm:text-sm"
+          >
+            {isRefreshing ? '⏳' : '🔄'} Refresh
+          </Button>
+        </div>
       </div>
 
       {offers.length === 0 ? (
