@@ -36,12 +36,24 @@ const GamificationProfile = () => {
   const [currentCelebration, setCurrentCelebration] = useState(null);
   const [celebrationIndex, setCelebrationIndex] = useState(0);
   const [socialProof, setSocialProof] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
   const { user } = useAuth();
 
   useEffect(() => {
     fetchGamificationData();
     checkPendingCelebrations();
     initializePushNotifications();
+  }, []);
+
+  // Auto-refresh data every 30 seconds for live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchGamificationData(false);
+      fetchLeaderboards();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Check URL for celebration parameter
@@ -59,17 +71,28 @@ const GamificationProfile = () => {
     }
   }, [achievements]);
 
-  const fetchGamificationData = async () => {
+  const fetchGamificationData = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setRefreshing(true);
+      }
+      
+      const token = localStorage.getItem('token');
+      const headers = { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
       const [profileRes, achievementsRes, socialProofRes] = await Promise.all([
-        axios.get(`${API}/gamification/profile?enhanced=true`),
-        axios.get(`${API}/gamification/achievements?limit=10`),
-        axios.get(`${API}/gamification/social-proof`).catch(() => ({ data: null }))
+        axios.get(`${API}/gamification/profile?enhanced=true`, { headers }),
+        axios.get(`${API}/gamification/achievements?limit=20`, { headers }),
+        axios.get(`${API}/gamification/social-proof`, { headers }).catch(() => ({ data: null }))
       ]);
 
       setProfile(profileRes.data);
-      setAchievements(achievementsRes.data.achievements);
+      setAchievements(achievementsRes.data?.achievements || []);
       setSocialProof(socialProofRes.data);
+      setLastUpdate(Date.now());
       
       // Check for pending celebrations from enhanced profile
       if (profileRes.data.pending_celebrations && profileRes.data.pending_celebrations.length > 0) {
@@ -77,13 +100,14 @@ const GamificationProfile = () => {
         setCurrentCelebration(profileRes.data.pending_celebrations[0]);
       }
       
-      // Fetch leaderboards
+      // Fetch leaderboards with live data
       await fetchLeaderboards();
       
     } catch (error) {
       console.error('Error fetching gamification data:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -127,19 +151,31 @@ const GamificationProfile = () => {
 
   const fetchLeaderboards = async () => {
     try {
+      const token = localStorage.getItem('token');
+      const headers = { 
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
       const [savingsRes, streakRes, pointsRes] = await Promise.all([
-        axios.get(`${API}/gamification/leaderboards/savings?period=weekly&limit=10`),
-        axios.get(`${API}/gamification/leaderboards/streak?period=weekly&limit=10`),
-        axios.get(`${API}/gamification/leaderboards/points?period=weekly&limit=10`)
+        axios.get(`${API}/gamification/leaderboards/savings?period=weekly&limit=15`, { headers }),
+        axios.get(`${API}/gamification/leaderboards/streak?period=weekly&limit=15`, { headers }),
+        axios.get(`${API}/gamification/leaderboards/points?period=weekly&limit=15`, { headers })
       ]);
 
       setLeaderboards({
-        savings: savingsRes.data.leaderboard,
-        streak: streakRes.data.leaderboard,
-        points: pointsRes.data.leaderboard
+        savings: savingsRes.data?.leaderboard || [],
+        streak: streakRes.data?.leaderboard || [],
+        points: pointsRes.data?.leaderboard || []
       });
     } catch (error) {
       console.error('Error fetching leaderboards:', error);
+      // Set empty arrays as fallback
+      setLeaderboards({
+        savings: [],
+        streak: [],
+        points: []
+      });
     }
   };
 
@@ -210,72 +246,89 @@ const GamificationProfile = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50">
       <div className="max-w-6xl mx-auto p-6">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="bg-white rounded-2xl p-8 shadow-lg mb-6">
-            <div className="flex items-center justify-center mb-4">
-              <div className="relative">
-                <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center shadow-xl">
-                  <TrophyIcon className="w-12 h-12 text-white" />
+        {/* Enhanced Header with Live Updates */}
+        <div className="text-center mb-6 sm:mb-8">
+          <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 shadow-lg mb-4 sm:mb-6 overflow-hidden">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 mb-4 sm:mb-6">
+              <div className="relative flex-shrink-0">
+                <div className="w-20 sm:w-24 h-20 sm:h-24 bg-gradient-to-br from-emerald-500 to-green-600 rounded-full flex items-center justify-center shadow-xl">
+                  <TrophyIcon className="w-10 sm:w-12 h-10 sm:h-12 text-white" />
                 </div>
                 {profile?.current_streak > 0 && (
-                  <div className="absolute -top-2 -right-2 bg-orange-500 text-white text-sm font-bold rounded-full w-8 h-8 flex items-center justify-center">
+                  <div className="absolute -top-1 sm:-top-2 -right-1 sm:-right-2 bg-orange-500 text-white text-xs sm:text-sm font-bold rounded-full w-6 sm:w-8 h-6 sm:h-8 flex items-center justify-center">
                     {profile.current_streak}
                   </div>
                 )}
               </div>
-            </div>
-            
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              {user?.full_name || 'User'}
-            </h1>
-            
-            <div className="flex items-center justify-center mb-4">
-              <SparklesIcon className="w-5 h-5 text-emerald-500 mr-2" />
-              <span className="text-emerald-600 font-semibold">
-                {profile?.level_name || 'Saver'} • Level {profile?.level || 1}
-              </span>
-            </div>
+              
+              <div className="flex-1 min-w-0 text-center sm:text-left">
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 truncate">
+                  {user?.full_name || 'User'}
+                </h1>
+                
+                <div className="flex items-center justify-center sm:justify-start mb-3 sm:mb-4">
+                  <SparklesIcon className="w-4 sm:w-5 h-4 sm:h-5 text-emerald-500 mr-2" />
+                  <span className="text-emerald-600 font-semibold text-sm sm:text-base">
+                    {profile?.level_name || 'Saver'} • Level {profile?.level || 1}
+                  </span>
+                  <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">LIVE</span>
+                </div>
 
-            <p className="text-xl text-gray-700 font-medium mb-4">
-              Your EarnAura Journey 🚀
-            </p>
+                <p className="text-lg sm:text-xl text-gray-700 font-medium mb-3 sm:mb-4">
+                  Your EarnAura Journey 🚀
+                </p>
+                
+                <div className="flex items-center justify-center sm:justify-start gap-2 text-xs text-gray-500 mb-3">
+                  <span>Last updated: {new Date(lastUpdate).toLocaleTimeString()}</span>
+                  <button
+                    onClick={() => fetchGamificationData(true)}
+                    disabled={refreshing}
+                    className={`p-1 rounded-full transition-all ${refreshing ? 'animate-spin' : 'hover:bg-gray-100'}`}
+                  >
+                    <ArrowUpIcon className="w-3 h-3" />
+                  </button>
+                </div>
 
-            {/* Progress Bar */}
-            <div className="bg-gray-200 rounded-full h-3 mb-2 max-w-md mx-auto">
-              <div 
-                className="bg-gradient-to-r from-emerald-500 to-green-600 h-3 rounded-full transition-all duration-700"
-                style={{ width: `${Math.min(((profile?.experience_points || 0) % 100), 100)}%` }}
-              ></div>
+                {/* Enhanced Progress Bar */}
+                <div className="bg-gray-200 rounded-full h-2 sm:h-3 mb-2 max-w-xs sm:max-w-md mx-auto sm:mx-0">
+                  <div 
+                    className="bg-gradient-to-r from-emerald-500 to-green-600 h-2 sm:h-3 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(((profile?.experience_points || 0) % 100), 100)}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs sm:text-sm text-gray-600">
+                  {profile?.experience_points || 0} XP • {Math.max(0, 100 - ((profile?.experience_points || 0) % 100))} XP to next level
+                </p>
+              </div>
             </div>
-            <p className="text-sm text-gray-600">
-              {profile?.experience_points || 0} XP • {Math.max(0, 100 - ((profile?.experience_points || 0) % 100))} XP to next level
-            </p>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex justify-center mb-8">
-          <div className="bg-white rounded-xl p-1 shadow-lg flex flex-row">
+        {/* Enhanced Navigation Tabs - More Responsive */}
+        <div className="flex justify-center mb-6 sm:mb-8">
+          <div className="bg-white rounded-lg sm:rounded-xl p-1 shadow-lg flex flex-row overflow-x-auto max-w-full">
             {[
               { id: 'overview', label: 'Overview', icon: ChartBarIcon },
               { id: 'badges', label: 'Badges', icon: TrophyIcon },
-              { id: 'leaderboards', label: 'Rankings', icon: UsersIcon },
+              { id: 'leaderboards', label: 'Live Rankings', icon: UsersIcon },
               { id: 'achievements', label: 'Achievements', icon: StarIcon },
               { id: 'notifications', label: 'Notifications', icon: BellIcon }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center space-x-2 whitespace-nowrap ${
+                className={`px-2 sm:px-4 py-1 sm:py-2 rounded-lg font-medium transition-all flex items-center space-x-1 sm:space-x-2 whitespace-nowrap flex-shrink-0 text-xs sm:text-sm ${
                   activeTab === tab.id
                     ? 'bg-emerald-500 text-white shadow-md'
                     : 'text-gray-600 hover:text-emerald-600'
                 }`}
               >
-                <tab.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.label.substring(0, 4)}</span>
+                <tab.icon className="w-3 sm:w-4 h-3 sm:h-4" />
+                <span className="hidden md:inline">{tab.label}</span>
+                <span className="md:hidden">{tab.label.split(' ')[0]}</span>
+                {tab.id === 'leaderboards' && (
+                  <span className="text-xs bg-red-100 text-red-700 px-1 rounded-full ml-1">LIVE</span>
+                )}
               </button>
             ))}
           </div>
@@ -561,52 +614,166 @@ const GamificationProfile = () => {
           </div>
         )}
 
-        {/* Leaderboards Tab */}
+        {/* Enhanced Live Leaderboards Tab */}
         {activeTab === 'leaderboards' && (
-          <div className="space-y-6">
-            {/* Savings Leaderboard */}
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                <TrophyIcon className="w-6 h-6 text-yellow-500 mr-2" />
-                Top Savers This Week
-              </h3>
-              <div className="space-y-3">
-                {leaderboards.savings?.slice(0, 5).map((user, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-gray-300'
-                      }`}>
-                        {index + 1}
-                      </div>
-                      <span className="font-medium text-gray-900">{user.full_name}</span>
-                    </div>
-                    <span className="font-bold text-emerald-600">₹{user.total_saved?.toLocaleString()}</span>
-                  </div>
-                ))}
+          <div className="space-y-4 sm:space-y-6">
+            {/* Live Rankings Header */}
+            <div className="bg-gradient-to-r from-emerald-50 to-blue-50 rounded-xl p-4 border border-emerald-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                  <h2 className="font-bold text-gray-900 text-lg sm:text-xl">Live Rankings</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">LIVE</span>
+                  <span className="text-xs text-gray-500">
+                    Updated: {new Date(lastUpdate).toLocaleTimeString()}
+                  </span>
+                  {refreshing && <div className="w-3 h-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"></div>}
+                </div>
               </div>
             </div>
 
-            {/* Streak Leaderboard */}
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                <FireIcon className="w-6 h-6 text-orange-500 mr-2" />
+            {/* Enhanced Savings Leaderboard */}
+            <div className="bg-white rounded-xl p-4 sm:p-6 shadow-lg overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center">
+                  <TrophyIcon className="w-5 sm:w-6 h-5 sm:h-6 text-yellow-500 mr-2" />
+                  Top Savers This Week
+                </h3>
+                <button
+                  onClick={fetchLeaderboards}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
+                {leaderboards.savings?.length > 0 ? (
+                  leaderboards.savings.slice(0, 10).map((user, index) => (
+                    <div 
+                      key={index} 
+                      className={`flex items-center justify-between p-2 sm:p-3 rounded-lg transition-colors ${
+                        user.is_current_user ? 'bg-emerald-50 border border-emerald-200' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <div className={`w-6 sm:w-8 h-6 sm:h-8 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${
+                          index === 0 ? 'bg-yellow-500' : 
+                          index === 1 ? 'bg-gray-400' : 
+                          index === 2 ? 'bg-orange-600' : 'bg-gray-300'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <span className={`font-medium text-sm sm:text-base truncate ${
+                          user.is_current_user ? 'text-emerald-900' : 'text-gray-900'
+                        }`}>
+                          {user.full_name}{user.is_current_user ? ' (You)' : ''}
+                        </span>
+                      </div>
+                      <span className="font-bold text-emerald-600 text-sm sm:text-base">
+                        ₹{(user.total_saved || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <TrophyIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">No rankings available yet</p>
+                    <p className="text-xs">Start saving to join the leaderboard!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Enhanced Streak Leaderboard */}
+            <div className="bg-white rounded-xl p-4 sm:p-6 shadow-lg overflow-hidden">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center">
+                <FireIcon className="w-5 sm:w-6 h-5 sm:h-6 text-orange-500 mr-2" />
                 Longest Streaks
               </h3>
-              <div className="space-y-3">
-                {leaderboards.streak?.slice(0, 5).map((user, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${
-                        index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-600' : 'bg-gray-300'
-                      }`}>
-                        {index + 1}
+              <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
+                {leaderboards.streak?.length > 0 ? (
+                  leaderboards.streak.slice(0, 10).map((user, index) => (
+                    <div 
+                      key={index} 
+                      className={`flex items-center justify-between p-2 sm:p-3 rounded-lg transition-colors ${
+                        user.is_current_user ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <div className={`w-6 sm:w-8 h-6 sm:h-8 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${
+                          index === 0 ? 'bg-yellow-500' : 
+                          index === 1 ? 'bg-gray-400' : 
+                          index === 2 ? 'bg-orange-600' : 'bg-gray-300'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <span className={`font-medium text-sm sm:text-base truncate ${
+                          user.is_current_user ? 'text-orange-900' : 'text-gray-900'
+                        }`}>
+                          {user.full_name}{user.is_current_user ? ' (You)' : ''}
+                        </span>
                       </div>
-                      <span className="font-medium text-gray-900">{user.full_name}</span>
+                      <div className="flex items-center gap-1">
+                        <FireIcon className="w-4 h-4 text-orange-500" />
+                        <span className="font-bold text-orange-600 text-sm sm:text-base">
+                          {user.current_streak || 0} days
+                        </span>
+                      </div>
                     </div>
-                    <span className="font-bold text-orange-600">{user.current_streak} days</span>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <FireIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">No streaks yet</p>
+                    <p className="text-xs">Start your daily streak today!</p>
                   </div>
-                ))}
+                )}
+              </div>
+            </div>
+
+            {/* Points Leaderboard */}
+            <div className="bg-white rounded-xl p-4 sm:p-6 shadow-lg overflow-hidden">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 flex items-center">
+                <StarIcon className="w-5 sm:w-6 h-5 sm:h-6 text-purple-500 mr-2" />
+                Top Point Earners
+              </h3>
+              <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
+                {leaderboards.points?.length > 0 ? (
+                  leaderboards.points.slice(0, 10).map((user, index) => (
+                    <div 
+                      key={index} 
+                      className={`flex items-center justify-between p-2 sm:p-3 rounded-lg transition-colors ${
+                        user.is_current_user ? 'bg-purple-50 border border-purple-200' : 'bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <div className={`w-6 sm:w-8 h-6 sm:h-8 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${
+                          index === 0 ? 'bg-yellow-500' : 
+                          index === 1 ? 'bg-gray-400' : 
+                          index === 2 ? 'bg-orange-600' : 'bg-gray-300'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <span className={`font-medium text-sm sm:text-base truncate ${
+                          user.is_current_user ? 'text-purple-900' : 'text-gray-900'
+                        }`}>
+                          {user.full_name}{user.is_current_user ? ' (You)' : ''}
+                        </span>
+                      </div>
+                      <span className="font-bold text-purple-600 text-sm sm:text-base">
+                        {(user.experience_points || 0).toLocaleString()} XP
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <StarIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">No points yet</p>
+                    <p className="text-xs">Complete activities to earn XP!</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
