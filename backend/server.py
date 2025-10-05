@@ -136,6 +136,28 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     
     return user_id
 
+async def get_current_user_dict(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Get current authenticated user as dictionary object"""
+    user_id = verify_jwt_token(credentials.credentials)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    # Check if user exists and is active
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=401, detail="Account deactivated")
+    
+    # Convert MongoDB document to clean dictionary
+    if user:
+        user["id"] = str(user["_id"])  # Ensure id field is set
+        if "_id" in user:
+            del user["_id"]  # Remove MongoDB _id field
+    
+    return user
+
 async def get_current_admin(user_id: str = Depends(get_current_user)) -> str:
     """Get current authenticated admin user"""
     user = await get_user_by_id(user_id)
@@ -514,35 +536,41 @@ async def get_area_info_from_coordinates(latitude: float, longitude: float) -> D
         return {"area": "Unknown Area", "city": "Bangalore", "state": "Karnataka"}
 
 async def get_nearby_emergency_hospitals(latitude: float, longitude: float) -> List[Dict]:
-    """Get nearby emergency hospitals"""
-    # Mock data - in production, integrate with Google Places API or similar
-    hospitals = [
-        {
-            "name": "Manipal Hospital",
-            "address": "98, Rustom Bagh, Airport Rd, Bangalore",
-            "phone": "+91-80-2502-4444",
-            "distance": "2.3 km",
-            "emergency_services": ["24/7 Emergency", "Trauma Center", "ICU"],
-            "rating": 4.2
-        },
-        {
-            "name": "Fortis Hospital",
-            "address": "154/9, Bannerghatta Rd, Bangalore",
-            "phone": "+91-80-6621-4444",
-            "distance": "3.1 km",
-            "emergency_services": ["Emergency Ward", "Cardiac Care", "Ambulance"],
-            "rating": 4.1
-        },
-        {
-            "name": "Apollo Hospital",
-            "address": "154/11, Bannerghatta Rd, Bangalore",
-            "phone": "+91-80-2630-0300",
-            "distance": "4.2 km",
-            "emergency_services": ["24/7 Emergency", "Multi-specialty", "Blood Bank"],
-            "rating": 4.3
-        }
-    ]
-    return hospitals
+    """Get nearby emergency hospitals using real OpenStreetMap data"""
+    try:
+        # Use the enhanced hospital fetch system with real API integration
+        hospitals = await fetch_enhanced_hospitals(latitude, longitude, "general", {
+            "emergency_types": ["medical", "trauma", "cardiac"],
+            "specialties": ["Emergency Medicine", "General Surgery", "Internal Medicine"]
+        })
+        
+        # Convert to expected format for emergency services endpoint
+        formatted_hospitals = []
+        for hospital in hospitals:
+            formatted_hospitals.append({
+                "name": hospital.get("name", "Hospital"),
+                "address": hospital.get("address", "Address not available"),
+                "phone": hospital.get("phone", "108"),
+                "distance": f"{hospital.get('distance', 0):.1f} km",
+                "emergency_services": hospital.get("features", ["Emergency Care"]),
+                "rating": hospital.get("rating", 4.0)
+            })
+        
+        return formatted_hospitals[:5]  # Return top 5 hospitals
+        
+    except Exception as e:
+        logger.error(f"Real hospital fetch failed: {str(e)}")
+        # Fallback to static hospitals if API fails
+        return [
+            {
+                "name": "Emergency Hospital 108",
+                "address": "Nearest Government Hospital",
+                "phone": "108",
+                "distance": "Variable",
+                "emergency_services": ["24/7 Emergency", "Ambulance"],
+                "rating": 4.0
+            }
+        ]
 
 async def get_nearby_police_stations(latitude: float, longitude: float) -> List[Dict]:
     """Get nearby police stations"""
@@ -4213,7 +4241,7 @@ async def trigger_milestone_check_endpoint(
 
 @api_router.get("/gamification/achievements")
 @limiter.limit("10/minute")
-async def get_user_achievements(request: Request, limit: int = 10, current_user: dict = Depends(get_current_user)):
+async def get_user_achievements(request: Request, limit: int = 10, current_user: dict = Depends(get_current_user_dict)):
     """Get user's recent achievements"""
     try:
         db = await get_database()
@@ -4235,7 +4263,7 @@ async def get_user_achievements(request: Request, limit: int = 10, current_user:
 
 @api_router.post("/gamification/achievements/{achievement_id}/share")
 @limiter.limit("5/minute")
-async def share_achievement(request: Request, achievement_id: str, current_user: dict = Depends(get_current_user)):
+async def share_achievement(request: Request, achievement_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Share an achievement to community feed"""
     try:
         db = await get_database()
@@ -4283,7 +4311,7 @@ async def share_achievement(request: Request, achievement_id: str, current_user:
 
 @api_router.get("/gamification/community-feed")
 @limiter.limit("10/minute")
-async def get_community_feed(request: Request, limit: int = 20, current_user: dict = Depends(get_current_user)):
+async def get_community_feed(request: Request, limit: int = 20, current_user: dict = Depends(get_current_user_dict)):
     """Get community achievements feed (Pan-India)"""
     try:
         db = await get_database()
@@ -4332,7 +4360,7 @@ async def get_community_feed(request: Request, limit: int = 20, current_user: di
 
 @api_router.post("/gamification/achievements/{achievement_id}/react")
 @limiter.limit("10/minute")
-async def react_to_achievement(request: Request, achievement_id: str, current_user: dict = Depends(get_current_user)):
+async def react_to_achievement(request: Request, achievement_id: str, current_user: dict = Depends(get_current_user_dict)):
     """React to a shared achievement"""
     try:
         db = await get_database()
@@ -4737,7 +4765,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://test-and-rate.preview.emergentagent.com"
+        base_url = "https://fully-functional-5.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7266,7 +7294,7 @@ async def grant_feature_access(user_id: str, feature_name: str):
 
 @api_router.get("/referrals/my-link")
 @limiter.limit("5/minute")
-async def get_referral_link(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_referral_link(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get user's referral link for direct sharing"""
     try:
         db = await get_database()
@@ -7289,7 +7317,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://test-and-rate.preview.emergentagent.com"
+        base_url = "https://fully-functional-5.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -7307,7 +7335,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
 
 @api_router.get("/referrals/stats")
 @limiter.limit("10/minute")
-async def get_referral_stats(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_referral_stats(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get detailed referral statistics"""
     try:
         db = await get_database()
@@ -7689,7 +7717,7 @@ async def get_my_challenges(request: Request, current_user: str = Depends(get_cu
 
 @api_router.post("/challenges/{challenge_id}/share")
 @limiter.limit("5/minute")
-async def generate_challenge_share_content(request: Request, challenge_id: str, share_type: str, current_user: dict = Depends(get_current_user)):
+async def generate_challenge_share_content(request: Request, challenge_id: str, share_type: str, current_user: dict = Depends(get_current_user_dict)):
     """Generate shareable content for social media platforms"""
     try:
         db = await get_database()
@@ -8175,7 +8203,7 @@ async def invite_friend(request: Request, invite_data: FriendInviteRequest, curr
     """Send friend invitation via referral code"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Check invitation limits
         current_date = datetime.now(timezone.utc)
@@ -8547,8 +8575,8 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
     """Create a new group savings challenge"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
-        user = current_user
+        user_id = current_user
+        user = await get_user_by_id(user_id)
         
         # Calculate dates
         start_date = datetime.now(timezone.utc)
@@ -8843,7 +8871,7 @@ async def get_notifications(request: Request, current_user: str = Depends(get_cu
     """Get user's notifications"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get recent notifications
         notifications = await db.notifications.find({
@@ -8904,7 +8932,7 @@ async def mark_all_notifications_read(request: Request, current_user: str = Depe
     """Mark all notifications as read"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Update all unread notifications
         result = await db.notifications.update_many(
