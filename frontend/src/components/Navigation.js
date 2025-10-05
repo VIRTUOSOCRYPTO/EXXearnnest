@@ -26,6 +26,7 @@ import {
   SparklesIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
+import RealTimeNotifications from './RealTimeNotifications';
 
 const Navigation = () => {
   const location = useLocation();
@@ -238,6 +239,10 @@ const Navigation = () => {
 
           {/* User Menu */}
           <div className="flex items-center space-x-2 sm:space-x-4">
+            {/* Real-time Notifications */}
+            <div className="hidden sm:block">
+              <RealTimeNotifications />
+            </div>
             {/* Hamburger Menu Button - Show only on mobile/tablet */}
             <div className="lg:hidden">
               <button
