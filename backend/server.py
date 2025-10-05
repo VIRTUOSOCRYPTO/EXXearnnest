@@ -4737,7 +4737,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://feature-verifier.preview.emergentagent.com"
+        base_url = "https://test-and-rate.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7289,7 +7289,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://feature-verifier.preview.emergentagent.com"
+        base_url = "https://test-and-rate.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -13882,8 +13882,8 @@ async def get_public_campus_battle():
                 if last_activity.tzinfo is None:
                     last_activity = last_activity.replace(tzinfo=timezone.utc)
                 if last_activity > seven_days_ago:
-                campus_stats[campus]['active_users_7d'] += 1
-                campus_stats[campus]['recent_activity'] += 1
+                    campus_stats[campus]['active_users_7d'] += 1
+                    campus_stats[campus]['recent_activity'] += 1
         
         # Calculate averages and rankings
         battle_data = []
