@@ -4765,7 +4765,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://fully-functional-5.preview.emergentagent.com"
+        base_url = "https://live-system-deploy.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7317,7 +7317,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://fully-functional-5.preview.emergentagent.com"
+        base_url = "https://live-system-deploy.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -8199,11 +8199,11 @@ async def update_challenge_progress(challenge_id: str, user_id: str):
 
 @api_router.post("/friends/invite")
 @limiter.limit("10/hour")
-async def invite_friend(request: Request, invite_data: FriendInviteRequest, current_user: str = Depends(get_current_user)):
+async def invite_friend(request: Request, invite_data: FriendInviteRequest, current_user: dict = Depends(get_current_user_dict)):
     """Send friend invitation via referral code"""
     try:
         db = await get_database()
-        user_id = current_user
+        user = current_user
         
         # Check invitation limits
         current_date = datetime.now(timezone.utc)
@@ -8571,12 +8571,11 @@ async def get_friend_suggestions(request: Request, current_user: str = Depends(g
 
 @api_router.post("/group-challenges")
 @limiter.limit("5/hour")
-async def create_group_challenge(request: Request, challenge_data: GroupChallengeCreateRequest, current_user: str = Depends(get_current_user)):
+async def create_group_challenge(request: Request, challenge_data: GroupChallengeCreateRequest, current_user: dict = Depends(get_current_user_dict)):
     """Create a new group savings challenge"""
     try:
         db = await get_database()
-        user_id = current_user
-        user = await get_user_by_id(user_id)
+        user = current_user
         
         # Calculate dates
         start_date = datetime.now(timezone.utc)
@@ -8641,7 +8640,7 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
 
 @api_router.get("/group-challenges")
 @limiter.limit("20/minute")
-async def get_group_challenges(request: Request, current_user: str = Depends(get_current_user)):
+async def get_group_challenges(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get available group challenges (campus-specific and open)"""
     try:
         db = await get_database()
@@ -8709,7 +8708,7 @@ async def get_group_challenges(request: Request, current_user: str = Depends(get
 
 @api_router.post("/group-challenges/{challenge_id}/join")
 @limiter.limit("10/minute")
-async def join_group_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+async def join_group_challenge(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Join a group challenge"""
     try:
         db = await get_database()
@@ -8867,11 +8866,11 @@ async def get_group_challenge_details(request: Request, challenge_id: str, curre
 
 @api_router.get("/notifications")
 @limiter.limit("30/minute")
-async def get_notifications(request: Request, current_user: str = Depends(get_current_user), limit: int = 20):
+async def get_notifications(request: Request, current_user: dict = Depends(get_current_user_dict), limit: int = 20):
     """Get user's notifications"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Get recent notifications
         notifications = await db.notifications.find({
@@ -8896,7 +8895,7 @@ async def get_notifications(request: Request, current_user: str = Depends(get_cu
 
 @api_router.put("/notifications/{notification_id}/read")
 @limiter.limit("30/minute")
-async def mark_notification_read(request: Request, notification_id: str, current_user: str = Depends(get_current_user)):
+async def mark_notification_read(request: Request, notification_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Mark notification as read"""
     try:
         db = await get_database()
@@ -8928,11 +8927,11 @@ async def mark_notification_read(request: Request, notification_id: str, current
 
 @api_router.put("/notifications/mark-all-read")
 @limiter.limit("10/minute")
-async def mark_all_notifications_read(request: Request, current_user: str = Depends(get_current_user)):
+async def mark_all_notifications_read(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Mark all notifications as read"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Update all unread notifications
         result = await db.notifications.update_many(
