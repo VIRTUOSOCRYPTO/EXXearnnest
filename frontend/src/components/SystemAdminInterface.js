@@ -13,6 +13,7 @@ import {
   Building, Mail, Phone, Calendar, Award, Trophy, Flag,
   Activity, BarChart3, TrendingUp, AlertTriangle, Search
 } from 'lucide-react';
+import useAdminWebSocket from '../hooks/useAdminWebSocket';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -21,6 +22,25 @@ const SystemAdminInterface = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("requests");
+  
+  // Real-time notifications for admin requests
+  const { isConnected: wsConnected } = useAdminWebSocket({
+    onAdminRequestSubmitted: (message) => {
+      // Auto-refresh admin requests when new request comes in
+      fetchAdminRequests();
+      
+      // Show toast notification
+      if (window.showToast) {
+        window.showToast({
+          type: 'info',
+          title: 'New Admin Request',
+          message: message.message
+        });
+      }
+    },
+    onConnect: () => console.log('System admin WebSocket connected'),
+    onError: (error) => console.error('System admin WebSocket error:', error)
+  });
 
   // Admin Requests State
   const [adminRequests, setAdminRequests] = useState([]);
@@ -650,11 +670,21 @@ const SystemAdminInterface = () => {
       {/* Header */}
       <Card className="bg-gradient-to-r from-red-600 to-purple-600 text-white">
         <CardContent className="p-6">
-          <div className="flex items-center">
-            <Shield className="w-8 h-8 mr-3" />
-            <div>
-              <h1 className="text-2xl font-bold">System Administrator</h1>
-              <p className="text-red-100">Manage campus admin requests, privileges, and system audit</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Shield className="w-8 h-8 mr-3" />
+              <div>
+                <h1 className="text-2xl font-bold">System Administrator</h1>
+                <p className="text-red-100">Manage campus admin requests, privileges, and system audit</p>
+              </div>
+            </div>
+            
+            {/* Real-time Status */}
+            <div className="flex items-center space-x-2">
+              <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`} />
+              <span className="text-white text-sm">
+                {wsConnected ? 'Live Updates' : 'Offline'}
+              </span>
             </div>
           </div>
         </CardContent>
