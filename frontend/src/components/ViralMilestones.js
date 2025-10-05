@@ -35,7 +35,7 @@ const ViralMilestones = () => {
   };
 
   const shareMilestone = async (milestone) => {
-    const shareText = `🎉 ${milestone.achievement_text} 💰 Join the movement! #EarnNest #StudentFinance #FinancialFreedom`;
+    const shareText = `🎉 ${milestone.achievement_text} 💰 Join the movement! #EarnAura #StudentFinance #FinancialFreedom`;
     
     if (navigator.share) {
       try {
