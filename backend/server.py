@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, File, UploadFile, Request, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +10,7 @@ import os
 import logging
 import shutil
 import uuid
+import json
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 
@@ -25,6 +26,7 @@ from cache_service import cache_service
 from fallback_hospital_db import fallback_db
 from gamification_service import get_gamification_service
 from admin_verification_service import admin_workflow_manager, email_verifier, document_verifier
+from websocket_service import connection_manager, get_notification_service
 
 # Performance optimization imports
 from performance_cache import advanced_cache, cache_result
@@ -4789,7 +4791,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://collegeleague.preview.emergentagent.com"
+        base_url = "https://approval-system-6.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7472,7 +7474,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://collegeleague.preview.emergentagent.com"
+        base_url = "https://approval-system-6.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14065,6 +14067,13 @@ async def request_campus_admin_privileges(
         admin_request = workflow_result["admin_request"]
         await db.campus_admin_requests.insert_one(admin_request)
         
+        # Send real-time notification to system admins
+        try:
+            notification_service = await get_notification_service(db)
+            await notification_service.notify_admin_request_submitted(admin_request)
+        except Exception as e:
+            logger.error(f"Failed to send real-time notification: {str(e)}")
+        
         # Create system admin notification
         notification = {
             "id": str(uuid.uuid4()),
@@ -14492,6 +14501,32 @@ async def review_admin_request(
             {"id": request_id},
             {"$set": update_data}
         )
+        
+        # Send real-time notification to user
+        try:
+            notification_service = await get_notification_service(db)
+            updated_request = {**admin_request, **update_data}
+            
+            # Send status update notification
+            await notification_service.notify_admin_request_status_update(
+                admin_request["user_id"], 
+                updated_request
+            )
+            
+            # If approved, also send admin privileges granted notification
+            if review_data.decision == "approve":
+                await notification_service.notify_admin_privileges_granted(
+                    admin_request["user_id"],
+                    {
+                        "admin_type": admin_type,
+                        "permissions": permissions,
+                        "can_create_inter_college": review_data.can_create_inter_college,
+                        "max_competitions_per_month": review_data.max_competitions_per_month,
+                        "expires_at": (decision_time + timedelta(days=30 * review_data.expires_in_months)).isoformat()
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Failed to send real-time notification: {str(e)}")
         
         # Create audit log
         audit_log = await admin_workflow_manager.create_audit_log(
@@ -15607,6 +15642,166 @@ async def get_live_viral_milestones():
 
 # Include ALL API routes after endpoint definitions
 app.include_router(api_router)
+
+# ===== REAL-TIME WEBSOCKET ENDPOINTS =====
+
+@app.websocket("/ws/notifications/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    """WebSocket endpoint for real-time notifications"""
+    try:
+        # Verify user authentication via query params or headers
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required")
+            return
+        
+        # Verify JWT token
+        try:
+            payload = verify_jwt_token(token)
+            authenticated_user_id = payload.get("user_id")
+            
+            if authenticated_user_id != user_id:
+                await websocket.close(code=4003, reason="User ID mismatch")
+                return
+                
+        except Exception as e:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+        
+        # Connect user
+        await connection_manager.connect_user(websocket, user_id)
+        
+        try:
+            while True:
+                # Keep connection alive and handle incoming messages
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                # Handle different message types
+                if message.get("type") == "ping":
+                    await connection_manager.send_personal_message({
+                        "type": "pong",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }, websocket)
+                elif message.get("type") == "mark_notification_read":
+                    # Handle marking notifications as read
+                    notification_id = message.get("notification_id")
+                    if notification_id:
+                        db = await get_database()
+                        await db.in_app_notifications.update_one(
+                            {"id": notification_id, "user_id": user_id},
+                            {"$set": {"is_read": True, "read_at": datetime.now(timezone.utc)}}
+                        )
+                
+        except WebSocketDisconnect:
+            await connection_manager.disconnect_user(websocket, user_id)
+        except Exception as e:
+            logger.error(f"WebSocket error for user {user_id}: {str(e)}")
+            await connection_manager.disconnect_user(websocket, user_id)
+            
+    except Exception as e:
+        logger.error(f"WebSocket connection error: {str(e)}")
+        try:
+            await websocket.close(code=4500, reason="Internal server error")
+        except:
+            pass
+
+@app.websocket("/ws/admin/{user_id}")
+async def admin_websocket_endpoint(websocket: WebSocket, user_id: str):
+    """WebSocket endpoint for admin real-time notifications"""
+    try:
+        # Verify admin authentication
+        token = websocket.query_params.get("token")
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required")
+            return
+        
+        try:
+            payload = verify_jwt_token(token)
+            authenticated_user_id = payload.get("user_id")
+            
+            if authenticated_user_id != user_id:
+                await websocket.close(code=4003, reason="User ID mismatch")
+                return
+                
+        except Exception as e:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+        
+        # Check if user is admin
+        db = await get_database()
+        user_doc = await db.users.find_one({"id": user_id})
+        
+        if not user_doc:
+            await websocket.close(code=4004, reason="User not found")
+            return
+        
+        # Check admin privileges
+        admin_type = "user"
+        
+        # Check if system admin
+        if user_doc.get("is_admin", False):
+            admin_type = "system_admin"
+        else:
+            # Check if campus admin
+            campus_admin = await db.campus_admin_requests.find_one({
+                "user_id": user_id,
+                "status": "approved"
+            })
+            if campus_admin:
+                admin_type = "campus_admin"
+        
+        if admin_type == "user":
+            await websocket.close(code=4003, reason="Admin privileges required")
+            return
+        
+        # Connect admin
+        await connection_manager.connect_admin(websocket, user_id, admin_type)
+        
+        try:
+            while True:
+                # Keep connection alive and handle admin-specific messages
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                if message.get("type") == "ping":
+                    await connection_manager.send_personal_message({
+                        "type": "pong",
+                        "admin_type": admin_type,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }, websocket)
+                elif message.get("type") == "get_pending_requests" and admin_type == "system_admin":
+                    # Send current pending requests count
+                    pending_count = await db.campus_admin_requests.count_documents({"status": "pending"})
+                    await connection_manager.send_personal_message({
+                        "type": "pending_requests_count",
+                        "count": pending_count,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }, websocket)
+                
+        except WebSocketDisconnect:
+            await connection_manager.disconnect_user(websocket, user_id)
+        except Exception as e:
+            logger.error(f"Admin WebSocket error for user {user_id}: {str(e)}")
+            await connection_manager.disconnect_user(websocket, user_id)
+            
+    except Exception as e:
+        logger.error(f"Admin WebSocket connection error: {str(e)}")
+        try:
+            await websocket.close(code=4500, reason="Internal server error")
+        except:
+            pass
+
+@api_router.get("/websocket/status")
+@limiter.limit("10/minute")
+async def websocket_status(request: Request):
+    """Get WebSocket server status"""
+    return {
+        "connected_users": connection_manager.get_connected_users_count(),
+        "connected_admins": connection_manager.get_connected_admins_count(),
+        "server_status": "running",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
 
 # Health check endpoint
 @app.get("/health")
