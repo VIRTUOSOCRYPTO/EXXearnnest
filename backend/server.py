@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 from cache_service import cache_service
 from fallback_hospital_db import fallback_db
 from gamification_service import get_gamification_service
+from admin_verification_service import admin_workflow_manager, email_verifier, document_verifier
 
 # Performance optimization imports
 from performance_cache import advanced_cache, cache_result
@@ -164,6 +165,29 @@ async def get_current_admin(user_id: str = Depends(get_current_user)) -> str:
     if not user or not user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
+
+async def get_current_campus_admin(user_id: str = Depends(get_current_user)) -> Dict[str, Any]:
+    """Get current authenticated campus admin with privileges"""
+    db = await get_database()
+    
+    # Check if user is a campus admin
+    campus_admin = await db.campus_admins.find_one({
+        "user_id": user_id,
+        "status": "active"
+    })
+    
+    if not campus_admin:
+        raise HTTPException(status_code=403, detail="Campus admin privileges required")
+    
+    # Check if admin privileges have expired
+    if campus_admin.get("expires_at") and campus_admin["expires_at"] < datetime.now(timezone.utc):
+        await db.campus_admins.update_one(
+            {"id": campus_admin["id"]},
+            {"$set": {"status": "expired"}}
+        )
+        raise HTTPException(status_code=403, detail="Campus admin privileges have expired")
+    
+    return campus_admin
 
 async def get_enhanced_ai_hustle_recommendations(user_skills: List[str], availability: int, recent_earnings: float, location: str = None) -> List[Dict]:
     """Generate enhanced AI-powered hustle recommendations based on user skills"""
@@ -4765,7 +4789,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://prod-sync-expert.preview.emergentagent.com"
+        base_url = "https://collegeleague.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6061,14 +6085,40 @@ async def create_inter_college_competition(
     competition_data: InterCollegeCompetitionCreate,
     current_user: str = Depends(get_current_user)
 ):
-    """Create a new inter-college competition (Admin only)"""
+    """Create a new inter-college competition (System Admin or Campus Admin with privileges)"""
     try:
         db = await get_database()
         
-        # Check if user is admin
+        # Check if user is system admin OR campus admin with inter-college privileges
         user = await get_user_by_id(current_user)
-        if not user or user.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Admin access required")
+        is_system_admin = user and user.get("is_admin", False)
+        
+        campus_admin = None
+        if not is_system_admin:
+            campus_admin = await db.campus_admins.find_one({
+                "user_id": current_user,
+                "status": "active",
+                "can_create_inter_college": True
+            })
+            
+            if not campus_admin:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Inter-college competition creation requires system admin or campus admin with inter-college privileges"
+                )
+            
+            # Check monthly limit for campus admins
+            current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            competitions_this_month = await db.inter_college_competitions.count_documents({
+                "created_by": current_user,
+                "created_at": {"$gte": current_month}
+            })
+            
+            if competitions_this_month >= campus_admin["max_competitions_per_month"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Monthly competition limit reached ({campus_admin['max_competitions_per_month']})"
+                )
         
         # Calculate duration
         duration_days = (competition_data.end_date - competition_data.start_date).days
@@ -6083,8 +6133,32 @@ async def create_inter_college_competition(
             "updated_at": datetime.now(timezone.utc)
         })
         
+        # Add campus admin metadata if created by campus admin
+        if campus_admin:
+            competition_dict.update({
+                "created_by_campus_admin": True,
+                "campus_admin_id": campus_admin["id"],
+                "creator_college": campus_admin["college_name"],
+                "creator_admin_type": campus_admin["admin_type"]
+            })
+        else:
+            competition_dict.update({
+                "created_by_campus_admin": False,
+                "created_by_system_admin": True
+            })
+        
         competition = InterCollegeCompetition(**competition_dict)
         await db.inter_college_competitions.insert_one(competition.dict())
+        
+        # Update campus admin statistics if applicable
+        if campus_admin:
+            await db.campus_admins.update_one(
+                {"id": campus_admin["id"]},
+                {
+                    "$inc": {"competitions_created": 1},
+                    "$set": {"last_activity": datetime.now(timezone.utc)}
+                }
+            )
         
         # Initialize campus leaderboards for eligible universities
         eligible_unis = competition_data.eligible_universities if competition_data.eligible_universities else []
@@ -6100,9 +6174,25 @@ async def create_inter_college_competition(
             )
             await db.campus_leaderboards.insert_one(leaderboard.dict())
         
+        # Create audit log
+        creator_type = "campus_admin" if campus_admin else "system_admin"
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user,
+            action_type="create_inter_college_competition",
+            action_description=f"Created inter-college competition: {competition_data.title}",
+            target_type="competition",
+            target_id=competition.id,
+            affected_entities=[{"type": "competition", "id": competition.id, "name": competition_data.title}],
+            severity="info",
+            ip_address=request.client.host,
+            is_system_generated=False
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
         return {
             "message": "Inter-college competition created successfully",
             "competition_id": competition.id,
+            "creator_type": creator_type,
             "eligible_universities": eligible_unis,
             "registration_period": {
                 "start": competition_data.registration_start,
@@ -6379,14 +6469,39 @@ async def create_prize_challenge(
     challenge_data: PrizeChallengeCreate,
     current_user: str = Depends(get_current_user)
 ):
-    """Create a new prize-based challenge (Admin only)"""
+    """Create a new prize-based challenge (System Admin or Campus Admin with privileges)"""
     try:
         db = await get_database()
         
-        # Check if user is admin
+        # Check if user is system admin OR campus admin with challenge creation privileges
         user = await get_user_by_id(current_user)
-        if not user or user.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Admin access required")
+        is_system_admin = user and user.get("is_admin", False)
+        
+        campus_admin = None
+        if not is_system_admin:
+            campus_admin = await db.campus_admins.find_one({
+                "user_id": current_user,
+                "status": "active"
+            })
+            
+            if not campus_admin:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Prize challenge creation requires system admin or campus admin privileges"
+                )
+            
+            # Check monthly limit for campus admins
+            current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            challenges_this_month = await db.prize_challenges.count_documents({
+                "created_by": current_user,
+                "created_at": {"$gte": current_month}
+            })
+            
+            if challenges_this_month >= campus_admin["max_competitions_per_month"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Monthly challenge limit reached ({campus_admin['max_competitions_per_month']})"
+                )
         
         # Calculate duration hours if not provided
         if not challenge_data.duration_hours:
@@ -6402,12 +6517,52 @@ async def create_prize_challenge(
             "updated_at": datetime.now(timezone.utc)
         })
         
+        # Add campus admin metadata if created by campus admin
+        if campus_admin:
+            challenge_dict.update({
+                "created_by_campus_admin": True,
+                "campus_admin_id": campus_admin["id"],
+                "creator_college": campus_admin["college_name"],
+                "creator_admin_type": campus_admin["admin_type"]
+            })
+        else:
+            challenge_dict.update({
+                "created_by_campus_admin": False,
+                "created_by_system_admin": True
+            })
+        
         challenge = PrizeChallenge(**challenge_dict)
         await db.prize_challenges.insert_one(challenge.dict())
+        
+        # Update campus admin statistics if applicable
+        if campus_admin:
+            await db.campus_admins.update_one(
+                {"id": campus_admin["id"]},
+                {
+                    "$inc": {"challenges_created": 1},
+                    "$set": {"last_activity": datetime.now(timezone.utc)}
+                }
+            )
+        
+        # Create audit log
+        creator_type = "campus_admin" if campus_admin else "system_admin"
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user,
+            action_type="create_prize_challenge",
+            action_description=f"Created prize challenge: {challenge_data.title}",
+            target_type="challenge",
+            target_id=challenge.id,
+            affected_entities=[{"type": "challenge", "id": challenge.id, "name": challenge_data.title}],
+            severity="info",
+            ip_address=request.client.host,
+            is_system_generated=False
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
         
         return {
             "message": "Prize-based challenge created successfully",
             "challenge_id": challenge.id,
+            "creator_type": creator_type,
             "challenge_type": challenge_data.challenge_type,
             "prize_type": challenge_data.prize_type,
             "total_prize_value": challenge_data.total_prize_value
@@ -7317,7 +7472,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://prod-sync-expert.preview.emergentagent.com"
+        base_url = "https://collegeleague.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -13865,6 +14020,1050 @@ async def shutdown_db_client():
         
     except Exception as e:
         logger.error(f"Shutdown error: {str(e)}")
+
+# ===== CAMPUS ADMIN VERIFICATION SYSTEM =====
+
+@api_router.post("/admin/campus/request")
+@limiter.limit("3/day")  # Limited to prevent spam
+async def request_campus_admin_privileges(
+    request: Request,
+    admin_request_data: CampusAdminRequestCreate,
+    current_user: str = Depends(get_current_user)
+):
+    """Request campus admin privileges with verification workflow"""
+    try:
+        db = await get_database()
+        
+        # Check if user already has pending or approved request
+        existing_request = await db.campus_admin_requests.find_one({
+            "user_id": current_user,
+            "status": {"$in": ["pending", "under_review", "approved"]}
+        })
+        
+        if existing_request:
+            status = existing_request.get("status")
+            if status == "approved":
+                raise HTTPException(status_code=400, detail="You already have campus admin privileges")
+            else:
+                raise HTTPException(status_code=400, detail=f"You already have a {status} admin request")
+        
+        # Get user details
+        user = await get_user_by_id(current_user)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Process the admin request
+        request_data = admin_request_data.dict()
+        request_data["email"] = user.get("email")
+        
+        workflow_result = await admin_workflow_manager.process_admin_request(request_data, current_user)
+        
+        if not workflow_result["request_created"]:
+            raise HTTPException(status_code=500, detail=workflow_result.get("error", "Failed to create admin request"))
+        
+        # Save the request to database
+        admin_request = workflow_result["admin_request"]
+        await db.campus_admin_requests.insert_one(admin_request)
+        
+        # Create system admin notification
+        notification = {
+            "id": str(uuid.uuid4()),
+            "title": f"New Campus Admin Request: {admin_request['requested_admin_type'].title()}",
+            "message": f"{admin_request['full_name']} from {admin_request['college_name']} has requested {admin_request['requested_admin_type']} privileges",
+            "notification_type": "admin_request",
+            "priority": "normal",
+            "source_type": "user",
+            "source_id": current_user,
+            "related_request_id": admin_request["id"],
+            "related_user_id": current_user,
+            "action_buttons": [
+                {"label": "Review Request", "action": "review_admin_request"},
+                {"label": "View Profile", "action": "view_user_profile"}
+            ],
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=30)
+        }
+        await db.system_admin_notifications.insert_one(notification)
+        
+        # Log the action
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id="system",
+            action_type="admin_request_submitted",
+            action_description=f"Campus admin request submitted by {user.get('email')}",
+            target_type="admin_request",
+            target_id=admin_request["id"],
+            affected_entities=[{"type": "user", "id": current_user, "name": user.get("full_name", "Unknown")}],
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Admin request submitted successfully",
+            "request_id": admin_request["id"],
+            "status": admin_request["status"],
+            "verification_method": admin_request["verification_method"],
+            "email_verification": workflow_result.get("email_verification"),
+            "requires_documents": workflow_result.get("requires_documents", False),
+            "next_steps": workflow_result.get("next_steps", [])
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Campus admin request error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to submit admin request")
+
+@api_router.post("/admin/campus/verify-email/{request_id}")
+@limiter.limit("10/minute")
+async def verify_admin_email(
+    request: Request,
+    request_id: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Verify institutional email for admin request"""
+    try:
+        db = await get_database()
+        
+        # Get admin request
+        admin_request = await db.campus_admin_requests.find_one({
+            "id": request_id,
+            "user_id": current_user,
+            "status": {"$in": ["pending", "under_review"]}
+        })
+        
+        if not admin_request:
+            raise HTTPException(status_code=404, detail="Admin request not found or already processed")
+        
+        if not admin_request.get("institutional_email"):
+            raise HTTPException(status_code=400, detail="No institutional email provided for verification")
+        
+        # Verify email domain
+        verification_result = await email_verifier.verify_email_domain(
+            admin_request["institutional_email"],
+            admin_request["college_name"]
+        )
+        
+        # Update request with verification result
+        update_data = {
+            "email_verified": verification_result["verified"],
+            "college_email_domain": verification_result["domain"]
+        }
+        
+        if verification_result["verified"]:
+            update_data["email_verified_at"] = datetime.now(timezone.utc)
+            update_data["email_verification_token"] = str(uuid.uuid4())
+            
+            # Auto-approve if domain is in verified database
+            if verification_result.get("auto_approved"):
+                update_data["status"] = "approved"
+                update_data["decision_made_at"] = datetime.now(timezone.utc)
+                update_data["reviewed_by"] = "system_auto"
+                update_data["review_notes"] = "Auto-approved based on verified institutional email domain"
+                
+                # Create campus admin record
+                admin_privileges = admin_workflow_manager.generate_admin_permissions(
+                    admin_request["requested_admin_type"]
+                )
+                
+                campus_admin = {
+                    "id": str(uuid.uuid4()),
+                    "user_id": current_user,
+                    "request_id": request_id,
+                    "admin_type": admin_request["requested_admin_type"],
+                    "college_name": admin_request["college_name"],
+                    "club_name": admin_request.get("club_name"),
+                    "permissions": admin_privileges["permissions"],
+                    "can_create_inter_college": admin_privileges["can_create_inter_college"],
+                    "can_create_intra_college": admin_privileges["can_create_intra_college"],
+                    "can_manage_reputation": admin_privileges["can_manage_reputation"],
+                    "max_competitions_per_month": admin_privileges["max_competitions_per_month"],
+                    "status": "active",
+                    "appointed_at": datetime.now(timezone.utc),
+                    "appointed_by": "system_auto",
+                    "expires_at": datetime.now(timezone.utc) + timedelta(days=365),
+                    "competitions_created": 0,
+                    "challenges_created": 0,
+                    "participants_managed": 0,
+                    "reputation_points_awarded": 0,
+                    "warnings_count": 0
+                }
+                await db.campus_admins.insert_one(campus_admin)
+            else:
+                update_data["status"] = "under_review"
+                update_data["review_started_at"] = datetime.now(timezone.utc)
+        
+        await db.campus_admin_requests.update_one(
+            {"id": request_id},
+            {"$set": update_data}
+        )
+        
+        return {
+            "message": "Email verification completed",
+            "verified": verification_result["verified"],
+            "verification_result": verification_result,
+            "status": update_data.get("status", admin_request["status"]),
+            "auto_approved": verification_result.get("auto_approved", False)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Email verification error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to verify email")
+
+@api_router.post("/admin/campus/upload-document/{request_id}")
+@limiter.limit("10/hour")
+async def upload_admin_document(
+    request: Request,
+    request_id: str,
+    document_type: str,
+    file: UploadFile = File(...),
+    current_user: str = Depends(get_current_user)
+):
+    """Upload verification document for admin request"""
+    try:
+        db = await get_database()
+        
+        # Validate document type
+        if document_type not in ["college_id", "club_registration", "faculty_endorsement"]:
+            raise HTTPException(status_code=400, detail="Invalid document type")
+        
+        # Get admin request
+        admin_request = await db.campus_admin_requests.find_one({
+            "id": request_id,
+            "user_id": current_user,
+            "status": {"$in": ["pending", "under_review"]}
+        })
+        
+        if not admin_request:
+            raise HTTPException(status_code=404, detail="Admin request not found or already processed")
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Save document
+        document_result = await document_verifier.save_document(
+            file_content, file.filename, current_user, document_type
+        )
+        
+        if not document_result["success"]:
+            raise HTTPException(status_code=400, detail=document_result["error"])
+        
+        # Update admin request with document info
+        document_info = {
+            "type": document_type,
+            "filename": document_result["filename"],
+            "original_filename": document_result["original_filename"],
+            "file_path": document_result["file_path"],
+            "file_size": document_result["file_size"],
+            "upload_time": document_result["upload_time"].isoformat()
+        }
+        
+        # Add to uploaded_documents array and set specific document field
+        update_data = {
+            "$push": {"uploaded_documents": document_info},
+            "$set": {f"{document_type}_document": document_result["filename"]}
+        }
+        
+        # Update verification method if this is the first document
+        if not admin_request.get("uploaded_documents"):
+            if admin_request.get("email_verified"):
+                update_data["$set"]["verification_method"] = "both"
+            else:
+                update_data["$set"]["verification_method"] = "manual"
+        
+        await db.campus_admin_requests.update_one(
+            {"id": request_id},
+            update_data
+        )
+        
+        return {
+            "message": f"{document_type.replace('_', ' ').title()} uploaded successfully",
+            "document_info": document_info,
+            "upload_success": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document upload error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload document")
+
+@api_router.get("/admin/campus/request/status")
+@limiter.limit("20/minute")
+async def get_admin_request_status(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
+    """Get current user's admin request status"""
+    try:
+        db = await get_database()
+        
+        # Get user's latest admin request
+        admin_request = await db.campus_admin_requests.find_one(
+            {"user_id": current_user},
+            sort=[("submission_date", -1)]
+        )
+        
+        if not admin_request:
+            return {
+                "has_request": False,
+                "message": "No admin request found"
+            }
+        
+        # Check if user is already an approved admin
+        campus_admin = await db.campus_admins.find_one({
+            "user_id": current_user,
+            "status": "active"
+        })
+        
+        response = {
+            "has_request": True,
+            "request": {
+                "id": admin_request["id"],
+                "status": admin_request["status"],
+                "requested_admin_type": admin_request["requested_admin_type"],
+                "college_name": admin_request["college_name"],
+                "club_name": admin_request.get("club_name"),
+                "submission_date": admin_request["submission_date"].isoformat(),
+                "verification_method": admin_request["verification_method"],
+                "email_verified": admin_request.get("email_verified", False),
+                "documents_uploaded": len(admin_request.get("uploaded_documents", [])),
+                "review_notes": admin_request.get("review_notes"),
+                "rejection_reason": admin_request.get("rejection_reason")
+            }
+        }
+        
+        if campus_admin:
+            response["is_admin"] = True
+            response["admin_details"] = {
+                "admin_type": campus_admin["admin_type"],
+                "permissions": campus_admin["permissions"],
+                "can_create_inter_college": campus_admin["can_create_inter_college"],
+                "competitions_created": campus_admin["competitions_created"],
+                "appointed_at": campus_admin["appointed_at"].isoformat(),
+                "expires_at": campus_admin.get("expires_at").isoformat() if campus_admin.get("expires_at") else None
+            }
+        else:
+            response["is_admin"] = False
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Get admin request status error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get request status")
+
+# ===== SYSTEM ADMIN ENDPOINTS =====
+
+@api_router.get("/system-admin/requests")
+@limiter.limit("20/minute")
+async def get_pending_admin_requests(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    current_user: str = Depends(get_current_user)
+):
+    """Get pending admin requests for system admin review"""
+    try:
+        db = await get_database()
+        
+        # Check if user is system admin
+        user = await get_user_by_id(current_user)
+        if not user or not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="System admin access required")
+        
+        # Build query filter
+        query_filter = {}
+        if status:
+            query_filter["status"] = status
+        else:
+            query_filter["status"] = {"$in": ["pending", "under_review"]}
+        
+        # Get total count
+        total_count = await db.campus_admin_requests.count_documents(query_filter)
+        
+        # Get paginated requests
+        skip = (page - 1) * limit
+        requests_cursor = db.campus_admin_requests.find(query_filter).sort("submission_date", -1).skip(skip).limit(limit)
+        admin_requests = await requests_cursor.to_list(None)
+        
+        # Enrich with user details
+        for req in admin_requests:
+            user = await get_user_by_id(req["user_id"])
+            if user:
+                req["user_details"] = {
+                    "full_name": user.get("full_name", req.get("full_name")),
+                    "email": user.get("email"),
+                    "university": user.get("university"),
+                    "created_at": user.get("created_at"),
+                    "last_login": user.get("last_login"),
+                    "is_active": user.get("is_active", True)
+                }
+        
+        return {
+            "requests": clean_mongo_doc(admin_requests),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get admin requests error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get admin requests")
+
+@api_router.post("/system-admin/requests/{request_id}/review")
+@limiter.limit("10/minute")
+async def review_admin_request(
+    request: Request,
+    request_id: str,
+    review_data: AdminRequestReview,
+    current_user: str = Depends(get_current_user)
+):
+    """Review and approve/reject admin request"""
+    try:
+        db = await get_database()
+        
+        # Check if user is system admin
+        user = await get_user_by_id(current_user)
+        if not user or not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="System admin access required")
+        
+        # Get admin request
+        admin_request = await db.campus_admin_requests.find_one({
+            "id": request_id,
+            "status": {"$in": ["pending", "under_review"]}
+        })
+        
+        if not admin_request:
+            raise HTTPException(status_code=404, detail="Admin request not found or already processed")
+        
+        decision_time = datetime.now(timezone.utc)
+        
+        # Prepare update data
+        update_data = {
+            "status": "approved" if review_data.decision == "approve" else "rejected",
+            "decision_made_at": decision_time,
+            "reviewed_by": current_user,
+            "review_notes": review_data.review_notes
+        }
+        
+        if review_data.decision == "reject":
+            update_data["rejection_reason"] = review_data.rejection_reason
+        else:
+            update_data["approval_conditions"] = review_data.approval_conditions
+            
+            # Create campus admin record
+            admin_type = review_data.admin_type or admin_request["requested_admin_type"]
+            permissions = review_data.permissions or admin_workflow_manager.generate_admin_permissions(admin_type)["permissions"]
+            
+            campus_admin = {
+                "id": str(uuid.uuid4()),
+                "user_id": admin_request["user_id"],
+                "request_id": request_id,
+                "admin_type": admin_type,
+                "college_name": admin_request["college_name"],
+                "club_name": admin_request.get("club_name"),
+                "permissions": permissions,
+                "can_create_inter_college": review_data.can_create_inter_college,
+                "can_create_intra_college": True,
+                "can_manage_reputation": admin_type == "college_admin",
+                "max_competitions_per_month": review_data.max_competitions_per_month,
+                "status": "active",
+                "appointed_at": decision_time,
+                "appointed_by": current_user,
+                "expires_at": decision_time + timedelta(days=30 * review_data.expires_in_months),
+                "competitions_created": 0,
+                "challenges_created": 0,
+                "participants_managed": 0,
+                "reputation_points_awarded": 0,
+                "warnings_count": 0
+            }
+            await db.campus_admins.insert_one(campus_admin)
+        
+        # Update admin request
+        await db.campus_admin_requests.update_one(
+            {"id": request_id},
+            {"$set": update_data}
+        )
+        
+        # Create audit log
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user,
+            action_type="admin_request_reviewed",
+            action_description=f"Admin request {review_data.decision}d for {admin_request['full_name']}",
+            target_type="admin_request",
+            target_id=request_id,
+            before_state={"status": admin_request["status"]},
+            after_state={"status": update_data["status"]},
+            severity="info",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": f"Admin request {review_data.decision}d successfully",
+            "decision": review_data.decision,
+            "request_id": request_id,
+            "admin_created": review_data.decision == "approve"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Review admin request error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to review admin request")
+
+@api_router.get("/system-admin/admins")
+@limiter.limit("20/minute")
+async def get_campus_admins(
+    request: Request,
+    status: Optional[str] = None,
+    admin_type: Optional[str] = None,
+    college_name: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    current_user: str = Depends(get_current_user)
+):
+    """Get all campus admins for system admin management"""
+    try:
+        db = await get_database()
+        
+        # Check if user is system admin
+        user = await get_user_by_id(current_user)
+        if not user or not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="System admin access required")
+        
+        # Build query filter
+        query_filter = {}
+        if status:
+            query_filter["status"] = status
+        if admin_type:
+            query_filter["admin_type"] = admin_type
+        if college_name:
+            query_filter["college_name"] = {"$regex": college_name, "$options": "i"}
+        
+        # Get total count
+        total_count = await db.campus_admins.count_documents(query_filter)
+        
+        # Get paginated admins
+        skip = (page - 1) * limit
+        admins_cursor = db.campus_admins.find(query_filter).sort("appointed_at", -1).skip(skip).limit(limit)
+        campus_admins = await admins_cursor.to_list(None)
+        
+        # Enrich with user details
+        for admin in campus_admins:
+            user = await get_user_by_id(admin["user_id"])
+            if user:
+                admin["user_details"] = {
+                    "full_name": user.get("full_name"),
+                    "email": user.get("email"),
+                    "last_login": user.get("last_login"),
+                    "is_active": user.get("is_active", True)
+                }
+            
+            # Calculate activity metrics
+            admin["activity_metrics"] = {
+                "total_competitions": admin["competitions_created"],
+                "total_challenges": admin["challenges_created"],
+                "participants_managed": admin["participants_managed"],
+                "reputation_awarded": admin["reputation_points_awarded"],
+                "warnings": admin["warnings_count"],
+                "days_active": (datetime.now(timezone.utc) - admin["appointed_at"]).days
+            }
+        
+        return {
+            "admins": clean_mongo_doc(campus_admins),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "summary": {
+                "total_active": await db.campus_admins.count_documents({"status": "active"}),
+                "total_suspended": await db.campus_admins.count_documents({"status": "suspended"}),
+                "club_admins": await db.campus_admins.count_documents({"admin_type": "club_admin"}),
+                "college_admins": await db.campus_admins.count_documents({"admin_type": "college_admin"})
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get campus admins error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get campus admins")
+
+@api_router.put("/system-admin/admins/{admin_id}/privileges")
+@limiter.limit("10/minute")
+async def update_admin_privileges(
+    request: Request,
+    admin_id: str,
+    privilege_update: AdminPrivilegeUpdate,
+    current_user: str = Depends(get_current_user)
+):
+    """Update campus admin privileges (suspend, reactivate, revoke, update permissions)"""
+    try:
+        db = await get_database()
+        
+        # Check if user is system admin
+        user = await get_user_by_id(current_user)
+        if not user or not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="System admin access required")
+        
+        # Get campus admin
+        campus_admin = await db.campus_admins.find_one({"id": admin_id})
+        
+        if not campus_admin:
+            raise HTTPException(status_code=404, detail="Campus admin not found")
+        
+        # Store previous state for audit
+        previous_state = {
+            "status": campus_admin["status"],
+            "permissions": campus_admin["permissions"]
+        }
+        
+        # Apply updates based on action
+        update_data = {}
+        
+        if privilege_update.action == "suspend":
+            update_data["status"] = "suspended"
+            if privilege_update.suspension_duration_days:
+                update_data["suspension_expires_at"] = datetime.now(timezone.utc) + timedelta(days=privilege_update.suspension_duration_days)
+        
+        elif privilege_update.action == "reactivate":
+            update_data["status"] = "active"
+            update_data["$unset"] = {"suspension_expires_at": ""}
+        
+        elif privilege_update.action == "revoke":
+            update_data["status"] = "revoked"
+            update_data["expires_at"] = datetime.now(timezone.utc)
+        
+        elif privilege_update.action == "update_permissions":
+            if privilege_update.new_permissions:
+                update_data["permissions"] = privilege_update.new_permissions
+        
+        # Add metadata
+        update_data["last_privilege_update"] = datetime.now(timezone.utc)
+        update_data["last_updated_by"] = current_user
+        
+        # Apply update
+        await db.campus_admins.update_one(
+            {"id": admin_id},
+            {"$set": update_data} if "$unset" not in update_data else {"$set": {k: v for k, v in update_data.items() if k != "$unset"}, "$unset": update_data["$unset"]}
+        )
+        
+        # Create audit log
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user,
+            action_type=f"admin_privilege_{privilege_update.action}",
+            action_description=f"Campus admin privileges {privilege_update.action}d: {privilege_update.reason}",
+            target_type="campus_admin",
+            target_id=admin_id,
+            before_state=previous_state,
+            after_state=update_data,
+            severity="warning" if privilege_update.action in ["suspend", "revoke"] else "info",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": f"Admin privileges {privilege_update.action}d successfully",
+            "action": privilege_update.action,
+            "admin_id": admin_id,
+            "reason": privilege_update.reason
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update admin privileges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update admin privileges")
+
+@api_router.get("/system-admin/audit-logs")
+@limiter.limit("20/minute")
+async def get_admin_audit_logs(
+    request: Request,
+    action_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    days: int = 30,
+    page: int = 1,
+    limit: int = 50,
+    current_user: str = Depends(get_current_user)
+):
+    """Get admin audit logs for system admin review"""
+    try:
+        db = await get_database()
+        
+        # Check if user is system admin
+        user = await get_user_by_id(current_user)
+        if not user or not user.get("is_admin", False):
+            raise HTTPException(status_code=403, detail="System admin access required")
+        
+        # Build query filter
+        query_filter = {
+            "timestamp": {"$gte": datetime.now(timezone.utc) - timedelta(days=days)}
+        }
+        
+        if action_type:
+            query_filter["action_type"] = action_type
+        if severity:
+            query_filter["severity"] = severity
+        
+        # Get total count
+        total_count = await db.admin_audit_logs.count_documents(query_filter)
+        
+        # Get paginated logs
+        skip = (page - 1) * limit
+        logs_cursor = db.admin_audit_logs.find(query_filter).sort("timestamp", -1).skip(skip).limit(limit)
+        audit_logs = await logs_cursor.to_list(None)
+        
+        # Enrich with admin details
+        for log in audit_logs:
+            if log.get("admin_user_id") and log["admin_user_id"] != "system":
+                admin_user = await get_user_by_id(log["admin_user_id"])
+                if admin_user:
+                    log["admin_details"] = {
+                        "full_name": admin_user.get("full_name"),
+                        "email": admin_user.get("email")
+                    }
+        
+        return {
+            "audit_logs": clean_mongo_doc(audit_logs),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "summary": {
+                "total_actions": total_count,
+                "date_range": f"Last {days} days",
+                "action_types": await db.admin_audit_logs.distinct("action_type", query_filter),
+                "severity_counts": {
+                    "info": await db.admin_audit_logs.count_documents({**query_filter, "severity": "info"}),
+                    "warning": await db.admin_audit_logs.count_documents({**query_filter, "severity": "warning"}),
+                    "error": await db.admin_audit_logs.count_documents({**query_filter, "severity": "error"}),
+                    "critical": await db.admin_audit_logs.count_documents({**query_filter, "severity": "critical"})
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get audit logs error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get audit logs")
+
+# ===== CAMPUS ADMIN DASHBOARD ENDPOINTS =====
+
+@api_router.get("/campus-admin/dashboard")
+@limiter.limit("20/minute")
+async def get_campus_admin_dashboard(
+    request: Request,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Get campus admin dashboard with statistics and recent activities"""
+    try:
+        db = await get_database()
+        
+        # Get admin statistics
+        competitions_count = await db.inter_college_competitions.count_documents({
+            "created_by": current_campus_admin["user_id"]
+        })
+        
+        challenges_count = await db.prize_challenges.count_documents({
+            "created_by": current_campus_admin["user_id"]
+        })
+        
+        # Get recent competitions and challenges
+        recent_competitions = await db.inter_college_competitions.find({
+            "created_by": current_campus_admin["user_id"]
+        }).sort("created_at", -1).limit(5).to_list(None)
+        
+        recent_challenges = await db.prize_challenges.find({
+            "created_by": current_campus_admin["user_id"]
+        }).sort("created_at", -1).limit(5).to_list(None)
+        
+        # Get campus reputation stats if admin can manage reputation
+        campus_reputation = None
+        if current_campus_admin.get("can_manage_reputation"):
+            campus_reputation = await db.campus_reputation.find_one({
+                "campus": current_campus_admin["college_name"]
+            })
+        
+        # Get pending admin requests if this is a college admin
+        pending_requests = []
+        if current_campus_admin["admin_type"] == "college_admin":
+            pending_requests = await db.campus_admin_requests.find({
+                "college_name": current_campus_admin["college_name"],
+                "status": {"$in": ["pending", "under_review"]}
+            }).limit(10).to_list(None)
+        
+        # Calculate remaining monthly quota
+        current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        competitions_this_month = await db.inter_college_competitions.count_documents({
+            "created_by": current_campus_admin["user_id"],
+            "created_at": {"$gte": current_month}
+        })
+        challenges_this_month = await db.prize_challenges.count_documents({
+            "created_by": current_campus_admin["user_id"],
+            "created_at": {"$gte": current_month}
+        })
+        
+        total_this_month = competitions_this_month + challenges_this_month
+        remaining_quota = max(0, current_campus_admin["max_competitions_per_month"] - total_this_month)
+        
+        return {
+            "admin_details": {
+                "admin_type": current_campus_admin["admin_type"],
+                "college_name": current_campus_admin["college_name"],
+                "club_name": current_campus_admin.get("club_name"),
+                "permissions": current_campus_admin["permissions"],
+                "appointed_at": current_campus_admin["appointed_at"].isoformat(),
+                "expires_at": current_campus_admin.get("expires_at").isoformat() if current_campus_admin.get("expires_at") else None
+            },
+            "statistics": {
+                "total_competitions": competitions_count,
+                "total_challenges": challenges_count,
+                "competitions_this_month": competitions_this_month,
+                "challenges_this_month": challenges_this_month,
+                "remaining_monthly_quota": remaining_quota,
+                "participants_managed": current_campus_admin["participants_managed"],
+                "reputation_points_awarded": current_campus_admin["reputation_points_awarded"]
+            },
+            "recent_competitions": clean_mongo_doc(recent_competitions),
+            "recent_challenges": clean_mongo_doc(recent_challenges),
+            "campus_reputation": clean_mongo_doc(campus_reputation) if campus_reputation else None,
+            "pending_requests": clean_mongo_doc(pending_requests),
+            "capabilities": {
+                "can_create_inter_college": current_campus_admin["can_create_inter_college"],
+                "can_create_intra_college": current_campus_admin["can_create_intra_college"],
+                "can_manage_reputation": current_campus_admin["can_manage_reputation"],
+                "max_competitions_per_month": current_campus_admin["max_competitions_per_month"]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Campus admin dashboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get admin dashboard")
+
+@api_router.get("/campus-admin/competitions")
+@limiter.limit("20/minute")
+async def get_campus_admin_competitions(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Get competitions created by current campus admin"""
+    try:
+        db = await get_database()
+        
+        # Build query filter
+        query_filter = {"created_by": current_campus_admin["user_id"]}
+        if status:
+            query_filter["status"] = status
+        
+        # Get total count
+        total_count = await db.inter_college_competitions.count_documents(query_filter)
+        
+        # Get paginated competitions
+        skip = (page - 1) * limit
+        competitions_cursor = db.inter_college_competitions.find(query_filter).sort("created_at", -1).skip(skip).limit(limit)
+        competitions = await competitions_cursor.to_list(None)
+        
+        # Enrich with participation statistics
+        for comp in competitions:
+            participant_count = await db.campus_competition_participations.count_documents({
+                "competition_id": comp["id"]
+            })
+            comp["current_participants"] = participant_count
+            
+            # Get campus participation stats
+            campus_stats = await db.campus_leaderboards.find({
+                "competition_id": comp["id"]
+            }).to_list(None)
+            comp["participating_campuses"] = len(campus_stats)
+        
+        return {
+            "competitions": clean_mongo_doc(competitions),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get campus admin competitions error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get competitions")
+
+@api_router.get("/campus-admin/challenges")
+@limiter.limit("20/minute")
+async def get_campus_admin_challenges(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Get challenges created by current campus admin"""
+    try:
+        db = await get_database()
+        
+        # Build query filter
+        query_filter = {"created_by": current_campus_admin["user_id"]}
+        if status:
+            query_filter["status"] = status
+        
+        # Get total count
+        total_count = await db.prize_challenges.count_documents(query_filter)
+        
+        # Get paginated challenges
+        skip = (page - 1) * limit
+        challenges_cursor = db.prize_challenges.find(query_filter).sort("created_at", -1).skip(skip).limit(limit)
+        challenges = await challenges_cursor.to_list(None)
+        
+        # Enrich with participation statistics
+        for challenge in challenges:
+            participant_count = await db.prize_challenge_participations.count_documents({
+                "challenge_id": challenge["id"]
+            })
+            challenge["current_participants"] = participant_count
+        
+        return {
+            "challenges": clean_mongo_doc(challenges),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get campus admin challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenges")
+
+@api_router.post("/campus-admin/competitions/{competition_id}/moderate")
+@limiter.limit("10/minute")
+async def moderate_competition_participant(
+    request: Request,
+    competition_id: str,
+    user_id: str,
+    action: str,  # "warn", "disqualify", "reinstate"
+    reason: str,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Moderate competition participants (warnings, disqualifications)"""
+    try:
+        db = await get_database()
+        
+        if action not in ["warn", "disqualify", "reinstate"]:
+            raise HTTPException(status_code=400, detail="Invalid moderation action")
+        
+        # Verify the competition belongs to the admin
+        competition = await db.inter_college_competitions.find_one({
+            "id": competition_id,
+            "created_by": current_campus_admin["user_id"]
+        })
+        
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found or not authorized")
+        
+        # Get participant record
+        participant = await db.campus_competition_participations.find_one({
+            "competition_id": competition_id,
+            "user_id": user_id
+        })
+        
+        if not participant:
+            raise HTTPException(status_code=404, detail="Participant not found in competition")
+        
+        # Apply moderation action
+        update_data = {}
+        if action == "warn":
+            warnings = participant.get("warnings", [])
+            warnings.append({
+                "reason": reason,
+                "issued_by": current_campus_admin["user_id"],
+                "issued_at": datetime.now(timezone.utc)
+            })
+            update_data["warnings"] = warnings
+            
+        elif action == "disqualify":
+            update_data["registration_status"] = "disqualified"
+            update_data["disqualification_reason"] = reason
+            update_data["disqualified_by"] = current_campus_admin["user_id"]
+            update_data["disqualified_at"] = datetime.now(timezone.utc)
+            
+        elif action == "reinstate":
+            update_data["registration_status"] = "active"
+            update_data["$unset"] = {
+                "disqualification_reason": "",
+                "disqualified_by": "",
+                "disqualified_at": ""
+            }
+        
+        # Update participant record
+        if "$unset" in update_data:
+            await db.campus_competition_participations.update_one(
+                {"competition_id": competition_id, "user_id": user_id},
+                {"$set": {k: v for k, v in update_data.items() if k != "$unset"}, "$unset": update_data["$unset"]}
+            )
+        else:
+            await db.campus_competition_participations.update_one(
+                {"competition_id": competition_id, "user_id": user_id},
+                {"$set": update_data}
+            )
+        
+        # Update admin statistics
+        await db.campus_admins.update_one(
+            {"id": current_campus_admin["id"]},
+            {
+                "$inc": {"participants_managed": 1},
+                "$set": {"last_activity": datetime.now(timezone.utc)}
+            }
+        )
+        
+        # Create audit log
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_campus_admin["user_id"],
+            action_type="moderate_competition_participant",
+            action_description=f"Applied {action} to participant in {competition['title']}: {reason}",
+            target_type="competition_participant",
+            target_id=f"{competition_id}_{user_id}",
+            affected_entities=[
+                {"type": "competition", "id": competition_id, "name": competition["title"]},
+                {"type": "user", "id": user_id, "name": "Participant"}
+            ],
+            severity="warning" if action == "disqualify" else "info",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": f"Participant {action}d successfully",
+            "action": action,
+            "competition_id": competition_id,
+            "user_id": user_id,
+            "reason": reason
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Moderate competition participant error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to moderate participant")
 
 # ===== VIRAL IMPACT FEATURES =====
 
