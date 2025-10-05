@@ -29,6 +29,8 @@ import FeatureUnlock from './components/FeatureUnlock';
 import FinancialJourney from './components/FinancialJourney';
 import DailyTips from './components/DailyTips';
 import Timeline from './components/Timeline';
+import TipsHistory from './components/TipsHistory';
+import OffersHistory from './components/OffersHistory';
 import EnhancedPhotoSharing from './components/EnhancedPhotoSharing';
 import HabitTracking from './components/HabitTracking';
 import WeeklyRecap from './components/WeeklyRecap';
@@ -311,6 +313,14 @@ function App() {
               <Route 
                 path="/public/impact-stats" 
                 element={<ImpactStats />} 
+              />
+              <Route 
+                path="/tips-history" 
+                element={user ? <TipsHistory /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/offers-history" 
+                element={user ? <OffersHistory /> : <Navigate to="/login" />} 
               />
               
               <Route 
