@@ -39,7 +39,7 @@ const FriendComparisons = () => {
   };
 
   const shareComparison = async (comparison) => {
-    const shareText = `${comparison.comparison_text} ${comparison.emoji} Check out EarnNest to compare your spending with friends! #EarnNest #StudentFinance`;
+    const shareText = `${comparison.comparison_text} ${comparison.emoji} Check out EarnAura to compare your spending with friends! #EarnAura #StudentFinance`;
     
     if (navigator.share) {
       try {
