@@ -16,9 +16,9 @@ class EnhancedPhotoService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         
-        # Brand colors for EarnNest
+        # Brand colors for EarnAura
         self.brand_colors = {
-            "primary": "#10B981",      # EarnNest Green
+            "primary": "#10B981",      # EarnAura Green
             "secondary": "#059669", 
             "accent": "#F59E0B",       # Gold for achievements
             "purple": "#8B5CF6",       # Purple for milestones
@@ -379,7 +379,7 @@ class EnhancedPhotoService:
                 y_offset += 60
             
             # Brand footer
-            brand_text = "EarnNest - Your Financial Journey"
+            brand_text = "EarnAura - Your Financial Journey"
             brand_bbox = overlay_draw.textbbox((0, 0), brand_text, font=brand_font)
             brand_width = brand_bbox[2] - brand_bbox[0]
             overlay_draw.text(((width - brand_width) // 2, height - 150), brand_text, font=brand_font, fill=text_color)
