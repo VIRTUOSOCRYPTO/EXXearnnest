@@ -2127,7 +2127,261 @@ class PrizeChallenge(BaseModel):
     prize_structure: Dict[str, Any] = {}  # Detailed prize breakdown
     scholarship_details: Optional[Dict[str, Any]] = None  # For scholarship prizes
     # Campus reputation rewards
-    campus_reputation_rewards: Dict[str, int] = {}  # Winner's campus gets reputation points
+    campus_reputation_rewards: Dict[str, int] = {}
+
+# ===== ADMIN VERIFICATION WORKFLOW MODELS =====
+
+class CampusAdminRequest(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    # Contact and identity information
+    email: str
+    full_name: str
+    phone_number: Optional[str] = None
+    # College and club information
+    college_name: str
+    college_email_domain: Optional[str] = None  # Extracted from institutional email
+    club_name: Optional[str] = None
+    club_type: str = "student_organization"  # "student_organization", "academic_society", "cultural_club", "sports_club"
+    requested_admin_type: str = "club_admin"  # "club_admin", "college_admin"
+    # Verification details
+    verification_method: str = "email"  # "email", "manual", "both"
+    institutional_email: Optional[str] = None
+    email_verified: bool = False
+    email_verification_token: Optional[str] = None
+    email_verified_at: Optional[datetime] = None
+    # Document uploads
+    uploaded_documents: List[Dict[str, str]] = []  # [{"type": "college_id", "url": "...", "filename": "..."}]
+    college_id_document: Optional[str] = None
+    club_registration_document: Optional[str] = None
+    faculty_endorsement_document: Optional[str] = None
+    # Request workflow
+    status: str = "pending"  # "pending", "under_review", "approved", "rejected"
+    submission_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    review_started_at: Optional[datetime] = None
+    decision_made_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None  # System admin user ID
+    # Review details
+    review_notes: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    approval_conditions: Optional[str] = None
+    # Admin privileges (set upon approval)
+    admin_privileges: Dict[str, Any] = {}
+    privileges_expires_at: Optional[datetime] = None
+    is_active: bool = True
+
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["pending", "under_review", "approved", "rejected", "suspended"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+    @validator('requested_admin_type')
+    def validate_admin_type(cls, v):
+        allowed_types = ["club_admin", "college_admin"]
+        if v not in allowed_types:
+            raise ValueError(f'Admin type must be one of: {", ".join(allowed_types)}')
+        return v
+
+    @validator('verification_method')
+    def validate_verification_method(cls, v):
+        allowed_methods = ["email", "manual", "both"]
+        if v not in allowed_methods:
+            raise ValueError(f'Verification method must be one of: {", ".join(allowed_methods)}')
+        return v
+
+class CampusAdmin(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    request_id: str  # Reference to original admin request
+    # Admin details
+    admin_type: str = "club_admin"  # "club_admin", "college_admin"
+    college_name: str
+    club_name: Optional[str] = None
+    # Privileges and permissions
+    permissions: List[str] = []  # ["create_competitions", "manage_participants", "moderate_content"]
+    can_create_inter_college: bool = False
+    can_create_intra_college: bool = True
+    can_manage_reputation: bool = False
+    max_competitions_per_month: int = 5
+    # Status and lifecycle
+    status: str = "active"  # "active", "suspended", "revoked"
+    appointed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    appointed_by: str  # System admin user ID
+    last_activity: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    # Performance metrics
+    competitions_created: int = 0
+    challenges_created: int = 0
+    participants_managed: int = 0
+    reputation_points_awarded: int = 0
+    warnings_count: int = 0
+    # Audit trail
+    creation_ip: Optional[str] = None
+    creation_user_agent: Optional[str] = None
+
+    @validator('admin_type')
+    def validate_admin_type(cls, v):
+        allowed_types = ["club_admin", "college_admin"]
+        if v not in allowed_types:
+            raise ValueError(f'Admin type must be one of: {", ".join(allowed_types)}')
+        return v
+
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["active", "suspended", "revoked"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class AdminAuditLog(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    # Action details
+    admin_user_id: str
+    action_type: str  # "create_competition", "approve_request", "suspend_admin", "moderate_content"
+    action_description: str
+    target_type: str  # "competition", "challenge", "admin_request", "user", "campus_reputation"
+    target_id: Optional[str] = None
+    # Context information
+    affected_entities: List[Dict[str, str]] = []  # [{"type": "user", "id": "...", "name": "..."}]
+    before_state: Optional[Dict[str, Any]] = None
+    after_state: Optional[Dict[str, Any]] = None
+    # Metadata
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    session_id: Optional[str] = None
+    # Classification
+    severity: str = "info"  # "info", "warning", "error", "critical"
+    category: str = "admin_action"  # "admin_action", "system_event", "security_event"
+    is_system_generated: bool = False
+
+    @validator('severity')
+    def validate_severity(cls, v):
+        allowed_severities = ["info", "warning", "error", "critical"]
+        if v not in allowed_severities:
+            raise ValueError(f'Severity must be one of: {", ".join(allowed_severities)}')
+        return v
+
+    @validator('category')
+    def validate_category(cls, v):
+        allowed_categories = ["admin_action", "system_event", "security_event"]
+        if v not in allowed_categories:
+            raise ValueError(f'Category must be one of: {", ".join(allowed_categories)}')
+        return v
+
+class EmailDomainVerification(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    email_domain: str
+    college_name: str
+    verification_status: str = "unverified"  # "unverified", "verified", "blacklisted"
+    # Verification details
+    verified_by: Optional[str] = None  # System admin who verified
+    verified_at: Optional[datetime] = None
+    verification_method: str = "manual"  # "manual", "automatic", "api"
+    # Domain information
+    domain_type: str = "educational"  # "educational", "government", "commercial"
+    country: str = "IN"
+    state: Optional[str] = None
+    # Metadata
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    usage_count: int = 0  # How many requests used this domain
+    last_used: Optional[datetime] = None
+
+    @validator('verification_status')
+    def validate_verification_status(cls, v):
+        allowed_statuses = ["unverified", "verified", "blacklisted"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Verification status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class SystemAdminNotification(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    # Notification content
+    title: str
+    message: str
+    notification_type: str = "admin_request"  # "admin_request", "system_alert", "audit_alert"
+    priority: str = "normal"  # "low", "normal", "high", "urgent"
+    # Target and source
+    target_admin_id: Optional[str] = None  # If None, sent to all system admins
+    source_type: str = "system"  # "system", "user", "automated"
+    source_id: Optional[str] = None
+    # Related entities
+    related_request_id: Optional[str] = None
+    related_user_id: Optional[str] = None
+    related_competition_id: Optional[str] = None
+    # Action buttons
+    action_url: Optional[str] = None
+    action_buttons: List[Dict[str, str]] = []  # [{"label": "Approve", "action": "approve_request"}]
+    # Status
+    is_read: bool = False
+    read_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None
+
+    @validator('priority')
+    def validate_priority(cls, v):
+        allowed_priorities = ["low", "normal", "high", "urgent"]
+        if v not in allowed_priorities:
+            raise ValueError(f'Priority must be one of: {", ".join(allowed_priorities)}')
+        return v
+
+# ===== REQUEST MODELS FOR ADMIN WORKFLOW =====
+
+class CampusAdminRequestCreate(BaseModel):
+    # Personal information
+    full_name: str = Field(..., min_length=2, max_length=100)
+    phone_number: Optional[str] = Field(None, regex=r'^\+?[1-9]\d{1,14}$')
+    # College and club information
+    college_name: str = Field(..., min_length=2, max_length=200)
+    institutional_email: Optional[str] = Field(None, regex=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    club_name: Optional[str] = Field(None, max_length=200)
+    club_type: str = Field(default="student_organization")
+    requested_admin_type: str = Field(default="club_admin")
+    # Reasoning and motivation
+    motivation: str = Field(..., min_length=50, max_length=1000)
+    previous_experience: Optional[str] = Field(None, max_length=1000)
+    planned_activities: Optional[str] = Field(None, max_length=1000)
+
+    @validator('requested_admin_type')
+    def validate_admin_type(cls, v):
+        allowed_types = ["club_admin", "college_admin"]
+        if v not in allowed_types:
+            raise ValueError(f'Admin type must be one of: {", ".join(allowed_types)}')
+        return v
+
+    @validator('club_type')
+    def validate_club_type(cls, v):
+        allowed_types = ["student_organization", "academic_society", "cultural_club", "sports_club", "technical_club", "social_service"]
+        if v not in allowed_types:
+            raise ValueError(f'Club type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class AdminRequestReview(BaseModel):
+    decision: str = Field(..., regex=r'^(approve|reject)$')
+    review_notes: Optional[str] = Field(None, max_length=1000)
+    rejection_reason: Optional[str] = Field(None, max_length=500)
+    approval_conditions: Optional[str] = Field(None, max_length=500)
+    # Admin privileges (only for approval)
+    admin_type: Optional[str] = None
+    permissions: Optional[List[str]] = None
+    can_create_inter_college: bool = False
+    max_competitions_per_month: int = 5
+    expires_in_months: int = 12
+
+class DocumentUploadRequest(BaseModel):
+    request_id: str
+    document_type: str = Field(..., regex=r'^(college_id|club_registration|faculty_endorsement)$')
+    document_description: Optional[str] = None
+
+class AdminPrivilegeUpdate(BaseModel):
+    admin_id: str
+    action: str = Field(..., regex=r'^(suspend|reactivate|revoke|update_permissions)$')
+    reason: str = Field(..., min_length=10, max_length=500)
+    new_permissions: Optional[List[str]] = None
+    suspension_duration_days: Optional[int] = Field(None, ge=1, le=365)  # Winner's campus gets reputation points
     # Status and management
     status: str = "upcoming"  # "upcoming", "active", "completed", "cancelled"
     is_featured: bool = False
