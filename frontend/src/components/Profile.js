@@ -332,33 +332,6 @@ const Profile = () => {
               </div>
             )}
           </div>
-
-          {/* Achievements Section */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6 slide-up" style={{ animationDelay: '0.2s' }}>
-            <div className="flex items-center gap-3 mb-4">
-              <StarIcon className="w-6 h-6 text-yellow-500" />
-              <h3 className="text-xl font-bold text-gray-900">Achievements</h3>
-            </div>
-
-            {user?.achievements && user.achievements.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {user.achievements.map((achievement, index) => (
-                  <div key={index} className="achievement-badge">
-                    <StarIcon className="w-4 h-4" />
-                    {typeof achievement === 'object' && achievement !== null 
-                      ? achievement.title || achievement.description || JSON.stringify(achievement)
-                      : achievement}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <StarIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-500">No achievements yet</p>
-                <p className="text-sm text-gray-400">Keep earning to unlock achievements!</p>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </div>
