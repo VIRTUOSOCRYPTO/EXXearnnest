@@ -188,7 +188,7 @@ const PublicCampusBattle = () => {
         <div className="mt-16 text-center bg-gradient-to-r from-green-600 to-blue-600 rounded-2xl p-8">
           <h3 className="text-3xl font-bold mb-4">Want to boost your campus ranking? 🚀</h3>
           <p className="text-xl text-green-100 mb-6">
-            Join EarnNest and help your college dominate the leaderboard!
+            Join EarnAura and help your college dominate the leaderboard!
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <a 
