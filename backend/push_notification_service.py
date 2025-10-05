@@ -447,7 +447,7 @@ class PushNotificationService:
                 icon_path = "/icons/streak-icon.png"
             else:
                 title = f"👥 Friend Update"
-                body = f"{friend_name} {activity_data.get('description', 'has new activity')} on EarnNest"
+                body = f"{friend_name} {activity_data.get('description', 'has new activity')} on EarnAura"
                 icon_path = "/icons/friend-icon.png"
             
             notification_payload = {
