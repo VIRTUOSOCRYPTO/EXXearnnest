@@ -11,6 +11,7 @@ import {
   Upload, Mail, Shield, CheckCircle, AlertCircle, Clock,
   FileText, GraduationCap, Building, User
 } from 'lucide-react';
+import useWebSocket from '../hooks/useWebSocket';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -22,6 +23,29 @@ const CampusAdminRequest = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [statusUpdates, setStatusUpdates] = useState([]);
+  
+  // Real-time notifications for request status updates
+  const { isConnected: wsConnected } = useWebSocket('notifications', {
+    onMessage: (message) => {
+      if (message.type === 'admin_request_status_update' || 
+          message.type === 'admin_privileges_granted' ||
+          message.type === 'document_uploaded' ||
+          message.type === 'email_verification_update') {
+        
+        // Refresh request status
+        fetchRequestStatus();
+        
+        // Add to status updates for display
+        setStatusUpdates(prev => [message, ...prev].slice(0, 10));
+        
+        // Show immediate feedback to user
+        if (message.title && message.message) {
+          alert(message.title + '\n\n' + message.message);
+        }
+      }
+    }
+  });
 
   // Form data
   const [formData, setFormData] = useState({
@@ -516,6 +540,13 @@ const CampusAdminRequest = () => {
             <div>
               <h1 className="text-2xl font-bold mb-2">Campus Admin Request</h1>
               <p className="text-blue-100">Request ID: {request.id}</p>
+              {/* Real-time Status Indicator */}
+              <div className="flex items-center mt-2 space-x-2">
+                <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className="text-blue-100 text-sm">
+                  {wsConnected ? 'Live updates enabled' : 'Live updates offline'}
+                </span>
+              </div>
             </div>
             {getStatusBadge(request.status)}
           </div>
