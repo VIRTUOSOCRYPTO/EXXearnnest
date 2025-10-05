@@ -71,6 +71,13 @@ const Navigation = () => {
     { path: '/campus-reputation', label: 'Campus Reputation', icon: TrophyIcon },
   ];
 
+  // Admin navigation items (conditionally shown)
+  const adminItems = [
+    { path: '/campus-admin/request', label: 'Request Admin Access', icon: BuildingOffice2Icon },
+    { path: '/campus-admin/dashboard', label: 'Admin Dashboard', icon: ChartBarIcon, adminOnly: true },
+    { path: '/system-admin', label: 'System Admin', icon: UserCircleIcon, systemAdminOnly: true },
+  ];
+
   const viralItems = [
     { path: '/public/campus-battle', label: 'Campus Battle Arena', icon: TrophyIcon, public: true },
     { path: '/spending-insights', label: 'Spending Insights', icon: ChartBarIcon },
@@ -216,6 +223,46 @@ const Navigation = () => {
                         <Icon className="w-4 h-4" />
                         {item.label}
                         {item.public && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded-full ml-auto">Public</span>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Admin Dropdown */}
+            <div className="relative group">
+              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-gray-50 transition-all duration-200">
+                <BuildingOffice2Icon className="w-4 h-4" />
+                Admin
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {/* Admin Dropdown Menu */}
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                <div className="p-2 space-y-1">
+                  {adminItems.map((item) => {
+                    // Show based on user permissions
+                    if (item.systemAdminOnly && !user?.is_admin) return null;
+                    if (item.adminOnly && !user?.is_campus_admin && !user?.is_admin) return null;
+                    
+                    const Icon = item.icon;
+                    const isActive = location.pathname === item.path;
+                    
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          isActive
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {item.label}
                       </Link>
                     );
                   })}
