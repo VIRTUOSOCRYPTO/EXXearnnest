@@ -4737,7 +4737,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://data-stories-1.preview.emergentagent.com"
+        base_url = "https://feature-verifier.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7289,7 +7289,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://data-stories-1.preview.emergentagent.com"
+        base_url = "https://feature-verifier.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -13774,8 +13774,7 @@ async def get_task_status(request: Request, task_id: str, current_user: str = De
 
 # ==================== END PERFORMANCE MONITORING ====================
 
-# Include the router in the main app (after all endpoints are defined)
-app.include_router(api_router)
+# Router will be included at the very end after ALL endpoints are defined
 
 # Configure logging
 logging.basicConfig(
@@ -13878,7 +13877,11 @@ async def get_public_campus_battle():
             
             # Check if active in last 7 days
             last_activity = user.get('last_activity_date')
-            if last_activity and last_activity > seven_days_ago:
+            if last_activity:
+                # Ensure timezone compatibility
+                if last_activity.tzinfo is None:
+                    last_activity = last_activity.replace(tzinfo=timezone.utc)
+                if last_activity > seven_days_ago:
                 campus_stats[campus]['active_users_7d'] += 1
                 campus_stats[campus]['recent_activity'] += 1
         
@@ -13981,9 +13984,9 @@ async def get_campus_spending_insights(campus: str, current_user = Depends(get_c
         # Generate shareable insight
         if insights:
             top_category = insights[0]
-            shareable_text = f"Our {campus} campus spends {top_category['percentage']}% of its budget on {top_category['category'].lower()} {top_category['emoji']} #EarnNest #StudentFinance"
+            shareable_text = f"Our {campus} campus spends {top_category['percentage']}% of its budget on {top_category['category'].lower()} {top_category['emoji']} #EarnAura #StudentFinance"
         else:
-            shareable_text = f"{campus} students are building great financial habits! #EarnNest"
+            shareable_text = f"{campus} students are building great financial habits! #EarnAura"
         
         return {
             "success": True,
@@ -14018,9 +14021,9 @@ async def check_viral_milestones():
         app_milestones = []
         for milestone in milestones:
             if total_app_savings >= milestone:
-                milestone_text = f"All EarnNest students have saved ₹{milestone/100000:.0f} lakh total!"
+                milestone_text = f"All EarnAura students have saved ₹{milestone/100000:.0f} lakh total!"
                 if milestone >= 10000000:
-                    milestone_text = f"All EarnNest students have saved ₹{milestone/10000000:.0f} crore total!"
+                    milestone_text = f"All EarnAura students have saved ₹{milestone/10000000:.0f} crore total!"
                 
                 app_milestones.append({
                     "type": "app_wide",
@@ -14287,6 +14290,9 @@ async def get_media_ready_impact_stats():
     except Exception as e:
         logger.error(f"Impact stats error: {str(e)}")
         raise HTTPException(status_code=500, detail="Error retrieving impact statistics")
+
+# Include ALL API routes after endpoint definitions
+app.include_router(api_router)
 
 # Health check endpoint
 @app.get("/health")
