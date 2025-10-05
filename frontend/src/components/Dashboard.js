@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom';
 import { useAuth, formatCurrency } from '../App';
 import DailyTips from './DailyTips';
 import LimitedOffers from './LimitedOffers';
-import Timeline from './Timeline';
 import { 
   BanknotesIcon, 
   ArrowTrendingUpIcon, 
@@ -511,10 +510,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Timeline Section */}
-      <div className="mt-8">
-        <Timeline userId={user?.id} />
-      </div>
     </div>
   );
 };
