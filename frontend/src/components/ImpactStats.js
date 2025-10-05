@@ -44,7 +44,7 @@ const ImpactStats = () => {
     
 ${story.description}
 
-#EarnNest #StudentFinance #FinTech #IndiaStudents`;
+#EarnAura #StudentFinance #FinTech #IndiaStudents`;
 
     if (navigator.share) {
       try {
@@ -70,18 +70,18 @@ ${story.headline}
 
 ${story.description}
 
-About EarnNest:
-EarnNest is India's leading student finance platform, helping students track expenses, save money, and earn through side hustles. Our mission is to empower the next generation with financial literacy and independence.
+About EarnAura:
+EarnAura is India's leading student finance platform, helping students track expenses, save money, and earn through side hustles. Our mission is to empower the next generation with financial literacy and independence.
 
 Press Contact:
-Media Team - EarnNest
-Email: press@earnnest.com
+Media Team - EarnAura
+Email: press@earnaura.com
 Website: ${window.location.origin}
 
 ###
 
 Generated on: ${new Date().toLocaleDateString()}
-Source: EarnNest Impact Analytics
+Source: EarnAura Impact Analytics
 `;
 
     const blob = new Blob([pressRelease], { type: 'text/plain' });
@@ -292,7 +292,7 @@ Source: EarnNest Impact Analytics
             <div className="grid md:grid-cols-3 gap-6 max-w-3xl mx-auto">
               <div className="text-center">
                 <h4 className="font-semibold text-gray-800 mb-2">Press Contact</h4>
-                <p className="text-gray-600">press@earnnest.com</p>
+                <p className="text-gray-600">press@earnaura.com</p>
               </div>
               <div className="text-center">
                 <h4 className="font-semibold text-gray-800 mb-2">Data Requests</h4>
@@ -319,7 +319,7 @@ Source: EarnNest Impact Analytics
         <div className="mt-16 bg-gradient-to-r from-green-600 to-blue-600 rounded-2xl p-8 text-center text-white">
           <h3 className="text-3xl font-bold mb-4">Be Part of the Story! 🚀</h3>
           <p className="text-xl text-green-100 mb-6 max-w-2xl mx-auto">
-            Every student who joins EarnNest contributes to these incredible impact stories. 
+            Every student who joins EarnAura contributes to these incredible impact stories. 
             Help us change India's financial future, one student at a time.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
