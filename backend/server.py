@@ -4765,7 +4765,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://go-live-deploy.preview.emergentagent.com"
+        base_url = "https://prod-sync-expert.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7317,7 +7317,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://go-live-deploy.preview.emergentagent.com"
+        base_url = "https://prod-sync-expert.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -7432,7 +7432,7 @@ async def process_referral_signup(request: Request, referral_code: str, new_user
 
 @api_router.get("/challenges")
 @limiter.limit("20/minute")
-async def get_active_challenges(request: Request, current_user: str = Depends(get_current_user)):
+async def get_active_challenges(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get all active challenges"""
     try:
         db = await get_database()
@@ -7553,7 +7553,7 @@ async def create_challenge(request: Request, challenge_data: ChallengeCreate, cu
 
 @api_router.post("/challenges/{challenge_id}/join")
 @limiter.limit("10/minute")
-async def join_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+async def join_challenge(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Join a challenge"""
     try:
         db = await get_database()
@@ -7614,7 +7614,7 @@ async def join_challenge(request: Request, challenge_id: str, current_user: str 
 
 @api_router.get("/challenges/{challenge_id}/leaderboard")
 @limiter.limit("20/minute")
-async def get_challenge_leaderboard(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+async def get_challenge_leaderboard(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Get challenge leaderboard"""
     try:
         db = await get_database()
@@ -7673,7 +7673,7 @@ async def get_challenge_leaderboard(request: Request, challenge_id: str, current
 
 @api_router.get("/challenges/my-challenges")
 @limiter.limit("20/minute")
-async def get_my_challenges(request: Request, current_user: str = Depends(get_current_user)):
+async def get_my_challenges(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get user's active challenges with progress"""
     try:
         db = await get_database()
@@ -8012,7 +8012,7 @@ async def reject_challenge(request: Request, challenge_id: str, reject_data: Cha
 
 @api_router.get("/challenges/my-created")
 @limiter.limit("20/minute")
-async def get_my_created_challenges(request: Request, current_user: str = Depends(get_current_user)):
+async def get_my_created_challenges(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get challenges created by the current user with their moderation status"""
     try:
         db = await get_database()
@@ -8279,7 +8279,7 @@ async def invite_friend(request: Request, invite_data: FriendInviteRequest, curr
 
 @api_router.get("/friends")
 @limiter.limit("20/minute")
-async def get_friends(request: Request, current_user: str = Depends(get_current_user)):
+async def get_friends(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get user's friends list"""
     try:
         db = await get_database()
@@ -8326,7 +8326,7 @@ async def get_friends(request: Request, current_user: str = Depends(get_current_
 
 @api_router.get("/friends/invitations")
 @limiter.limit("20/minute")
-async def get_invitations(request: Request, current_user: str = Depends(get_current_user)):
+async def get_invitations(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get sent and received invitations"""
     try:
         db = await get_database()
@@ -8360,7 +8360,7 @@ async def get_invitations(request: Request, current_user: str = Depends(get_curr
 
 @api_router.post("/friends/accept-invitation")
 @limiter.limit("5/minute")
-async def accept_friend_invitation(request: Request, referral_code: str, current_user: str = Depends(get_current_user)):
+async def accept_friend_invitation(request: Request, referral_code: str, current_user: dict = Depends(get_current_user_dict)):
     """Accept friend invitation using referral code"""
     try:
         db = await get_database()
@@ -8479,7 +8479,7 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
 
 @api_router.get("/friends/suggestions")
 @limiter.limit("20/minute")
-async def get_friend_suggestions(request: Request, current_user: str = Depends(get_current_user)):
+async def get_friend_suggestions(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Get campus-specific friend suggestions"""
     try:
         db = await get_database()
@@ -8794,7 +8794,7 @@ async def join_group_challenge(request: Request, challenge_id: str, current_user
 
 @api_router.get("/group-challenges/{challenge_id}")
 @limiter.limit("20/minute")
-async def get_group_challenge_details(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+async def get_group_challenge_details(request: Request, challenge_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Get detailed information about a specific group challenge"""
     try:
         db = await get_database()
@@ -8962,7 +8962,7 @@ async def get_campus_leaderboards(
     request: Request, 
     leaderboard_type: str, 
     period: str = "monthly",
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get campus-specific leaderboards with college vs college comparison"""
     try:
@@ -14103,7 +14103,7 @@ async def check_viral_milestones():
 
 # 4. FRIEND COMPARISONS (Anonymous)
 @api_router.get("/insights/friend-comparison")
-async def get_friend_comparison_insights(current_user = Depends(get_current_user)):
+async def get_friend_comparison_insights(current_user = Depends(get_current_user_dict)):
     """Get anonymous friend spending comparisons"""
     try:
         user_id = current_user["id"]
