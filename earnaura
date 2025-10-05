@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# EarnNest Management CLI
+
+COMMAND=${1:-status}
+
+case $COMMAND in
+    "start"|"restart")
+        echo "🚀 Starting/Restarting EarnNest services..."
+        /app/scripts/startup.sh
+        ;;
+    "stop")
+        echo "🛑 Stopping EarnNest services..."
+        sudo supervisorctl stop all
+        ;;
+    "status")
+        echo "📊 EarnNest Service Status:"
+        echo "========================="
+        sudo supervisorctl status
+        echo ""
+        echo "🔍 Health Checks:"
+        echo "=================="
+        
+        # Backend health
+        if curl -s -f "http://localhost:8001/health" > /dev/null 2>&1; then
+            echo "✅ Backend: Healthy"
+        else
+            echo "❌ Backend: Unhealthy"
+        fi
+        
+        # Frontend health  
+        if curl -s -f "http://localhost:3000" > /dev/null 2>&1; then
+            echo "✅ Frontend: Healthy"
+        else
+            echo "❌ Frontend: Unhealthy"
+        fi
+        
+        echo ""
+        echo "🌐 Access URLs:"
+        echo "==============="
+        echo "Frontend: https://run-analyze.preview.emergentagent.com"
+        echo "Backend API: https://run-analyze.preview.emergentagent.com/api"
+        echo "Code Server: Available on port 8080"
+        ;;
+    "logs")
+        SERVICE=${2:-backend}
+        echo "📋 Showing logs for $SERVICE..."
+        case $SERVICE in
+            "backend")
+                tail -f /var/log/supervisor/backend.*.log
+                ;;
+            "frontend") 
+                tail -f /var/log/supervisor/frontend.*.log
+                ;;
+            "mongodb")
+                tail -f /var/log/mongodb.*.log
+                ;;
+            "all")
+                tail -f /var/log/supervisor/*.log
+                ;;
+            *)
+                echo "Available services: backend, frontend, mongodb, all"
+                ;;
+        esac
+        ;;
+    "monitor")
+        echo "🔍 Starting continuous monitoring (Ctrl+C to stop)..."
+        /app/scripts/monitor_services.sh
+        ;;
+    "help"|"-h"|"--help")
+        echo "EarnNest Management CLI"
+        echo "======================"
+        echo "Usage: earnaura [command]"
+        echo ""
+        echo "Commands:"
+        echo "  start     - Start all services"
+        echo "  restart   - Restart all services" 
+        echo "  stop      - Stop all services"
+        echo "  status    - Show service status and health (default)"
+        echo "  logs [service] - Show logs (backend/frontend/mongodb/all)"
+        echo "  monitor   - Start continuous service monitoring"
+        echo "  help      - Show this help message"
+        ;;
+    *)
+        echo "❌ Unknown command: $COMMAND"
+        echo "Run 'earnest help' for usage information"
+        exit 1
+        ;;
+esac
