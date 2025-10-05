@@ -43,6 +43,11 @@ import InterCollegeCompetitions from './components/InterCollegeCompetitions';
 import PrizeChallenges from './components/PrizeChallenges';
 import CampusReputation from './components/CampusReputation';
 
+// Admin Verification System
+import CampusAdminRequest from './components/CampusAdminRequest';
+import SystemAdminInterface from './components/SystemAdminInterface';
+import CampusAdminDashboard from './components/CampusAdminDashboard';
+
 // Viral Impact Features
 import PublicCampusBattle from './components/PublicCampusBattle';
 import SpendingInsights from './components/SpendingInsights';
@@ -291,6 +296,20 @@ function App() {
               <Route 
                 path="/campus-reputation" 
                 element={user ? <CampusReputation /> : <Navigate to="/login" />} 
+              />
+
+              {/* Admin Verification System Routes */}
+              <Route 
+                path="/campus-admin/request" 
+                element={user ? <CampusAdminRequest /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/campus-admin/dashboard" 
+                element={user ? <CampusAdminDashboard /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/system-admin" 
+                element={user ? <SystemAdminInterface /> : <Navigate to="/login" />} 
               />
               
               {/* Viral Impact Features */}
