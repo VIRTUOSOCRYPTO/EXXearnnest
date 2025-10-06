@@ -63,12 +63,34 @@ const FriendsAndReferrals = () => {
 
   // General state
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('friends'); // friends, referrals
+  const [activeTab, setActiveTab] = useState('friends'); // friends, referrals, activity
   const { user } = useAuth();
+
+  // **NEW: Real-time activity state**
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [liveStats, setLiveStats] = useState(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  // **NEW: Auto-refresh functionality for real-time updates**
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const refreshInterval = setInterval(() => {
+      fetchLiveStats();
+      if (activeTab === 'activity') {
+        fetchRecentActivity();
+      }
+      // Refresh friends list every 30 seconds to catch new automatic connections
+      fetchFriends();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(refreshInterval);
+  }, [activeTab, autoRefresh]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -76,7 +98,9 @@ const FriendsAndReferrals = () => {
       await Promise.all([
         fetchFriends(),
         fetchInvitations(),
-        fetchReferralData()
+        fetchReferralData(),
+        fetchLiveStats(),
+        fetchRecentActivity()
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -302,6 +326,63 @@ const FriendsAndReferrals = () => {
     window.location.href = mailtoUrl;
   };
 
+  // **NEW: Real-time activity functions**
+  const fetchRecentActivity = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BACKEND_URL}/api/friends/recent-activity`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setRecentActivity(data.recent_activities || []);
+      }
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+    }
+  };
+
+  const fetchLiveStats = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BACKEND_URL}/api/friends/live-stats`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setLiveStats(data);
+      }
+    } catch (error) {
+      console.error('Error fetching live stats:', error);
+    }
+  };
+
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+    if (!autoRefresh) {
+      fetchAllData(); // Immediately refresh when turning on
+    }
+  };
+
+  const formatTimeAgo = (timestamp) => {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffMinutes = Math.floor((now - time) / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -319,24 +400,68 @@ const FriendsAndReferrals = () => {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
-        <Button
-          onClick={() => setActiveTab('friends')}
-          variant={activeTab === 'friends' ? 'default' : 'ghost'}
-          className="px-6"
-        >
-          <Users className="w-4 h-4 mr-2" />
-          Friends Network
-        </Button>
-        <Button
-          onClick={() => setActiveTab('referrals')}
-          variant={activeTab === 'referrals' ? 'default' : 'ghost'}
-          className="px-6"
-        >
-          <Gift className="w-4 h-4 mr-2" />
-          Refer & Earn
-        </Button>
+      {/* Tab Navigation & Controls */}
+      <div className="flex items-center justify-between">
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit">
+          <Button
+            onClick={() => setActiveTab('friends')}
+            variant={activeTab === 'friends' ? 'default' : 'ghost'}
+            className="px-6"
+          >
+            <Users className="w-4 h-4 mr-2" />
+            Friends Network
+            {liveStats?.friends_count > 0 && (
+              <Badge variant="secondary" className="ml-2">{liveStats.friends_count}</Badge>
+            )}
+          </Button>
+          <Button
+            onClick={() => setActiveTab('referrals')}
+            variant={activeTab === 'referrals' ? 'default' : 'ghost'}
+            className="px-6"
+          >
+            <Gift className="w-4 h-4 mr-2" />
+            Refer & Earn
+            {liveStats?.total_referrals > 0 && (
+              <Badge variant="secondary" className="ml-2">{liveStats.total_referrals}</Badge>
+            )}
+          </Button>
+          <Button
+            onClick={() => setActiveTab('activity')}
+            variant={activeTab === 'activity' ? 'default' : 'ghost'}
+            className="px-6"
+          >
+            <Clock className="w-4 h-4 mr-2" />
+            Live Activity
+            {liveStats?.recent_friend_activities > 0 && (
+              <Badge variant="secondary" className="ml-2">{liveStats.recent_friend_activities}</Badge>
+            )}
+          </Button>
+        </div>
+
+        {/* **NEW: Auto-refresh Controls** */}
+        <div className="flex items-center space-x-3">
+          <Button
+            onClick={toggleAutoRefresh}
+            variant={autoRefresh ? "default" : "outline"}
+            size="sm"
+            className="flex items-center space-x-2"
+          >
+            <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+            <span>{autoRefresh ? 'Live' : 'Paused'}</span>
+          </Button>
+          <Button
+            onClick={fetchAllData}
+            variant="outline"
+            size="sm"
+          >
+            <ArrowUpIcon className="w-4 h-4" />
+          </Button>
+          {liveStats?.last_updated && (
+            <span className="text-xs text-gray-500">
+              Updated {formatTimeAgo(liveStats.last_updated)}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Friends Tab */}
@@ -768,6 +893,175 @@ const FriendsAndReferrals = () => {
                   <p className="text-sm text-gray-600">
                     Both you and your friend earn rewards when they complete their first transaction
                   </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* **NEW: Live Activity Tab** */}
+      {activeTab === 'activity' && (
+        <div className="space-y-6">
+          {/* Network Stats Overview */}
+          {recentActivity.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Network Size</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">{liveStats?.friends_count || 0}</div>
+                  <p className="text-xs text-gray-500">Connected friends</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Total Referrals</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-emerald-600">{liveStats?.total_referrals || 0}</div>
+                  <p className="text-xs text-gray-500">People joined via your link</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600">{liveStats?.recent_friend_activities || 0}</div>
+                  <p className="text-xs text-gray-500">Friend activities today</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Auto-Refresh</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className={`text-2xl font-bold ${autoRefresh ? 'text-green-600' : 'text-gray-400'}`}>
+                    {autoRefresh ? 'ON' : 'OFF'}
+                  </div>
+                  <p className="text-xs text-gray-500">Real-time updates</p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Live Activity Feed */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Live Friend Activity
+                </CardTitle>
+                <Button 
+                  onClick={fetchRecentActivity} 
+                  variant="outline" 
+                  size="sm"
+                  disabled={activityLoading}
+                >
+                  {activityLoading ? 'Updating...' : 'Refresh'}
+                </Button>
+              </div>
+              <CardDescription>
+                See what your friends are achieving in real-time
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {recentActivity.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No Recent Activity</h3>
+                  <p className="text-gray-500 mb-4">
+                    Share your referral link to connect with friends and see their achievements here!
+                  </p>
+                  <Button 
+                    onClick={() => setActiveTab('referrals')}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Gift className="w-4 h-4 mr-2" />
+                    Start Referring Friends
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {recentActivity.map((activity, index) => (
+                    <div key={index} className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                      <Avatar className="w-10 h-10">
+                        <img 
+                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activity.friend_avatar}`}
+                          alt={activity.friend_name}
+                        />
+                      </Avatar>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-semibold text-gray-900 truncate">
+                            {activity.friend_name}
+                          </h4>
+                          <span className="text-lg">{activity.emoji}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {activity.type.replace('_', ' ')}
+                          </Badge>
+                        </div>
+                        
+                        <p className="text-sm text-gray-600 mt-1">
+                          {activity.activity}
+                        </p>
+                        
+                        {activity.description && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            {activity.description}
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="text-right">
+                        <span className="text-xs text-gray-400">
+                          {formatTimeAgo(activity.timestamp)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Automatic Connection Info */}
+          <Card className="border-emerald-200 bg-emerald-50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-emerald-800">
+                <SparklesIcon className="h-5 w-5" />
+                Automatic Friend Connections
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-emerald-700">
+                <h4 className="font-semibold mb-2">🎉 New Feature: Instant Friendships!</h4>
+                <p className="text-sm leading-relaxed">
+                  When someone registers using your referral code, you automatically become friends! 
+                  No more manual invitation acceptance - instant connection and both users get bonus points. 
+                  Watch this activity feed to see your network grow in real-time.
+                </p>
+                
+                <div className="mt-4 p-3 bg-white rounded-lg border border-emerald-200">
+                  <div className="flex items-center space-x-2 text-sm">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Automatic friendship creation ✅</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm mt-1">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Instant bonus points for both users ✅</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm mt-1">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Real-time activity updates ✅</span>
+                  </div>
                 </div>
               </div>
             </CardContent>
