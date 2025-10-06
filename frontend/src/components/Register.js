@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../App';
 import { 
@@ -19,8 +19,12 @@ const API = `${BACKEND_URL}/api`;
 
 const Register = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 3;
+  
+  // Extract referral code from URL params
+  const [referralCode, setReferralCode] = useState('');
   
   const [formData, setFormData] = useState({
     email: '',
@@ -77,6 +81,16 @@ const Register = () => {
     
     fetchData();
   }, []);
+
+  // Extract referral code from URL parameters
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      setReferralCode(refCode);
+      console.log('Referral code detected:', refCode);
+    }
+  }, [location.search]);
 
   // Smart university suggestions based on location and student level
   useEffect(() => {
@@ -289,7 +303,13 @@ const Register = () => {
       };
       delete submitData.confirmPassword;
 
-      const response = await axios.post(`${API}/auth/register`, submitData);
+      // Build URL with referral code if present
+      let registrationUrl = `${API}/auth/register`;
+      if (referralCode) {
+        registrationUrl += `?ref=${encodeURIComponent(referralCode)}`;
+      }
+      
+      const response = await axios.post(registrationUrl, submitData);
       
       login(response.data.user, response.data.token);
       navigate('/dashboard');
@@ -400,6 +420,16 @@ const Register = () => {
             <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/60 text-red-700 px-4 py-3 rounded-xl mb-6 flex items-center animate-shake">
               <ExclamationTriangleIcon className="w-5 h-5 mr-2 flex-shrink-0" />
               <span className="text-sm">{error}</span>
+            </div>
+          )}
+
+          {referralCode && (
+            <div className="bg-emerald-50/80 backdrop-blur-sm border border-emerald-200/60 text-emerald-700 px-4 py-3 rounded-xl mb-6 flex items-center">
+              <CheckCircleIcon className="w-5 h-5 mr-2 flex-shrink-0" />
+              <div>
+                <span className="text-sm font-medium">🎉 Referral Code Applied!</span>
+                <p className="text-xs mt-1">You'll automatically become friends with your referrer and both get bonus points!</p>
+              </div>
             </div>
           )}
 
