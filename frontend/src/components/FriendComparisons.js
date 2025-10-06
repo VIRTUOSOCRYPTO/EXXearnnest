@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, TrendingDown, Equal, Share } from 'lucide-react';
+import { Users, TrendingUp, TrendingDown, Equal, Share, RefreshCw, Clock } from 'lucide-react';
 
 const FriendComparisons = () => {
   const [comparisons, setComparisons] = useState([]);
@@ -7,14 +7,33 @@ const FriendComparisons = () => {
   const [hasFriends, setHasFriends] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  
+  // **NEW: Real-time functionality**
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchFriendComparisons();
   }, []);
 
-  const fetchFriendComparisons = async () => {
+  // **NEW: Auto-refresh functionality**
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const refreshInterval = setInterval(() => {
+      fetchFriendComparisons(true); // Silent refresh
+    }, 45000); // Refresh every 45 seconds
+
+    return () => clearInterval(refreshInterval);
+  }, [autoRefresh]);
+
+  const fetchFriendComparisons = async (silent = false) => {
+    if (!silent) setLoading(true);
+    setRefreshing(true);
+    
     try {
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL;
       const token = localStorage.getItem('token');
       
       const response = await fetch(`${backendUrl}/api/insights/friend-comparison`, {
@@ -30,12 +49,34 @@ const FriendComparisons = () => {
         setFriendCount(data.friend_count || 0);
         setHasFriends(data.has_friends);
         setMessage(data.message || '');
+        setLastUpdated(new Date());
       }
     } catch (error) {
       console.error('Error fetching friend comparisons:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  // **NEW: Utility functions**
+  const toggleAutoRefresh = () => {
+    setAutoRefresh(!autoRefresh);
+    if (!autoRefresh) {
+      fetchFriendComparisons(); // Immediate refresh when turning on
+    }
+  };
+
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp) return '';
+    const now = new Date();
+    const diffMinutes = Math.floor((now - timestamp) / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
   };
 
   const shareComparison = async (comparison) => {
@@ -151,17 +192,57 @@ const FriendComparisons = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      {/* Header */}
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-extrabold text-gray-800 mb-4 flex items-center justify-center gap-3">
-          <Users className="w-10 h-10 text-blue-600" />
-          Friend Comparisons 👥
-        </h1>
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-6">
-          Anonymous insights into how your spending compares with your {friendCount} friends
-        </p>
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full px-6 py-2 inline-block">
-          <span className="text-sm font-medium">🔒 100% Anonymous • Last 30 Days</span>
+      {/* **UPDATED: Header with Real-time Controls** */}
+      <div className="mb-12">
+        {/* Title & Controls Row */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Users className="w-10 h-10 text-blue-600" />
+            <h1 className="text-4xl font-extrabold text-gray-800">
+              Friend Comparisons 👥
+            </h1>
+          </div>
+          
+          {/* **NEW: Real-time Controls** */}
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={toggleAutoRefresh}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                autoRefresh 
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+              <span>{autoRefresh ? 'Live' : 'Paused'}</span>
+            </button>
+            
+            <button
+              onClick={() => fetchFriendComparisons()}
+              disabled={refreshing}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? 'Updating...' : 'Refresh'}</span>
+            </button>
+            
+            {lastUpdated && (
+              <div className="text-xs text-gray-500 flex items-center space-x-1">
+                <Clock className="w-3 h-3" />
+                <span>Updated {formatTimeAgo(lastUpdated)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Description */}
+        <div className="text-center">
+          <p className="text-xl text-gray-600 max-w-2xl mx-auto mb-6">
+            Anonymous insights into how your spending compares with your {friendCount} friends
+          </p>
+          <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full px-6 py-2 inline-block">
+            <span className="text-sm font-medium">🔒 100% Anonymous • Last 30 Days • Live Updates</span>
+          </div>
         </div>
       </div>
 
