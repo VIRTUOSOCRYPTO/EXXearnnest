@@ -143,84 +143,84 @@ const PrizeChallenges = () => {
       )}
       
       <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <CardTitle className="text-xl font-bold text-gray-800 mb-2 flex items-center gap-2">
-              {getChallengeIcon(challenge.challenge_type)}
-              {challenge.title}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-lg sm:text-xl font-bold text-gray-800 mb-3 flex items-center gap-2 flex-wrap break-words leading-relaxed">
+              <span className="flex-shrink-0">{getChallengeIcon(challenge.challenge_type)}</span>
+              <span className="break-words">{challenge.title}</span>
             </CardTitle>
-            <p className="text-gray-600 text-sm mb-3">{challenge.description}</p>
+            <p className="text-gray-600 text-sm mb-3 break-words leading-relaxed">{challenge.description}</p>
             <div className="flex flex-wrap gap-2">
-              <Badge className={`${getChallengeTypeColor(challenge.challenge_type)} text-white`}>
+              <Badge className={`${getChallengeTypeColor(challenge.challenge_type)} text-white flex-shrink-0`}>
                 {challenge.challenge_type}
               </Badge>
-              <Badge className={getDifficultyColor(challenge.difficulty_level)}>
+              <Badge className={`${getDifficultyColor(challenge.difficulty_level)} flex-shrink-0`}>
                 {challenge.difficulty_level}
               </Badge>
-              <Badge variant="outline" className="flex items-center gap-1">
+              <Badge variant="outline" className="flex items-center gap-1 flex-shrink-0">
                 {getPrizeTypeIcon(challenge.prize_type)}
-                {challenge.prize_type}
+                <span className="whitespace-nowrap">{challenge.prize_type}</span>
               </Badge>
               {challenge.is_participating && (
-                <Badge variant="default" className="bg-emerald-500">
+                <Badge variant="default" className="bg-emerald-500 flex-shrink-0">
                   <Users className="w-3 h-3 mr-1" />
-                  Participating
+                  <span className="whitespace-nowrap">Participating</span>
                 </Badge>
               )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-purple-600">
+          <div className="text-left sm:text-right flex-shrink-0">
+            <div className="text-xl sm:text-2xl font-bold text-purple-600 break-words">
               ₹{(challenge.total_prize_value || 0).toLocaleString()}
             </div>
-            <div className="text-sm text-gray-500">Prize Value</div>
+            <div className="text-sm text-gray-500 whitespace-nowrap">Prize Value</div>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="pt-0">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Target className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Target</div>
-            <div className="text-xs text-gray-600">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4">
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Target</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">
               {challenge.target_value} {challenge.target_metric}
             </div>
           </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Users className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Participants</div>
-            <div className="text-xs text-gray-600">
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Participants</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">
               {challenge.current_participants || 0}
               {challenge.max_participants ? `/${challenge.max_participants}` : ''}
             </div>
           </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Clock className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Time Left</div>
-            <div className="text-xs text-gray-600">
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Time Left</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">
               {formatTimeRemaining(challenge.time_to_end_seconds)}
             </div>
           </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <TrendingUp className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Category</div>
-            <div className="text-xs text-gray-600">{challenge.challenge_category}</div>
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Category</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">{challenge.challenge_category}</div>
           </div>
         </div>
 
         {/* Progress bar for participating challenges */}
         {challenge.is_participating && challenge.user_participation && (
           <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
-            <div className="flex justify-between text-sm mb-2">
-              <span>Your Progress</span>
-              <span>{challenge.user_participation.progress_percentage?.toFixed(1) || 0}%</span>
+            <div className="flex justify-between text-xs sm:text-sm mb-2 gap-2">
+              <span className="break-words">Your Progress</span>
+              <span className="whitespace-nowrap">{challenge.user_participation.progress_percentage?.toFixed(1) || 0}%</span>
             </div>
             <Progress 
               value={challenge.user_participation.progress_percentage || 0} 
               className="h-2 mb-2"
             />
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-gray-600 break-words leading-relaxed">
               {challenge.user_participation.current_progress || 0} / {challenge.target_value} {challenge.target_metric}
             </div>
           </div>
@@ -229,20 +229,20 @@ const PrizeChallenges = () => {
         {/* Entry requirements */}
         {challenge.requirements_details && Object.keys(challenge.requirements_details).length > 0 && (
           <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="text-sm font-medium mb-2">Entry Requirements:</div>
-            <div className="space-y-1">
+            <div className="text-xs sm:text-sm font-medium mb-2 break-words">Entry Requirements:</div>
+            <div className="space-y-2">
               {challenge.requirements_details.level && (
-                <div className="text-xs flex justify-between">
-                  <span>Minimum Level:</span>
-                  <span className={challenge.requirements_details.level.current >= challenge.requirements_details.level.required ? 'text-green-600' : 'text-red-600'}>
+                <div className="text-xs flex justify-between gap-2 flex-wrap">
+                  <span className="break-words">Minimum Level:</span>
+                  <span className={`whitespace-nowrap ${challenge.requirements_details.level.current >= challenge.requirements_details.level.required ? 'text-green-600' : 'text-red-600'}`}>
                     {challenge.requirements_details.level.current}/{challenge.requirements_details.level.required}
                   </span>
                 </div>
               )}
               {challenge.requirements_details.streak && (
-                <div className="text-xs flex justify-between">
-                  <span>Minimum Streak:</span>
-                  <span className={challenge.requirements_details.streak.current >= challenge.requirements_details.streak.required ? 'text-green-600' : 'text-red-600'}>
+                <div className="text-xs flex justify-between gap-2 flex-wrap">
+                  <span className="break-words">Minimum Streak:</span>
+                  <span className={`whitespace-nowrap ${challenge.requirements_details.streak.current >= challenge.requirements_details.streak.required ? 'text-green-600' : 'text-red-600'}`}>
                     {challenge.requirements_details.streak.current}/{challenge.requirements_details.streak.required} days
                   </span>
                 </div>
@@ -252,32 +252,32 @@ const PrizeChallenges = () => {
         )}
 
         <div className="space-y-2 mb-4">
-          <div className="flex justify-between text-sm">
-            <span>Start: {new Date(challenge.start_date).toLocaleDateString()}</span>
-            <span>End: {new Date(challenge.end_date).toLocaleDateString()}</span>
+          <div className="flex flex-col sm:flex-row sm:justify-between text-xs sm:text-sm gap-1">
+            <span className="break-words">Start: {new Date(challenge.start_date).toLocaleDateString()}</span>
+            <span className="break-words">End: {new Date(challenge.end_date).toLocaleDateString()}</span>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Dialog>
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="flex-1"
+                className="w-full sm:flex-1"
                 onClick={() => {
                   setSelectedChallenge(challenge);
                   fetchLeaderboard(challenge.id);
                 }}
               >
-                <Trophy className="w-4 h-4 mr-2" />
-                View Leaderboard
+                <Trophy className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span className="whitespace-nowrap">View Leaderboard</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Trophy className="w-5 h-5" />
-                  {selectedChallenge?.title} - Leaderboard
+                <DialogTitle className="flex items-center gap-2 flex-wrap break-words leading-relaxed pr-8">
+                  <Trophy className="w-5 h-5 flex-shrink-0" />
+                  <span className="break-words">{selectedChallenge?.title} - Leaderboard</span>
                 </DialogTitle>
               </DialogHeader>
               {leaderboard && <LeaderboardContent leaderboard={leaderboard} />}
@@ -288,10 +288,10 @@ const PrizeChallenges = () => {
             <Button
               onClick={() => joinChallenge(challenge.id)}
               disabled={joining}
-              className="flex-1 bg-purple-600 hover:bg-purple-700"
+              className="w-full sm:flex-1 bg-purple-600 hover:bg-purple-700"
             >
-              <Gift className="w-4 h-4 mr-2" />
-              {joining ? 'Joining...' : 'Join Challenge'}
+              <Gift className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="whitespace-nowrap">{joining ? 'Joining...' : 'Join Challenge'}</span>
             </Button>
           )}
 
@@ -299,9 +299,9 @@ const PrizeChallenges = () => {
             <Button
               disabled
               variant="outline"
-              className="flex-1"
+              className="w-full sm:flex-1"
             >
-              Requirements Not Met
+              <span className="break-words text-center w-full">Requirements Not Met</span>
             </Button>
           )}
         </div>
@@ -435,19 +435,19 @@ const PrizeChallenges = () => {
   return (
     <div className="max-w-7xl mx-auto p-6">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-4">
-          <Gift className="w-8 h-8 text-purple-600" />
-          <h1 className="text-3xl font-bold text-gray-800">Prize-Based Challenges</h1>
+      <div className="mb-6 sm:mb-8">
+        <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 flex-wrap">
+          <Gift className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600 flex-shrink-0" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 break-words leading-tight">Prize-Based Challenges</h1>
         </div>
-        <p className="text-gray-600 text-lg">
+        <p className="text-gray-600 text-base sm:text-lg break-words leading-relaxed mb-3">
           Participate in exciting challenges and win amazing prizes!
         </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Badge variant="outline" className="bg-blue-50 border-blue-200">
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className="bg-blue-50 border-blue-200 whitespace-nowrap">
             Level: {user?.level || 1}
           </Badge>
-          <Badge variant="outline" className="bg-green-50 border-green-200">
+          <Badge variant="outline" className="bg-green-50 border-green-200 whitespace-nowrap">
             Streak: {user?.current_streak || 0} days
           </Badge>
         </div>
@@ -455,13 +455,15 @@ const PrizeChallenges = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5">
-          <TabsTrigger value="all">All Challenges</TabsTrigger>
-          <TabsTrigger value="available">Available</TabsTrigger>
-          <TabsTrigger value="participating">My Challenges</TabsTrigger>
-          <TabsTrigger value="active">Active Now</TabsTrigger>
-          <TabsTrigger value="flash">⚡ Flash</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex w-auto min-w-full sm:w-auto gap-2">
+            <TabsTrigger value="all" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">All Challenges</TabsTrigger>
+            <TabsTrigger value="available" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">Available</TabsTrigger>
+            <TabsTrigger value="participating" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">My Challenges</TabsTrigger>
+            <TabsTrigger value="active" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">Active Now</TabsTrigger>
+            <TabsTrigger value="flash" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">⚡ Flash</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="all" className="space-y-4 mt-6">
           {filteredChallenges.length === 0 ? (
