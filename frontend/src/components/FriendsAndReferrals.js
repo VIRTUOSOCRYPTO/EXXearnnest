@@ -235,15 +235,11 @@ const FriendsAndReferrals = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${BACKEND_URL}/api/friends/accept-invitation`, {
+      const response = await fetch(`${BACKEND_URL}/api/friends/accept-invitation?referral_code=${encodeURIComponent(acceptCode.trim())}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          referral_code: acceptCode.trim()
-        })
+        }
       });
 
       if (response.ok) {
