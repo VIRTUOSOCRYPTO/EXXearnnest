@@ -4860,7 +4860,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://realtimesocial.preview.emergentagent.com"
+        base_url = "https://complete-deploy-1.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6154,7 +6154,7 @@ async def request_beta_feature_access_endpoint(
 async def create_inter_college_competition(
     request: Request,
     competition_data: InterCollegeCompetitionCreate,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Create a new inter-college competition (System Admin or Campus Admin with privileges)"""
     try:
@@ -6280,7 +6280,7 @@ async def create_inter_college_competition(
 async def get_inter_college_competitions(
     request: Request,
     status: Optional[str] = None,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get all inter-college competitions"""
     try:
@@ -6340,7 +6340,7 @@ async def get_inter_college_competitions(
 async def register_for_inter_college_competition(
     request: Request,
     competition_id: str,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Register for an inter-college competition"""
     try:
@@ -6449,7 +6449,7 @@ async def register_for_inter_college_competition(
 async def get_inter_college_leaderboard(
     request: Request,
     competition_id: str,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get inter-college competition leaderboard"""
     try:
@@ -6538,7 +6538,7 @@ async def get_inter_college_leaderboard(
 async def create_prize_challenge(
     request: Request,
     challenge_data: PrizeChallengeCreate,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Create a new prize-based challenge (System Admin or Campus Admin with privileges)"""
     try:
@@ -6649,7 +6649,7 @@ async def get_prize_challenges(
     request: Request,
     challenge_type: Optional[str] = None,
     status: Optional[str] = None,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get all prize-based challenges"""
     try:
@@ -6743,7 +6743,7 @@ async def get_prize_challenges(
 async def join_prize_challenge(
     request: Request,
     challenge_id: str,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Join a prize-based challenge"""
     try:
@@ -6927,7 +6927,7 @@ async def get_prize_challenge_leaderboard(
 @limiter.limit("20/minute")
 async def get_campus_reputation_leaderboard(
     request: Request,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get campus reputation leaderboard"""
     try:
@@ -7543,7 +7543,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://realtimesocial.preview.emergentagent.com"
+        base_url = "https://complete-deploy-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -7730,7 +7730,7 @@ async def create_challenge_standard(request: Request, challenge_data: ChallengeC
 
 @api_router.post("/challenges/create")
 @limiter.limit("5/minute") 
-async def create_challenge(request: Request, challenge_data: ChallengeCreate, current_user: str = Depends(get_current_user)):
+async def create_challenge(request: Request, challenge_data: ChallengeCreate, current_user: dict = Depends(get_current_user_dict)):
     """Create a new challenge (admin can create featured challenges, users can create peer challenges)"""
     try:
         db = await get_database()
@@ -8192,7 +8192,7 @@ async def approve_challenge(request: Request, challenge_id: str, current_user: s
 
 @api_router.post("/challenges/{challenge_id}/reject")
 @limiter.limit("10/minute")
-async def reject_challenge(request: Request, challenge_id: str, reject_data: ChallengeReject, current_user: str = Depends(get_current_user)):
+async def reject_challenge(request: Request, challenge_id: str, reject_data: ChallengeReject, current_user: dict = Depends(get_current_user_dict)):
     """Admin endpoint to reject user-created challenges with reason"""
     try:
         # Check if user is admin
@@ -14135,7 +14135,7 @@ async def get_cache_statistics(request: Request, current_user: str = Depends(get
 
 @api_router.post("/admin/performance/cache/warm")
 @limiter.limit("2/hour")
-async def warm_application_cache(request: Request, current_user: str = Depends(get_current_user)):
+async def warm_application_cache(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Warm up application caches (Admin only)"""
     try:
         user = await get_user_by_id(current_user)
@@ -14161,7 +14161,7 @@ async def warm_application_cache(request: Request, current_user: str = Depends(g
 
 @api_router.post("/admin/performance/database/optimize")
 @limiter.limit("1/hour")
-async def optimize_database_performance(request: Request, current_user: str = Depends(get_current_user)):
+async def optimize_database_performance(request: Request, current_user: dict = Depends(get_current_user_dict)):
     """Run database optimization tasks (Admin only)"""
     try:
         user = await get_user_by_id(current_user)
@@ -14187,7 +14187,7 @@ async def optimize_database_performance(request: Request, current_user: str = De
 
 @api_router.get("/admin/performance/tasks/{task_id}")
 @limiter.limit("10/minute")
-async def get_task_status(request: Request, task_id: str, current_user: str = Depends(get_current_user)):
+async def get_task_status(request: Request, task_id: str, current_user: dict = Depends(get_current_user_dict)):
     """Get background task status (Admin only)"""
     try:
         user = await get_user_by_id(current_user)
@@ -14620,7 +14620,7 @@ async def get_pending_admin_requests(
     status: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get pending admin requests for system admin review"""
     try:
@@ -14681,7 +14681,7 @@ async def review_admin_request(
     request: Request,
     request_id: str,
     review_data: AdminRequestReview,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Review and approve/reject admin request"""
     try:
@@ -14812,7 +14812,7 @@ async def get_campus_admins(
     college_name: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get all campus admins for system admin management"""
     try:
@@ -14889,7 +14889,7 @@ async def update_admin_privileges(
     request: Request,
     admin_id: str,
     privilege_update: AdminPrivilegeUpdate,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Update campus admin privileges (suspend, reactivate, revoke, update permissions)"""
     try:
@@ -14978,7 +14978,7 @@ async def get_admin_audit_logs(
     days: int = 30,
     page: int = 1,
     limit: int = 50,
-    current_user: str = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user_dict)
 ):
     """Get admin audit logs for system admin review"""
     try:
@@ -15435,7 +15435,7 @@ async def get_public_campus_battle():
 
 # 2. ANONYMOUS SPENDING INSIGHTS
 @api_router.get("/insights/campus-spending/{campus}")
-async def get_campus_spending_insights(campus: str, current_user = Depends(get_current_user)):
+async def get_campus_spending_insights(campus: str, current_user: dict = Depends(get_current_user_dict)):
     """Get anonymous spending insights for a specific campus"""
     try:
         # Get all users from this campus
@@ -15823,7 +15823,7 @@ async def get_campus_battle_arena(current_user: str = Depends(get_current_user))
         raise HTTPException(status_code=500, detail="Failed to get battle arena data")
 
 @api_router.get("/insights/spending/{campus}")
-async def get_campus_spending_insights(campus: str, current_user: str = Depends(get_current_user)):
+async def get_campus_spending_insights(campus: str, current_user: dict = Depends(get_current_user_dict)):
     """Get spending insights for a specific campus"""
     try:
         # Get campus spending insights
