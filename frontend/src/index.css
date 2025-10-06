@@ -11,6 +11,77 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* Global Text Wrapping and Spacing Fixes */
+@layer utilities {
+    /* Ensure proper text wrapping */
+    .text-wrap-safe {
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        word-break: break-word;
+        hyphens: auto;
+    }
+
+    /* Better line height for readability */
+    .leading-comfortable {
+        line-height: 1.6;
+    }
+
+    /* Responsive text sizing */
+    .text-responsive-sm {
+        font-size: clamp(0.75rem, 2vw, 0.875rem);
+    }
+
+    .text-responsive-base {
+        font-size: clamp(0.875rem, 2.5vw, 1rem);
+    }
+
+    .text-responsive-lg {
+        font-size: clamp(1rem, 3vw, 1.125rem);
+    }
+
+    .text-responsive-xl {
+        font-size: clamp(1.125rem, 3.5vw, 1.25rem);
+    }
+
+    .text-responsive-2xl {
+        font-size: clamp(1.25rem, 4vw, 1.5rem);
+    }
+
+    .text-responsive-3xl {
+        font-size: clamp(1.5rem, 5vw, 1.875rem);
+    }
+
+    /* Hide scrollbar but keep scrollability */
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+/* Apply text wrapping to all headings and paragraphs */
+h1, h2, h3, h4, h5, h6, p {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+/* Better spacing for flex containers with text */
+.flex-text-container {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Ensure buttons don't break awkwardly */
+button {
+    overflow-wrap: normal;
+    word-break: keep-all;
+}
+
 code {
     font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
         monospace;
