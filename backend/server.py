@@ -156,7 +156,6 @@ async def get_current_user_dict(credentials: HTTPAuthorizationCredentials = Depe
     
     # Convert MongoDB document to clean dictionary
     if user:
-        user["id"] = str(user["_id"])  # Ensure id field is set
         if "_id" in user:
             del user["_id"]  # Remove MongoDB _id field
     
@@ -896,7 +895,7 @@ async def register_user(request: Request, user_data: UserCreate):
                     
                     # Add referral info to user document
                     await db.users.update_one(
-                        {"_id": user_doc["id"]},
+                        {"id": user_doc["id"]},
                         {
                             "$set": {"referred_by": referrer["referrer_id"]},
                             "$inc": {"experience_points": 50}  # Welcome bonus for referred users
@@ -4861,7 +4860,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://run-this-app-5.preview.emergentagent.com"
+        base_url = "https://finance-connect-3.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6200,7 +6199,7 @@ async def create_inter_college_competition(
         competition_dict.update({
             "id": str(uuid.uuid4()),
             "duration_days": duration_days,
-            "created_by": current_user,
+            "created_by": current_user["id"],
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
@@ -6249,7 +6248,7 @@ async def create_inter_college_competition(
         # Create audit log
         creator_type = "campus_admin" if campus_admin else "system_admin"
         audit_log = await admin_workflow_manager.create_audit_log(
-            admin_user_id=current_user,
+            admin_user_id=current_user["id"],
             action_type="create_inter_college_competition",
             action_description=f"Created inter-college competition: {competition_data.title}",
             target_type="competition",
@@ -6584,7 +6583,7 @@ async def create_prize_challenge(
         challenge_dict = challenge_data.dict()
         challenge_dict.update({
             "id": str(uuid.uuid4()),
-            "created_by": current_user,
+            "created_by": current_user["id"],
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
@@ -6619,7 +6618,7 @@ async def create_prize_challenge(
         # Create audit log
         creator_type = "campus_admin" if campus_admin else "system_admin"
         audit_log = await admin_workflow_manager.create_audit_log(
-            admin_user_id=current_user,
+            admin_user_id=current_user["id"],
             action_type="create_prize_challenge",
             action_description=f"Created prize challenge: {challenge_data.title}",
             target_type="challenge",
@@ -7544,7 +7543,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://run-this-app-5.preview.emergentagent.com"
+        base_url = "https://finance-connect-3.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14779,7 +14778,7 @@ async def review_admin_request(
         
         # Create audit log
         audit_log = await admin_workflow_manager.create_audit_log(
-            admin_user_id=current_user,
+            admin_user_id=current_user["id"],
             action_type="admin_request_reviewed",
             action_description=f"Admin request {review_data.decision}d for {admin_request['full_name']}",
             target_type="admin_request",
@@ -14945,7 +14944,7 @@ async def update_admin_privileges(
         
         # Create audit log
         audit_log = await admin_workflow_manager.create_audit_log(
-            admin_user_id=current_user,
+            admin_user_id=current_user["id"],
             action_type=f"admin_privilege_{privilege_update.action}",
             action_description=f"Campus admin privileges {privilege_update.action}d: {privilege_update.reason}",
             target_type="campus_admin",
