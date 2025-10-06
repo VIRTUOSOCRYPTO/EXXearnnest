@@ -11,6 +11,7 @@ import logging
 import shutil
 import uuid
 import json
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 
@@ -4860,7 +4861,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://complete-deploy-1.preview.emergentagent.com"
+        base_url = "https://run-this-app-5.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7543,7 +7544,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://complete-deploy-1.preview.emergentagent.com"
+        base_url = "https://run-this-app-5.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
