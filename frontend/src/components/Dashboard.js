@@ -471,8 +471,8 @@ const Dashboard = () => {
                   <LightBulbIcon className="w-4 sm:w-6 h-4 sm:h-6 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-emerald-900 text-sm sm:text-base truncate">💡 Daily Financial Tip</h3>
-                  <p className="text-xs sm:text-sm text-emerald-600">
+                  <h3 className="font-bold text-black-900 text-sm sm:text-base truncate">💡 Daily Financial Tip</h3>
+                  <p className="text-xs sm:text-sm text-black-600">
                     {dailyTip.is_new ? 'New tip today!' : 'Today\'s tip'}
                   </p>
                 </div>
@@ -482,9 +482,9 @@ const Dashboard = () => {
                 <div className="flex items-start gap-2 sm:gap-3">
                   <span className="text-xl sm:text-2xl flex-shrink-0">{dailyTip.tip?.icon}</span>
                   <div className="min-w-0 flex-1">
-                    <h4 className="font-semibold text-blue-900 mb-2 text-sm sm:text-base">{dailyTip.tip?.title}</h4>
-                    <p className="text-blue-800 text-xs sm:text-sm leading-relaxed">{dailyTip.tip?.content}</p>
-                    <div className="flex items-center gap-2 mt-2 sm:mt-3 text-xs text-blue-600">
+                    <h4 className="font-semibold text-black-900 mb-2 text-sm sm:text-base">{dailyTip.tip?.title}</h4>
+                    <p className="text-black-800 text-xs sm:text-sm leading-relaxed">{dailyTip.tip?.content}</p>
+                    <div className="flex items-center gap-2 mt-2 sm:mt-3 text-xs text-black-600">
                       <SparklesIcon className="w-3 sm:w-4 h-3 sm:h-4" />
                       <span className="truncate">{dailyTip.streak_info}</span>
                     </div>
@@ -495,15 +495,15 @@ const Dashboard = () => {
           )}
 
           {/* Enhanced Real-time Alerts Widget */}
-          <div className="bg-gradient-to-br from-orange-50 to-red-100 rounded-xl border border-orange-200 p-4 sm:p-6 slide-up overflow-hidden">
+          <div className="bg-gradient-to-br from-green-50 to-red-100 rounded-xl border border-green-200 p-4 sm:p-6 slide-up overflow-hidden">
             <div className="flex items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className="p-1 sm:p-2 bg-orange-500 rounded-lg flex-shrink-0">
+                <div className="p-1 sm:p-2 bg-green-500 rounded-lg flex-shrink-0">
                   <ClockIcon className="w-4 sm:w-6 h-4 sm:h-6 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-orange-900 text-sm sm:text-base truncate">⏰ Live Alerts</h3>
-                  <p className="text-xs sm:text-sm text-orange-600">Real-time opportunities</p>
+                  <h3 className="font-bold text-black-900 text-sm sm:text-base truncate">⏰ Live Alerts</h3>
+                  <p className="text-xs sm:text-sm text-black-600">Real-time opportunities</p>
                 </div>
               </div>
               <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex-shrink-0">LIVE</span>
@@ -512,21 +512,21 @@ const Dashboard = () => {
             <div className="space-y-2 sm:space-y-3 max-h-64 overflow-y-auto">
               {countdownAlerts && countdownAlerts.length > 0 ? (
                 countdownAlerts.slice(0, 3).map((alert, index) => (
-                  <div key={alert.id || index} className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-orange-200/50 hover:bg-white/80 transition-colors">
+                  <div key={alert.id || index} className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-green-200/50 hover:bg-white/80 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           {alert.urgency === 'critical' && <ExclamationTriangleIcon className="w-3 sm:w-4 h-3 sm:h-4 text-red-500 flex-shrink-0" />}
-                          {alert.urgency === 'high' && <BoltIcon className="w-3 sm:w-4 h-3 sm:h-4 text-orange-500 flex-shrink-0" />}
-                          {alert.urgency === 'medium' && <ClockIcon className="w-3 sm:w-4 h-3 sm:h-4 text-yellow-500 flex-shrink-0" />}
+                          {alert.urgency === 'high' && <BoltIcon className="w-3 sm:w-4 h-3 sm:h-4 text-green-500 flex-shrink-0" />}
+                          {alert.urgency === 'medium' && <ClockIcon className="w-3 sm:w-4 h-3 sm:h-4 text-green-500 flex-shrink-0" />}
                           <span className="font-semibold text-xs sm:text-sm text-gray-900 truncate">{alert.title}</span>
                         </div>
                         <p className="text-xs text-gray-700 mb-2 line-clamp-2">{alert.message}</p>
                         
                         {alert.seconds_remaining && (
                           <div className="flex items-center gap-1 sm:gap-2 text-xs mb-1">
-                            <ClockIcon className="w-3 h-3 text-orange-500" />
-                            <span className="font-mono bg-orange-100 px-1 sm:px-2 py-0.5 rounded text-orange-800 text-xs">
+                            <ClockIcon className="w-3 h-3 text-green-500" />
+                            <span className="font-mono bg-green-100 px-1 sm:px-2 py-0.5 rounded text-green-800 text-xs">
                               {Math.floor(alert.seconds_remaining / 3600)}h {Math.floor((alert.seconds_remaining % 3600) / 60)}m left
                             </span>
                           </div>
@@ -573,10 +573,10 @@ const Dashboard = () => {
                   </div>
                 ))
               ) : (
-                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-orange-200/50 text-center">
-                  <ClockIcon className="w-6 sm:w-8 h-6 sm:h-8 mx-auto mb-2 text-orange-300" />
-                  <p className="text-xs sm:text-sm text-orange-600">No urgent alerts right now</p>
-                  <p className="text-xs text-orange-500">Keep tracking for opportunities!</p>
+                <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-green-200/50 text-center">
+                  <ClockIcon className="w-6 sm:w-8 h-6 sm:h-8 mx-auto mb-2 text-green-300" />
+                  <p className="text-xs sm:text-sm text-green-600">No urgent alerts right now</p>
+                  <p className="text-xs text-green-500">Keep tracking for opportunities!</p>
                 </div>
               )}
             </div>
@@ -585,7 +585,7 @@ const Dashboard = () => {
               <div className="mt-3 text-center">
                 <button 
                   onClick={() => window.location.reload()}
-                  className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+                  className="text-xs text-green-600 hover:text-green-700 font-medium"
                 >
                   Refresh for more alerts
                 </button>
@@ -602,16 +602,6 @@ const Dashboard = () => {
               userId={user?.id} 
               onUpdate={() => fetchData(false)}
               lastUpdate={lastUpdate}
-            />
-          </div>
-
-          {/* Enhanced Limited Offers with Real-time Updates */}
-          <div>
-            <LimitedOffers 
-              userId={user?.id}
-              refreshData={fetchData}
-              liveOffers={limitedOffers}
-              isRefreshing={refreshing}
             />
           </div>
         </div>
