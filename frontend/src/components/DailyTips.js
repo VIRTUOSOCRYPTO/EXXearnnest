@@ -227,56 +227,6 @@ const DailyTips = ({ userId }) => {
           </CardContent>
         </Card>
       )}
-
-      {/* History Toggle */}
-      <div className="flex justify-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleHistory}
-          className="text-gray-600 hover:text-gray-800"
-        >
-          {showHistory ? '▼ Hide Previous Tips' : '▶ View Previous Tips'}
-        </Button>
-      </div>
-
-      {/* Tip History */}
-      {showHistory && (
-        <Card className="w-full">
-          <CardHeader>
-            <h3 className="font-medium text-gray-900">Recent Tips</h3>
-          </CardHeader>
-          <CardContent>
-            {tipHistory.length === 0 ? (
-              <p className="text-gray-500 text-sm">No previous tips found.</p>
-            ) : (
-              <div className="space-y-3">
-                {tipHistory.map((tip, index) => (
-                  <div key={tip.tip_id || index} className="border-l-2 border-gray-200 pl-4 py-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-500">
-                        {new Date(tip.sent_at).toLocaleDateString()}
-                      </span>
-                      <span className="text-lg">{tip.icon || '💡'}</span>
-                    </div>
-                    <h5 className="font-medium text-sm text-gray-800 mb-1">
-                      {tip.tip_title}
-                    </h5>
-                    <p className="text-xs text-gray-600 line-clamp-2">
-                      {tip.tip_content}
-                    </p>
-                    {tip.viewed_at && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        ✓ Viewed
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
