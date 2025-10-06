@@ -4860,7 +4860,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://finance-connect-3.preview.emergentagent.com"
+        base_url = "https://login-issue-5.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7543,7 +7543,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://finance-connect-3.preview.emergentagent.com"
+        base_url = "https://login-issue-5.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -8592,24 +8592,31 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
         db = await get_database()
         user_id = current_user["id"]
         
-        # Find invitation
+        # First try to find formal invitation
         invitation = await db.friend_invitations.find_one({
             "referral_code": referral_code,
             "status": "pending"
         })
         
-        if not invitation:
-            raise HTTPException(status_code=404, detail="Invalid or expired invitation code")
+        inviter_id = None
         
-        # Check if invitation is expired
-        if invitation.get("expires_at") and invitation["expires_at"] < datetime.now(timezone.utc):
-            await db.friend_invitations.update_one(
-                {"_id": invitation["_id"]},
-                {"$set": {"status": "expired"}}
-            )
-            raise HTTPException(status_code=400, detail="Invitation has expired")
-        
-        inviter_id = invitation["inviter_id"]
+        if invitation:
+            # Check if invitation is expired
+            if invitation.get("expires_at") and invitation["expires_at"] < datetime.now(timezone.utc):
+                await db.friend_invitations.update_one(
+                    {"_id": invitation["_id"]},
+                    {"$set": {"status": "expired"}}
+                )
+                raise HTTPException(status_code=400, detail="Invitation has expired")
+            
+            inviter_id = invitation["inviter_id"]
+        else:
+            # If no formal invitation, check if it's a referral code from referral system
+            referral_program = await db.referral_programs.find_one({"referral_code": referral_code})
+            if referral_program:
+                inviter_id = referral_program["referrer_id"]
+            else:
+                raise HTTPException(status_code=404, detail="Invalid referral code or invitation")
         
         # Check if they're not trying to add themselves
         if inviter_id == user_id:
@@ -8627,22 +8634,28 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
             raise HTTPException(status_code=400, detail="You're already friends with this user")
         
         # Create friendship
-        friendship = Friendship(
-            user1_id=inviter_id,
-            user2_id=user_id
-        )
-        await db.friendships.insert_one(friendship.dict())
+        friendship = {
+            "id": str(uuid.uuid4()),
+            "user1_id": inviter_id,
+            "user2_id": user_id,
+            "status": "active",
+            "created_at": datetime.now(timezone.utc),
+            "connection_type": "manual_invitation",  # Different from automatic referral signup
+            "automatic": False
+        }
+        await db.friendships.insert_one(friendship)
         
-        # Update invitation status
-        await db.friend_invitations.update_one(
-            {"_id": invitation["_id"]},
-            {
-                "$set": {
-                    "status": "accepted",
-                    "accepted_at": datetime.now(timezone.utc)
+        # Update invitation status (only if it was a formal invitation)
+        if invitation:
+            await db.friend_invitations.update_one(
+                {"_id": invitation["_id"]},
+                {
+                    "$set": {
+                        "status": "accepted",
+                        "accepted_at": datetime.now(timezone.utc)
+                    }
                 }
-            }
-        )
+            )
         
         # Reward points to both users
         inviter_points = 50  # Points for successful referral
@@ -8674,17 +8687,17 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
         await create_notification(
             inviter_id,
             "friend_joined",
-            f"{current_user['full_name']} accepted your invitation!",
+            f"🎉 {current_user['full_name']} accepted your invitation!",
             f"You earned {inviter_points} points for successful referral.",
-            related_id=friendship.id
+            related_id=friendship["id"]
         )
         
         await create_notification(
             user_id,
             "friend_joined",
-            f"Welcome to EarnAura friends network!",
+            f"🤝 Welcome to EarnAura friends network!",
             f"You're now friends with {inviter['full_name']} and earned {invitee_points} welcome points!",
-            related_id=friendship.id
+            related_id=friendship["id"]
         )
         
         # Check for friendship milestone badges
@@ -15590,19 +15603,29 @@ async def get_friend_comparison_insights(current_user = Depends(get_current_user
     try:
         user_id = current_user["id"]
         
-        # Get user's friends
-        friends_cursor = db.friends.find({"user_id": user_id})
-        friends = await friends_cursor.to_list(None)
+        # Get user's friends from friendships collection
+        db = await get_database()
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
+            ]
+        }).to_list(None)
         
-        if not friends:
+        if not friendships:
             return {
                 "success": True,
                 "has_friends": False,
+                "friend_count": 0,
                 "message": "Add friends to see spending comparisons!",
                 "comparisons": []
             }
         
-        friend_ids = [friend["friend_id"] for friend in friends]
+        # Extract friend IDs
+        friend_ids = []
+        for friendship in friendships:
+            friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
+            friend_ids.append(friend_id)
         friend_ids.append(user_id)  # Include current user
         
         # Get last 30 days transactions for user and friends
@@ -15704,6 +15727,7 @@ async def get_media_ready_impact_stats():
     """Generate media-ready data stories for press/sharing"""
     try:
         # Get all users and transactions for comprehensive stats
+        db = await get_database()
         users_cursor = db.users.find({"is_active": True})
         users = await users_cursor.to_list(None)
         
