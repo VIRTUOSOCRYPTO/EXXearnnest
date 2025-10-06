@@ -179,17 +179,6 @@ const Dashboard = () => {
                         Welcome back, {user?.full_name?.split(' ')[0]}! 👋
                       </h1>
                       <p className="text-gray-600 font-medium text-sm sm:text-base">Your EarnAura financial overview</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-500">Last updated: {new Date(lastUpdate).toLocaleTimeString()}</span>
-                        <button
-                          onClick={handleRefresh}
-                          disabled={refreshing}
-                          className={`p-1 rounded-full transition-all ${refreshing ? 'animate-spin' : 'hover:bg-white/50'}`}
-                          title="Refresh data"
-                        >
-                          <ArrowPathIcon className="w-4 h-4 text-gray-500" />
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -207,11 +196,6 @@ const Dashboard = () => {
                     <FireIcon className="w-4 sm:w-5 h-4 sm:h-5 text-orange-600" />
                     <span className="text-xs sm:text-sm font-semibold text-orange-800">
                       {gamificationProfile.current_streak} day streak
-                    </span>
-                  </div>
-                  <div className="px-2 sm:px-3 py-1 sm:py-2 bg-emerald-50 rounded-md sm:rounded-lg border border-emerald-200">
-                    <span className="text-xs sm:text-sm font-semibold text-emerald-800">
-                      {gamificationProfile.experience_points} XP
                     </span>
                   </div>
                 </div>
@@ -299,11 +283,10 @@ const Dashboard = () => {
                     <h2 className="text-lg sm:text-xl font-bold truncate">
                       {gamificationProfile.title || 'Financial Hero'} • Level {gamificationProfile.level}
                     </h2>
-                    <p className="text-emerald-100 text-sm sm:text-base">{gamificationProfile.experience_points} XP</p>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+                <div className="grid grid-cols-2 gap-2 sm:gap-4 text-center">
                   <div>
                     <div className="text-lg sm:text-2xl font-bold">{gamificationProfile.total_badges || 0}</div>
                     <div className="text-xs sm:text-sm text-emerald-100">Badges</div>
@@ -314,12 +297,6 @@ const Dashboard = () => {
                       {gamificationProfile.current_streak || 0}
                     </div>
                     <div className="text-xs sm:text-sm text-emerald-100">Day Streak</div>
-                  </div>
-                  <div>
-                    <div className="text-lg sm:text-2xl font-bold">
-                      #{gamificationProfile.ranks?.savings || '--'}
-                    </div>
-                    <div className="text-xs sm:text-sm text-emerald-100">Savings Rank</div>
                   </div>
                 </div>
               </div>
@@ -480,18 +457,6 @@ const Dashboard = () => {
                   <p className="text-xs sm:text-sm text-purple-700">Achievements</p>
                 </div>
               </div>
-
-              {/* Additional Progress Metrics */}
-              <div className="mt-3 sm:mt-4 grid grid-cols-2 gap-2 text-center text-xs">
-                <div className="p-2 bg-blue-50 rounded">
-                  <span className="font-bold text-blue-600">Rank #{gamificationProfile?.ranks?.savings || '--'}</span>
-                  <p className="text-blue-500">Savings</p>
-                </div>
-                <div className="p-2 bg-amber-50 rounded">
-                  <span className="font-bold text-amber-600">{gamificationProfile?.experience_points || 0} XP</span>
-                  <p className="text-amber-500">Points</p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -500,20 +465,20 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           {/* Enhanced Daily Tips Widget */}
           {dailyTip && (
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200 p-4 sm:p-6 slide-up overflow-hidden">
+            <div className="bg-gradient-to-br from-emerald-50 to-green-100 rounded-xl border border-emerald-200 p-4 sm:p-6 slide-up overflow-hidden">
               <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                <div className="p-1 sm:p-2 bg-blue-500 rounded-lg flex-shrink-0">
+                <div className="p-1 sm:p-2 bg-emerald-500 rounded-lg flex-shrink-0">
                   <LightBulbIcon className="w-4 sm:w-6 h-4 sm:h-6 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-blue-900 text-sm sm:text-base truncate">💡 Daily Financial Tip</h3>
-                  <p className="text-xs sm:text-sm text-blue-600">
+                  <h3 className="font-bold text-emerald-900 text-sm sm:text-base truncate">💡 Daily Financial Tip</h3>
+                  <p className="text-xs sm:text-sm text-emerald-600">
                     {dailyTip.is_new ? 'New tip today!' : 'Today\'s tip'}
                   </p>
                 </div>
               </div>
               
-              <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-blue-200/50">
+              <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-emerald-200/50">
                 <div className="flex items-start gap-2 sm:gap-3">
                   <span className="text-xl sm:text-2xl flex-shrink-0">{dailyTip.tip?.icon}</span>
                   <div className="min-w-0 flex-1">
