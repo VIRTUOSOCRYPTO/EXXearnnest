@@ -269,19 +269,6 @@ const Navigation = () => {
                 </div>
               </div>
             </div>
-            
-            {/* Profile Link */}
-            <Link
-              to="/profile"
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                location.pathname === '/profile'
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
-              }`}
-            >
-              <UserCircleIcon className="w-4 h-4" />
-              Profile
-            </Link>
           </div>
 
           {/* User Menu */}
