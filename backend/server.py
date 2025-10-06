@@ -921,6 +921,75 @@ async def register_user(request: Request, user_data: UserCreate):
                         {"$inc": {"total_earnings": 50.0}}
                     )
                     
+                    # **NEW: AUTOMATIC FRIENDSHIP CREATION**
+                    # Create instant mutual friendship when someone registers via referral code
+                    try:
+                        # Check if friendship already exists (safety check)
+                        existing_friendship = await db.friendships.find_one({
+                            "$or": [
+                                {"user1_id": referrer["referrer_id"], "user2_id": user_doc["id"]},
+                                {"user1_id": user_doc["id"], "user2_id": referrer["referrer_id"]}
+                            ]
+                        })
+                        
+                        if not existing_friendship:
+                            # Create automatic friendship
+                            friendship = {
+                                "id": str(uuid.uuid4()),
+                                "user1_id": referrer["referrer_id"],
+                                "user2_id": user_doc["id"],
+                                "status": "active",
+                                "created_at": datetime.now(timezone.utc),
+                                "connection_type": "referral_signup",  # Track how they connected
+                                "automatic": True  # Mark as automatically created
+                            }
+                            await db.friendships.insert_one(friendship)
+                            
+                            # Award additional friendship bonus points
+                            friendship_bonus_points = 25
+                            await db.users.update_one(
+                                {"id": referrer["referrer_id"]},
+                                {"$inc": {"experience_points": friendship_bonus_points, "achievement_points": friendship_bonus_points}}
+                            )
+                            
+                            await db.users.update_one(
+                                {"id": user_doc["id"]},
+                                {"$inc": {"experience_points": friendship_bonus_points, "achievement_points": friendship_bonus_points}}
+                            )
+                            
+                            # Get referrer user data for notifications
+                            referrer_user = await db.users.find_one({"id": referrer["referrer_id"]})
+                            
+                            # Create real-time notifications for both users
+                            await create_notification(
+                                referrer["referrer_id"],
+                                "friend_joined",
+                                f"🎉 {user_dict['full_name']} joined via your referral!",
+                                f"You're now friends and both earned {friendship_bonus_points} bonus points!",
+                                related_id=friendship["id"]
+                            )
+                            
+                            await create_notification(
+                                user_doc["id"], 
+                                "friend_joined",
+                                f"🤝 Welcome! You're now friends with {referrer_user['full_name']}",
+                                f"You both earned {friendship_bonus_points} friendship points!",
+                                related_id=friendship["id"]
+                            )
+                            
+                            # Check for friendship milestone badges
+                            gamification = await get_gamification_service()
+                            await gamification.check_and_award_badges(referrer["referrer_id"], "friend_invited", {
+                                "successful_invites": 1,  # This counts as a successful invite
+                                "automatic_friendship": True
+                            })
+                            
+                            logger.info(f"Automatic friendship created: {referrer['referrer_id']} <-> {user_doc['id']}")
+                        
+                    except Exception as friendship_error:
+                        logger.warning(f"Automatic friendship creation failed: {str(friendship_error)}")
+                        # Don't fail registration if friendship creation fails
+                    
                     logger.info(f"Referral processed successfully: {referral_code} -> {user_doc['id']}")
                 else:
                     logger.warning(f"Invalid referral code: {referral_code}")
@@ -4791,7 +4860,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://approval-flow-25.preview.emergentagent.com"
+        base_url = "https://realtimesocial.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7474,7 +7543,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://approval-flow-25.preview.emergentagent.com"
+        base_url = "https://realtimesocial.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -8725,6 +8794,185 @@ async def get_friend_suggestions(request: Request, current_user: dict = Depends(
     except Exception as e:
         logger.error(f"Get friend suggestions error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get friend suggestions")
+
+# ===== REAL-TIME FRIEND ACTIVITY ENDPOINTS =====
+
+@api_router.get("/friends/recent-activity")
+@limiter.limit("30/minute")  
+async def get_recent_friend_activity(request: Request, current_user: dict = Depends(get_current_user_dict)):
+    """Get recent activity from friends for real-time updates"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Get user's friends
+        friendships = await db.friendships.find({
+            "$or": [
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
+            ]
+        }).to_list(None)
+        
+        friend_ids = []
+        for friendship in friendships:
+            friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
+            friend_ids.append(friend_id)
+        
+        if not friend_ids:
+            return {
+                "recent_activities": [],
+                "friend_count": 0,
+                "message": "No friends yet! Share your referral code to connect with friends."
+            }
+        
+        # Get recent friend activities (last 7 days)
+        seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        # Get recent transactions from friends
+        recent_activities = []
+        
+        # Friend milestone achievements
+        milestones = await db.achievements.find({
+            "user_id": {"$in": friend_ids},
+            "created_at": {"$gte": seven_days_ago}
+        }).sort("created_at", -1).limit(10).to_list(None)
+        
+        for milestone in milestones:
+            friend = await db.users.find_one({"id": milestone["user_id"]})
+            if friend:
+                recent_activities.append({
+                    "type": "milestone_achieved",
+                    "friend_name": friend.get("full_name", "Friend"),
+                    "friend_avatar": friend.get("avatar", "man"),
+                    "friend_id": milestone["user_id"],
+                    "activity": f"achieved {milestone.get('milestone_type', 'milestone')}",
+                    "description": milestone.get("description", "New milestone unlocked!"),
+                    "timestamp": milestone["created_at"],
+                    "emoji": "🏆"
+                })
+        
+        # Friend referral connections (new friends joining)
+        new_friendships = await db.friendships.find({
+            "$or": [
+                {"user1_id": {"$in": friend_ids}, "created_at": {"$gte": seven_days_ago}},
+                {"user2_id": {"$in": friend_ids}, "created_at": {"$gte": seven_days_ago}}
+            ],
+            "automatic": True  # Only show automatic referral-based friendships
+        }).sort("created_at", -1).limit(5).to_list(None)
+        
+        for friendship in new_friendships:
+            # Determine which friend this relates to
+            friend_in_network_id = None
+            new_friend_id = None
+            
+            if friendship["user1_id"] in friend_ids:
+                friend_in_network_id = friendship["user1_id"]
+                new_friend_id = friendship["user2_id"]
+            elif friendship["user2_id"] in friend_ids:
+                friend_in_network_id = friendship["user2_id"] 
+                new_friend_id = friendship["user1_id"]
+            
+            if friend_in_network_id and new_friend_id != user_id:  # Don't show user's own connections
+                friend = await db.users.find_one({"id": friend_in_network_id})
+                new_friend = await db.users.find_one({"id": new_friend_id})
+                
+                if friend and new_friend:
+                    recent_activities.append({
+                        "type": "friend_referred",
+                        "friend_name": friend.get("full_name", "Friend"),
+                        "friend_avatar": friend.get("avatar", "man"), 
+                        "friend_id": friend_in_network_id,
+                        "activity": f"referred {new_friend.get('full_name', 'someone new')}",
+                        "description": f"Growing the network! 🌟",
+                        "timestamp": friendship["created_at"],
+                        "emoji": "🤝"
+                    })
+        
+        # Sort all activities by timestamp
+        recent_activities.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+        # Get friend stats for summary
+        friend_stats = await db.users.find({
+            "id": {"$in": friend_ids}
+        }).to_list(None)
+        
+        total_friend_savings = sum(friend.get("net_savings", 0) for friend in friend_stats)
+        avg_friend_streak = sum(friend.get("current_streak", 0) for friend in friend_stats) / len(friend_stats) if friend_stats else 0
+        
+        return {
+            "recent_activities": recent_activities[:15],  # Limit to 15 most recent
+            "friend_count": len(friend_ids),
+            "network_stats": {
+                "total_friends": len(friend_ids),
+                "total_network_savings": total_friend_savings,
+                "average_streak": round(avg_friend_streak, 1),
+                "most_active_today": len([f for f in friend_stats if f.get("last_activity_date") and 
+                                        f["last_activity_date"].date() == datetime.now().date()])
+            },
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Get recent friend activity error: {str(e)}")
+        return {
+            "recent_activities": [],
+            "friend_count": 0,
+            "error": "Unable to load friend activities"
+        }
+
+@api_router.get("/friends/live-stats")
+@limiter.limit("60/minute")  # Higher limit for live data
+async def get_live_friend_stats(request: Request, current_user: dict = Depends(get_current_user_dict)):
+    """Get live friend statistics for real-time dashboard updates"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
+        # Get friends count
+        friends_count = await db.friendships.count_documents({
+            "$or": [
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
+            ]
+        })
+        
+        # Get pending invitations (sent by user)
+        pending_invitations = await db.friend_invitations.count_documents({
+            "inviter_id": user_id,
+            "status": "pending"
+        })
+        
+        # Get new friend requests (for user to accept)
+        # This would be referral codes shared by others that user can accept
+        
+        # Get referral stats
+        referral_stats = await db.referral_programs.find_one({"referrer_id": user_id})
+        total_referrals = referral_stats.get("total_referrals", 0) if referral_stats else 0
+        
+        # Recent friend activity count (last 24 hours)
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        recent_activity_count = await db.achievements.count_documents({
+            "user_id": {"$ne": user_id},  # Exclude user's own activities
+            "created_at": {"$gte": yesterday}
+        })
+        
+        return {
+            "friends_count": friends_count,
+            "pending_invitations": pending_invitations,
+            "total_referrals": total_referrals,
+            "recent_friend_activities": recent_activity_count,
+            "last_updated": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Get live friend stats error: {str(e)}")
+        return {
+            "friends_count": 0,
+            "pending_invitations": 0,
+            "total_referrals": 0,
+            "recent_friend_activities": 0,
+            "error": "Unable to load friend statistics"
+        }
 
 @api_router.post("/group-challenges")
 @limiter.limit("5/hour")
