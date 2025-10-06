@@ -117,89 +117,89 @@ const InterCollegeCompetitions = () => {
   const CompetitionCard = ({ competition }) => (
     <Card className="hover:shadow-lg transition-shadow duration-200 border-l-4 border-l-blue-500">
       <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <CardTitle className="text-xl font-bold text-gray-800 mb-2">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-lg sm:text-xl font-bold text-gray-800 mb-3 break-words leading-relaxed">
               {competition.title}
             </CardTitle>
-            <p className="text-gray-600 text-sm mb-3">{competition.description}</p>
+            <p className="text-gray-600 text-sm mb-3 break-words leading-relaxed">{competition.description}</p>
             <div className="flex flex-wrap gap-2">
               {getCompetitionStatusBadge(competition)}
               {competition.is_registered && (
-                <Badge variant="default" className="bg-emerald-500">
+                <Badge variant="default" className="bg-emerald-500 flex-shrink-0">
                   <Users className="w-3 h-3 mr-1" />
-                  Registered
+                  <span className="whitespace-nowrap">Registered</span>
                 </Badge>
               )}
               {!competition.is_eligible && (
-                <Badge variant="destructive">Not Eligible</Badge>
+                <Badge variant="destructive" className="whitespace-nowrap">Not Eligible</Badge>
               )}
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold text-blue-600">
+          <div className="text-left sm:text-right flex-shrink-0">
+            <div className="text-xl sm:text-2xl font-bold text-blue-600 break-words">
               ₹{(competition.prize_pool || 0).toLocaleString()}
             </div>
-            <div className="text-sm text-gray-500">Prize Pool</div>
+            <div className="text-sm text-gray-500 whitespace-nowrap">Prize Pool</div>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="pt-0">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Calendar className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Duration</div>
-            <div className="text-xs text-gray-600">{competition.duration_days} days</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-4">
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Calendar className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Duration</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">{competition.duration_days} days</div>
           </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Users className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Campus Rank</div>
-            <div className="text-xs text-gray-600">#{competition.campus_rank || 'N/A'}</div>
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Campus Rank</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">#{competition.campus_rank || 'N/A'}</div>
           </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Target className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Target</div>
-            <div className="text-xs text-gray-600">{competition.target_metric}</div>
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Target</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">{competition.target_metric}</div>
           </div>
-          <div className="text-center p-3 bg-gray-50 rounded-lg">
-            <Trophy className="w-5 h-5 mx-auto mb-1 text-gray-600" />
-            <div className="text-sm font-medium">Participants</div>
-            <div className="text-xs text-gray-600">{competition.campus_participants || 0}</div>
+          <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
+            <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
+            <div className="text-xs sm:text-sm font-medium mb-1">Participants</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">{competition.campus_participants || 0}</div>
           </div>
         </div>
 
         <div className="space-y-2 mb-4">
-          <div className="flex justify-between text-sm">
-            <span>Registration: {new Date(competition.registration_start).toLocaleDateString()}</span>
-            <span>Ends: {new Date(competition.registration_end).toLocaleDateString()}</span>
+          <div className="flex flex-col sm:flex-row sm:justify-between text-xs sm:text-sm gap-1">
+            <span className="break-words">Registration: {new Date(competition.registration_start).toLocaleDateString()}</span>
+            <span className="break-words">Ends: {new Date(competition.registration_end).toLocaleDateString()}</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span>Competition: {new Date(competition.start_date).toLocaleDateString()}</span>
-            <span>Ends: {new Date(competition.end_date).toLocaleDateString()}</span>
+          <div className="flex flex-col sm:flex-row sm:justify-between text-xs sm:text-sm gap-1">
+            <span className="break-words">Competition: {new Date(competition.start_date).toLocaleDateString()}</span>
+            <span className="break-words">Ends: {new Date(competition.end_date).toLocaleDateString()}</span>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Dialog>
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="flex-1"
+                className="w-full sm:flex-1"
                 onClick={() => {
                   setSelectedCompetition(competition);
                   fetchLeaderboard(competition.id);
                 }}
               >
-                <Trophy className="w-4 h-4 mr-2" />
-                View Leaderboard
+                <Trophy className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span className="whitespace-nowrap">View Leaderboard</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Trophy className="w-5 h-5" />
-                  {selectedCompetition?.title} - Leaderboard
+                <DialogTitle className="flex items-center gap-2 flex-wrap break-words leading-relaxed pr-8">
+                  <Trophy className="w-5 h-5 flex-shrink-0" />
+                  <span className="break-words">{selectedCompetition?.title} - Leaderboard</span>
                 </DialogTitle>
               </DialogHeader>
               {leaderboard && <LeaderboardContent leaderboard={leaderboard} />}
@@ -210,10 +210,10 @@ const InterCollegeCompetitions = () => {
             <Button
               onClick={() => registerForCompetition(competition.id)}
               disabled={registering}
-              className="flex-1 bg-blue-600 hover:bg-blue-700"
+              className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700"
             >
-              <Users className="w-4 h-4 mr-2" />
-              {registering ? 'Registering...' : 'Register Now'}
+              <Users className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="whitespace-nowrap">{registering ? 'Registering...' : 'Register Now'}</span>
             </Button>
           )}
         </div>
@@ -348,19 +348,19 @@ const InterCollegeCompetitions = () => {
   return (
     <div className="max-w-7xl mx-auto p-6">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-4">
-          <Trophy className="w-8 h-8 text-blue-600" />
-          <h1 className="text-3xl font-bold text-gray-800">Inter-College Competitions</h1>
+      <div className="mb-6 sm:mb-8">
+        <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 flex-wrap">
+          <Trophy className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600 flex-shrink-0" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 break-words leading-tight">Inter-College Competitions</h1>
         </div>
-        <p className="text-gray-600 text-lg">
+        <p className="text-gray-600 text-base sm:text-lg break-words leading-relaxed mb-3">
           Compete with students from other universities and showcase your campus pride!
         </p>
         {user?.university && (
           <div className="mt-2">
-            <Badge variant="outline" className="bg-blue-50 border-blue-200">
-              <Users className="w-3 h-3 mr-1" />
-              Representing: {user.university}
+            <Badge variant="outline" className="bg-blue-50 border-blue-200 inline-flex items-center gap-1 break-words max-w-full">
+              <Users className="w-3 h-3 flex-shrink-0" />
+              <span className="break-words">Representing: {user.university}</span>
             </Badge>
           </div>
         )}
@@ -368,12 +368,14 @@ const InterCollegeCompetitions = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
-          <TabsTrigger value="all">All Competitions</TabsTrigger>
-          <TabsTrigger value="eligible">Eligible</TabsTrigger>
-          <TabsTrigger value="registered">My Competitions</TabsTrigger>
-          <TabsTrigger value="active">Active Now</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex w-auto min-w-full sm:w-auto gap-2">
+            <TabsTrigger value="all" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">All Competitions</TabsTrigger>
+            <TabsTrigger value="eligible" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">Eligible</TabsTrigger>
+            <TabsTrigger value="registered" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">My Competitions</TabsTrigger>
+            <TabsTrigger value="active" className="text-xs sm:text-sm whitespace-nowrap flex-shrink-0">Active Now</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="all" className="space-y-4 mt-6">
           {filteredCompetitions.length === 0 ? (
