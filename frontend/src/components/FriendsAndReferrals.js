@@ -121,10 +121,15 @@ const FriendsAndReferrals = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setFriends(data.friends);
+        setFriends(data.friends || []);
+      } else {
+        // If API fails, ensure friends is still an array
+        setFriends([]);
       }
     } catch (error) {
       console.error('Error fetching friends:', error);
+      // Ensure friends is always an array on error
+      setFriends([]);
     }
   };
 
@@ -139,11 +144,18 @@ const FriendsAndReferrals = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setInvitations(data.invitations);
-        setInviteStats(data.stats);
+        setInvitations(data.invitations || []);
+        setInviteStats(data.stats || null);
+      } else {
+        // If API fails, ensure invitations is still an array
+        setInvitations([]);
+        setInviteStats(null);
       }
     } catch (error) {
       console.error('Error fetching invitations:', error);
+      // Ensure invitations is always an array on error
+      setInvitations([]);
+      setInviteStats(null);
     }
   };
 
@@ -312,18 +324,43 @@ const FriendsAndReferrals = () => {
     }
   };
 
-  const shareViaWhatsApp = () => {
-    const message = `Hey! Join me on EarnAura and start earning money while managing your finances. Use my referral link: ${referralData.referral_link}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
+  const shareReferralLink = async () => {
+    const shareTitle = 'Join EarnAura - Start Earning Today!';
+    const shareText = `Hey! Join me on EarnAura and start earning money while managing your finances. Use my referral link to get started and we both earn rewards!`;
+    const shareUrl = referralData.referral_link;
+
+    // Check if Web Share API is supported
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        toast({
+          title: "Shared Successfully!",
+          description: "Your referral link has been shared"
+        });
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          // Fallback if share was cancelled or failed
+          console.error('Error sharing:', error);
+          fallbackShare();
+        }
+      }
+    } else {
+      // Fallback for browsers that don't support Web Share API
+      fallbackShare();
+    }
   };
 
-  const shareViaEmail = () => {
-    const subject = 'Join EarnAura - Start Earning Today!';
-    const body = `Hi there!\n\nI've been using EarnAura to manage my finances and earn money, and I think you'd love it too!\n\nJoin me using this referral link: ${referralData.referral_link}\n\nYou'll get rewards for signing up, and I'll get rewarded too when you join. It's a win-win!\n\nBest regards,\n${user?.full_name}`;
-    
-    const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailtoUrl;
+  const fallbackShare = () => {
+    // Copy to clipboard as fallback
+    copyReferralLink();
+    toast({
+      title: "Link Copied!",
+      description: "Referral link copied to clipboard. You can now paste it anywhere to share."
+    });
   };
 
   // **NEW: Real-time activity functions**
@@ -339,9 +376,14 @@ const FriendsAndReferrals = () => {
       if (response.ok) {
         const data = await response.json();
         setRecentActivity(data.recent_activities || []);
+      } else {
+        // If API fails, ensure recentActivity is still an array
+        setRecentActivity([]);
       }
     } catch (error) {
       console.error('Error fetching recent activity:', error);
+      // Ensure recentActivity is always an array on error
+      setRecentActivity([]);
     }
   };
 
@@ -356,10 +398,15 @@ const FriendsAndReferrals = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setLiveStats(data);
+        setLiveStats(data || null);
+      } else {
+        // If API fails, set to null
+        setLiveStats(null);
       }
     } catch (error) {
       console.error('Error fetching live stats:', error);
+      // Set to null on error
+      setLiveStats(null);
     }
   };
 
@@ -406,7 +453,7 @@ const FriendsAndReferrals = () => {
           <Button
             onClick={() => setActiveTab('friends')}
             variant={activeTab === 'friends' ? 'default' : 'ghost'}
-            className="px-6"
+            className={activeTab === 'friends' ? 'btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3' : 'px-6'}
           >
             <Users className="w-4 h-4 mr-2" />
             Friends Network
@@ -417,7 +464,7 @@ const FriendsAndReferrals = () => {
           <Button
             onClick={() => setActiveTab('referrals')}
             variant={activeTab === 'referrals' ? 'default' : 'ghost'}
-            className="px-6"
+            className={activeTab === 'referrals' ? 'btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3' : 'px-6'}
           >
             <Gift className="w-4 h-4 mr-2" />
             Refer & Earn
@@ -428,7 +475,7 @@ const FriendsAndReferrals = () => {
           <Button
             onClick={() => setActiveTab('activity')}
             variant={activeTab === 'activity' ? 'default' : 'ghost'}
-            className="px-6"
+            className={activeTab === 'activity' ? 'btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3' : 'px-6'}
           >
             <Clock className="w-4 h-4 mr-2" />
             Live Activity
@@ -475,7 +522,7 @@ const FriendsAndReferrals = () => {
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{friends.length}</div>
+                <div className="text-2xl font-bold">{friends ? friends.length : 0}</div>
                 <p className="text-xs text-muted-foreground">Active friendships</p>
               </CardContent>
             </Card>
@@ -507,7 +554,7 @@ const FriendsAndReferrals = () => {
           <div className="flex flex-wrap gap-4">
             <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
               <DialogTrigger asChild>
-                <Button className="flex items-center gap-2">
+                <Button className="btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3">
                   <UserPlus className="w-4 h-4" />
                   Invite Friends
                 </Button>
@@ -540,7 +587,7 @@ const FriendsAndReferrals = () => {
                       onChange={(e) => setInvitePhone(e.target.value)}
                     />
                   </div>
-                  <Button onClick={sendInvitation} className="w-full">
+                  <Button onClick={sendInvitation} className="btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3 w-full">
                     Send Invitation
                   </Button>
                   {referralCode && (
@@ -588,7 +635,7 @@ const FriendsAndReferrals = () => {
                       onChange={(e) => setAcceptCode(e.target.value)}
                     />
                   </div>
-                  <Button onClick={acceptInvitation} className="w-full">
+                  <Button onClick={acceptInvitation} className="btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3 w-full">
                     Accept Invitation
                   </Button>
                 </div>
@@ -603,19 +650,19 @@ const FriendsAndReferrals = () => {
               <CardDescription>Connected friends on EarnAura</CardDescription>
             </CardHeader>
             <CardContent>
-              {friends.length === 0 ? (
+              {!friends || friends.length === 0 ? (
                 <div className="text-center py-8">
                   <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No friends yet</h3>
                   <p className="text-gray-600 mb-4">Start inviting friends to build your network!</p>
-                  <Button onClick={() => setShowInviteModal(true)}>
-                    <UserPlus className="w-4 h-4 mr-2" />
+                  <Button onClick={() => setShowInviteModal(true)} className="btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3">
+                    <UserPlus className="w-4 h-4" />
                     Invite Your First Friend
                   </Button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {friends.map((friend) => (
+                  {friends && friends.map((friend) => (
                     <div key={friend.user_id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-10 h-10">
@@ -669,7 +716,7 @@ const FriendsAndReferrals = () => {
           </Card>
 
           {/* Sent Invitations */}
-          {invitations.length > 0 && (
+          {invitations && invitations.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Sent Invitations</CardTitle>
@@ -677,7 +724,7 @@ const FriendsAndReferrals = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {invitations.map((invitation) => (
+                  {invitations && invitations.map((invitation) => (
                     <div key={invitation.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
                         <p className="font-medium">
@@ -807,21 +854,13 @@ const FriendsAndReferrals = () => {
                   </Button>
                 </div>
                 
-                <div className="flex space-x-3">
+                <div className="flex justify-center">
                   <Button 
-                    onClick={shareViaWhatsApp}
-                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                    onClick={shareReferralLink}
+                    className="btn-primary flex items-center gap-2 text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3"
                   >
                     <HeroShareIcon className="h-4 w-4" />
-                    WhatsApp
-                  </Button>
-                  <Button 
-                    onClick={shareViaEmail}
-                    variant="outline"
-                    className="flex items-center gap-2"
-                  >
-                    <HeroShareIcon className="h-4 w-4" />
-                    Email
+                    Share
                   </Button>
                 </div>
               </CardContent>
@@ -871,7 +910,7 @@ const FriendsAndReferrals = () => {
                   </div>
                   <h3 className="font-semibold mb-2">1. Share Your Link</h3>
                   <p className="text-sm text-gray-600">
-                    Share your unique referral link with friends via WhatsApp, email, or social media
+                    Share your unique referral link with friends anywhere - social media, messaging apps, email, or any platform
                   </p>
                 </div>
                 
@@ -904,7 +943,7 @@ const FriendsAndReferrals = () => {
       {activeTab === 'activity' && (
         <div className="space-y-6">
           {/* Network Stats Overview */}
-          {recentActivity.length > 0 && (
+          {recentActivity && recentActivity.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card>
                 <CardHeader className="pb-2">
@@ -972,7 +1011,7 @@ const FriendsAndReferrals = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {recentActivity.length === 0 ? (
+              {!recentActivity || recentActivity.length === 0 ? (
                 <div className="text-center py-12">
                   <Users className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-gray-600 mb-2">No Recent Activity</h3>
@@ -989,7 +1028,7 @@ const FriendsAndReferrals = () => {
                 </div>
               ) : (
                 <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {recentActivity.map((activity, index) => (
+                  {recentActivity && recentActivity.map((activity, index) => (
                     <div key={index} className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Avatar className="w-10 h-10">
                         <img 
