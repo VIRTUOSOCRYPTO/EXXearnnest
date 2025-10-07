@@ -47,6 +47,7 @@ import CampusReputation from './components/CampusReputation';
 import CampusAdminRequest from './components/CampusAdminRequest';
 // Removed SystemAdminInterface - merged into SuperAdminInterface
 import CampusAdminDashboard from './components/CampusAdminDashboard';
+import ClubAdminDashboard from './components/ClubAdminDashboard';
 import SuperAdminInterface from './components/SuperAdminInterface';
 
 // Viral Impact Features
@@ -307,6 +308,18 @@ function App() {
               <Route 
                 path="/campus-admin/dashboard" 
                 element={user ? <CampusAdminDashboard /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/campus-admin" 
+                element={user ? <Navigate to="/campus-admin/dashboard" /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/club-admin/dashboard" 
+                element={user ? <ClubAdminDashboard /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/club-admin" 
+                element={user ? <Navigate to="/club-admin/dashboard" /> : <Navigate to="/login" />} 
               />
               {/* SystemAdminInterface removed - functionality merged into SuperAdminInterface */}
               <Route 
