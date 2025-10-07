@@ -4972,7 +4972,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://admin-request-path.preview.emergentagent.com"
+        base_url = "https://super-campus-admin.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7655,7 +7655,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://admin-request-path.preview.emergentagent.com"
+        base_url = "https://super-campus-admin.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14911,6 +14911,15 @@ async def review_admin_request(
                 "warnings_count": 0
             }
             await db.campus_admins.insert_one(campus_admin)
+            
+            # Update user's admin_level field
+            await db.users.update_one(
+                {"id": admin_request["user_id"]},
+                {"$set": {
+                    "admin_level": admin_type,
+                    "is_admin": True
+                }}
+            )
         
         # Update admin request
         await db.campus_admin_requests.update_one(
