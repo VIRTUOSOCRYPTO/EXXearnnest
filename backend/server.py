@@ -4972,7 +4972,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://admin-dashboard-275.preview.emergentagent.com"
+        base_url = "https://campus-auth-flow.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7655,7 +7655,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://admin-dashboard-275.preview.emergentagent.com"
+        base_url = "https://campus-auth-flow.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14762,8 +14762,7 @@ async def get_pending_admin_requests(
         db = await get_database()
         
         # Check if user is system admin
-        user = await get_user_by_id(current_user)
-        if not user or not user.get("is_admin", False):
+        if not current_user.get("is_admin", False):
             raise HTTPException(status_code=403, detail="System admin access required")
         
         # Build query filter
@@ -14823,8 +14822,7 @@ async def review_admin_request(
         db = await get_database()
         
         # Check if user is system admin
-        user = await get_user_by_id(current_user)
-        if not user or not user.get("is_admin", False):
+        if not current_user.get("is_admin", False):
             raise HTTPException(status_code=403, detail="System admin access required")
         
         # Get admin request
@@ -14835,6 +14833,11 @@ async def review_admin_request(
         
         if not admin_request:
             raise HTTPException(status_code=404, detail="Admin request not found or already processed")
+        
+        # Get user information
+        user = await get_user_by_id(admin_request["user_id"])
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
         
         decision_time = datetime.now(timezone.utc)
         
@@ -14915,7 +14918,7 @@ async def review_admin_request(
         audit_log = await admin_workflow_manager.create_audit_log(
             admin_user_id=current_user["id"],
             action_type="admin_request_reviewed",
-            action_description=f"Admin request {review_data.decision}d for {admin_request['full_name']}",
+            action_description=f"Admin request {review_data.decision}d for {user['full_name']}",
             target_type="admin_request",
             target_id=request_id,
             before_state={"status": admin_request["status"]},
@@ -14954,8 +14957,7 @@ async def get_campus_admins(
         db = await get_database()
         
         # Check if user is system admin
-        user = await get_user_by_id(current_user)
-        if not user or not user.get("is_admin", False):
+        if not current_user.get("is_admin", False):
             raise HTTPException(status_code=403, detail="System admin access required")
         
         # Build query filter
@@ -15031,8 +15033,7 @@ async def update_admin_privileges(
         db = await get_database()
         
         # Check if user is system admin
-        user = await get_user_by_id(current_user)
-        if not user or not user.get("is_admin", False):
+        if not current_user.get("is_admin", False):
             raise HTTPException(status_code=403, detail="System admin access required")
         
         # Get campus admin
@@ -15120,8 +15121,7 @@ async def get_admin_audit_logs(
         db = await get_database()
         
         # Check if user is system admin
-        user = await get_user_by_id(current_user)
-        if not user or not user.get("is_admin", False):
+        if not current_user.get("is_admin", False):
             raise HTTPException(status_code=403, detail="System admin access required")
         
         # Build query filter
