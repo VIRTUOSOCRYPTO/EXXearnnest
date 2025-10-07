@@ -24,79 +24,55 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def populate_live_features():
-    """Populate the specific features mentioned by user"""
+    """Populate the specific features mentioned by user using REAL users only"""
     db = await get_database()
     
     logger.info("🚀 Starting live features population...")
     
-    # 1. POPULATE ACHIEVEMENT SECTION LEADERBOARDS
-    logger.info("🏆 Populating Achievement section leaderboards...")
+    # 1. CLEAN UP EXISTING FAKE LEADERBOARD ENTRIES
+    logger.info("🧹 Cleaning up fake leaderboard entries...")
     
-    # Create sample leaderboard data for "savings" and "streak" 
-    sample_users = [
-        {"name": "Arjun Sharma", "university": "IIT Delhi", "avatar": "man"},
-        {"name": "Priya Patel", "university": "University of Mumbai", "avatar": "girl"}, 
-        {"name": "Rahul Singh", "university": "IIT Bangalore", "avatar": "man"},
-        {"name": "Kavya Gupta", "university": "Delhi University", "avatar": "woman"},
-        {"name": "Aarav Kumar", "university": "IIT Chennai", "avatar": "boy"},
-        {"name": "Ananya Jain", "university": "University of Pune", "avatar": "girl"},
-        {"name": "Vikram Agarwal", "university": "IIT Kharagpur", "avatar": "man"},
-        {"name": "Shreya Bansal", "university": "JNU", "avatar": "woman"},
-        {"name": "Karan Mehta", "university": "Gujarat University", "avatar": "man"},
-        {"name": "Divya Malhotra", "university": "University of Bangalore", "avatar": "woman"}
-    ]
+    # Remove all leaderboard entries that don't correspond to real users
+    real_user_ids = []
+    async for user in db.users.find({}, {"id": 1, "_id": 1}):
+        if "id" in user:
+            real_user_ids.append(user["id"])
+        if "_id" in user:
+            real_user_ids.append(str(user["_id"]))
     
-    # Populate weekly savings leaderboard
-    for i, user in enumerate(sample_users):
-        user_id = str(uuid.uuid4())
-        savings_score = 15000 - (i * 1200)  # Decreasing savings amounts
-        
-        await db.leaderboards.update_one(
-            {
-                "user_id": user_id,
-                "leaderboard_type": "savings", 
-                "period": "weekly",
-                "university": user["university"]
-            },
-            {
-                "$set": {
-                    "rank": i + 1,
-                    "score": savings_score,
-                    "full_name": user["name"],
-                    "avatar": user["avatar"],
-                    "university": user["university"],
-                    "total_saved": savings_score,
-                    "updated_at": datetime.now(timezone.utc)
-                }
-            },
-            upsert=True
-        )
+    # Delete leaderboard entries with fake user_ids
+    deleted_fake = await db.leaderboards.delete_many({
+        "user_id": {"$nin": real_user_ids}
+    })
+    logger.info(f"🗑️ Removed {deleted_fake.deleted_count} fake leaderboard entries")
     
-    # Populate weekly streak leaderboard  
-    for i, user in enumerate(sample_users):
-        user_id = str(uuid.uuid4())
-        streak_score = 25 - (i * 2)  # Decreasing streak days
-        
-        await db.leaderboards.update_one(
-            {
-                "user_id": user_id,
-                "leaderboard_type": "streak",
-                "period": "weekly", 
-                "university": user["university"]
-            },
-            {
-                "$set": {
-                    "rank": i + 1,
-                    "score": streak_score,
-                    "full_name": user["name"],
-                    "avatar": user["avatar"],
-                    "university": user["university"],
-                    "current_streak": streak_score,
-                    "updated_at": datetime.now(timezone.utc)
-                }
-            },
-            upsert=True
-        )
+    # 2. POPULATE LEADERBOARDS WITH REAL USERS ONLY
+    logger.info("🏆 Populating leaderboards with real users...")
+    
+    # Get real users with activity
+    real_users = await db.users.find({
+        "is_active": True,
+        "email_verified": True
+    }).to_list(None)
+    
+    if not real_users:
+        logger.warning("⚠️ No real active users found. Skipping leaderboard population.")
+        return
+    
+    # Update leaderboards for real users using gamification service
+    from gamification_service import GamificationService
+    gamification = GamificationService(db)
+    
+    for user in real_users[:20]:  # Limit to top 20 real users
+        try:
+            # Update all leaderboards for this real user
+            await gamification.update_leaderboards(user.get("id") or str(user["_id"]))
+            logger.info(f"✅ Updated leaderboards for real user: {user.get('full_name', 'Unknown')}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to update leaderboard for user {user.get('id', str(user.get('_id')))}: {str(e)}")
+            continue
+    
+    logger.info("🎯 Leaderboard population completed with real users only")
     
     # 2. POPULATE CAMPUS FEATURES
     logger.info("🏛️ Populating Campus features...")
