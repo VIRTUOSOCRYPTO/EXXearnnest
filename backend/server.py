@@ -4972,7 +4972,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://run-this-13.preview.emergentagent.com"
+        base_url = "https://admin-request-path.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7655,7 +7655,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://run-this-13.preview.emergentagent.com"
+        base_url = "https://admin-request-path.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14437,6 +14437,36 @@ async def request_campus_admin_privileges(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
+        # Check college-specific admin limits
+        college_name = admin_request_data.college_name
+        requested_type = admin_request_data.requested_admin_type
+        
+        # Count existing approved admins for this college
+        existing_campus_admins = await db.campus_admins.count_documents({
+            "college_name": college_name,
+            "admin_type": "campus_admin",
+            "status": "active"
+        })
+        
+        existing_club_admins = await db.campus_admins.count_documents({
+            "college_name": college_name,
+            "admin_type": "club_admin", 
+            "status": "active"
+        })
+        
+        # Check limits: max 5 campus admins, max 10 club admins per college
+        if requested_type == "campus_admin" and existing_campus_admins >= 5:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"College '{college_name}' has reached the maximum limit of 5 Campus Admins. Current count: {existing_campus_admins}"
+            )
+        
+        if requested_type == "club_admin" and existing_club_admins >= 10:
+            raise HTTPException(
+                status_code=400,
+                detail=f"College '{college_name}' has reached the maximum limit of 10 Club Admins. Current count: {existing_club_admins}"
+            )
+        
         # Process the admin request
         request_data = admin_request_data.dict()
         request_data["email"] = user.get("email")
@@ -14868,7 +14898,7 @@ async def review_admin_request(
                 "permissions": permissions,
                 "can_create_inter_college": review_data.can_create_inter_college,
                 "can_create_intra_college": True,
-                "can_manage_reputation": admin_type == "college_admin",
+                "can_manage_reputation": admin_type == "campus_admin",
                 "max_competitions_per_month": review_data.max_competitions_per_month,
                 "status": "active",
                 "appointed_at": decision_time,
@@ -15010,7 +15040,7 @@ async def get_campus_admins(
                 "total_active": await db.campus_admins.count_documents({"status": "active"}),
                 "total_suspended": await db.campus_admins.count_documents({"status": "suspended"}),
                 "club_admins": await db.campus_admins.count_documents({"admin_type": "club_admin"}),
-                "college_admins": await db.campus_admins.count_documents({"admin_type": "college_admin"})
+                "campus_admins": await db.campus_admins.count_documents({"admin_type": "campus_admin"})
             }
         }
         
@@ -15812,7 +15842,7 @@ async def get_campus_admin_dashboard(
         
         # Get pending admin requests if this is a college admin
         pending_requests = []
-        if current_campus_admin["admin_type"] == "college_admin":
+        if current_campus_admin["admin_type"] == "campus_admin":
             pending_requests = await db.campus_admin_requests.find({
                 "college_name": current_campus_admin["college_name"],
                 "status": {"$in": ["pending", "under_review"]}
