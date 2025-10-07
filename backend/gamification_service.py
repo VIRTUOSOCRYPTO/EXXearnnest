@@ -417,20 +417,81 @@ class GamificationService:
             )
 
     async def get_leaderboard(self, leaderboard_type: str, period: str = "all_time", university: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
-        """Get leaderboard rankings"""
-        filter_query = {
-            "leaderboard_type": leaderboard_type,
-            "period": period
-        }
-        if university:
-            filter_query["university"] = university
+        """Get leaderboard rankings - ensures each user appears only once"""
         
-        # Get top entries
-        entries = await self.db.leaderboards.find(filter_query).sort("rank", 1).limit(limit).to_list(None)
+        if university:
+            # If university is specified, get only university-specific entries
+            filter_query = {
+                "leaderboard_type": leaderboard_type,
+                "period": period,
+                "university": university
+            }
+        else:
+            # For global leaderboard, use aggregation to get unique users with best scores
+            # Prioritize university-specific entries over global entries
+            pipeline = [
+                {
+                    "$match": {
+                        "leaderboard_type": leaderboard_type,
+                        "period": period
+                    }
+                },
+                {
+                    "$sort": {
+                        "user_id": 1,
+                        "university": 1,  # Prioritize university-specific (non-null) entries
+                        "score": -1
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$user_id",  # Group by user_id to ensure uniqueness
+                        "score": {"$first": "$score"},
+                        "university": {"$first": "$university"},
+                        "updated_at": {"$first": "$updated_at"},
+                        "leaderboard_type": {"$first": "$leaderboard_type"},
+                        "period": {"$first": "$period"}
+                    }
+                },
+                {
+                    "$sort": {"score": -1}  # Sort by score descending
+                },
+                {
+                    "$limit": limit
+                }
+            ]
+            
+            entries = await self.db.leaderboards.aggregate(pipeline).to_list(None)
+            
+            # Convert aggregation results to match expected format
+            formatted_entries = []
+            for i, entry in enumerate(entries):
+                formatted_entries.append({
+                    "user_id": entry["_id"],
+                    "score": entry["score"],
+                    "rank": i + 1,  # Assign sequential ranks
+                    "university": entry.get("university"),
+                    "leaderboard_type": entry["leaderboard_type"],
+                    "period": entry["period"]
+                })
+            entries = formatted_entries
+        
+        if university:
+            # For university-specific queries, use the original method
+            entries = await self.db.leaderboards.find(filter_query).sort("rank", 1).limit(limit).to_list(None)
         
         # Get user details for each entry
         rankings = []
+        seen_users = set()  # Extra safety to prevent duplicates
+        
         for entry in entries:
+            user_id = str(entry["user_id"])
+            
+            # Skip if we've already seen this user (extra safety check)
+            if user_id in seen_users:
+                continue
+            seen_users.add(user_id)
+            
             # Try to get user by _id (ObjectId) first, then by id (UUID string)
             user = await self.db.users.find_one({"_id": entry["user_id"]})
             if not user and isinstance(entry["user_id"], str):
@@ -439,7 +500,7 @@ class GamificationService:
             if user:
                 rankings.append({
                     "rank": entry["rank"],
-                    "user_id": str(entry["user_id"]),
+                    "user_id": user_id,
                     "full_name": user.get("full_name", "Unknown"),
                     "avatar": user.get("avatar", "boy"),
                     "university": user.get("university"),
@@ -448,7 +509,11 @@ class GamificationService:
                     "score": entry["score"]
                 })
         
-        total_participants = await self.db.leaderboards.count_documents(filter_query)
+        # Re-rank the final results to ensure proper sequential ranking
+        for i, ranking in enumerate(rankings):
+            ranking["rank"] = i + 1
+        
+        total_participants = len(rankings)
         
         return {
             "leaderboard_type": leaderboard_type,
