@@ -318,7 +318,7 @@ class AdminWorkflowManager:
                 "max_competitions_per_month": 3
             }
         
-        elif admin_type == "college_admin":
+        elif admin_type == "campus_admin":
             permissions = base_permissions + [
                 "create_inter_competitions",
                 "create_intra_competitions", 
