@@ -73,9 +73,8 @@ const Navigation = () => {
 
   // Admin navigation items (conditionally shown)
   const adminItems = [
-    { path: '/campus-admin/request', label: 'Request Admin Access', icon: BuildingOffice2Icon },
+    { path: '/campus-admin/request', label: 'Request Campus Admin Access', icon: BuildingOffice2Icon },
     { path: '/campus-admin/dashboard', label: 'Campus Admin Dashboard', icon: ChartBarIcon, adminOnly: true },
-    { path: '/system-admin', label: 'System Admin', icon: UserCircleIcon, systemAdminOnly: true },
     { path: '/super-admin', label: 'Super Admin Dashboard', icon: UserCircleIcon, superAdminOnly: true },
   ];
 
@@ -246,7 +245,7 @@ const Navigation = () => {
                 <div className="p-2 space-y-1">
                   {adminItems.map((item) => {
                     // Show based on user permissions
-                    if (item.systemAdminOnly && !user?.is_admin) return null;
+                    // Removed systemAdminOnly check - merged into superAdminOnly
                     if (item.superAdminOnly && !user?.is_super_admin && !user?.is_admin) return null;
                     if (item.adminOnly && !user?.is_campus_admin && !user?.is_admin) return null;
                     
@@ -440,7 +439,7 @@ const Navigation = () => {
                 </div>
                 {adminItems.map((item) => {
                   // Show based on user permissions
-                  if (item.systemAdminOnly && !user?.is_admin) return null;
+                  // Removed systemAdminOnly check - merged into superAdminOnly
                   if (item.superAdminOnly && !user?.is_super_admin && !user?.is_admin) return null;
                   if (item.adminOnly && !user?.is_campus_admin && !user?.is_admin) return null;
                   
