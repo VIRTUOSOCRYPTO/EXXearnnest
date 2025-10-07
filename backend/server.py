@@ -795,27 +795,7 @@ async def get_trending_skills():
     await advanced_cache.set("trending_skills", trending_skills)
     return api_optimizer.optimize_json_response({"trending_skills": trending_skills})
 
-@api_router.get("/auth/avatars")
-@cache_result("static_data", 86400)  # Cache for 24 hours
-async def get_available_avatars():
-    """Get available avatar options"""
-    # Check cache first
-    cached_avatars = await advanced_cache.get("static_data", "avatars")
-    if cached_avatars:
-        return api_optimizer.optimize_json_response({"avatars": cached_avatars})
-    
-    avatars = [
-        {"value": "boy", "label": "Boy", "category": "youth"},
-        {"value": "man", "label": "Man", "category": "adult"},
-        {"value": "girl", "label": "Girl", "category": "youth"},
-        {"value": "woman", "label": "Woman", "category": "adult"},
-        {"value": "grandfather", "label": "Grandfather (GF)", "category": "senior"},
-        {"value": "grandmother", "label": "Grandmother (GM)", "category": "senior"}
-    ]
-    
-    # Cache the result
-    await advanced_cache.set("static_data", avatars, "avatars")
-    return api_optimizer.optimize_json_response({"avatars": avatars})
+# Avatar selection endpoint removed
 
 @api_router.post("/auth/register")
 @limiter.limit("5/minute")
@@ -4872,7 +4852,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://leaderboard-fix-3.preview.emergentagent.com"
+        base_url = "https://launch-this-3.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7555,7 +7535,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://leaderboard-fix-3.preview.emergentagent.com"
+        base_url = "https://launch-this-3.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
