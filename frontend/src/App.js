@@ -47,6 +47,7 @@ import CampusReputation from './components/CampusReputation';
 import CampusAdminRequest from './components/CampusAdminRequest';
 import SystemAdminInterface from './components/SystemAdminInterface';
 import CampusAdminDashboard from './components/CampusAdminDashboard';
+import SuperAdminInterface from './components/SuperAdminInterface';
 
 // Viral Impact Features
 import PublicCampusBattle from './components/PublicCampusBattle';
@@ -310,6 +311,10 @@ function App() {
               <Route 
                 path="/system-admin" 
                 element={user ? <SystemAdminInterface /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/super-admin" 
+                element={user ? <SuperAdminInterface /> : <Navigate to="/login" />} 
               />
               
               {/* Viral Impact Features */}
