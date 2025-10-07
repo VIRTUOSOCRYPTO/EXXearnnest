@@ -427,6 +427,40 @@ const Navigation = () => {
                   );
                 })}
               </div>
+
+              {/* Admin Section */}
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <div className="px-4 pb-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                    <BuildingOffice2Icon className="w-4 h-4" />
+                    Admin
+                  </h3>
+                </div>
+                {adminItems.map((item) => {
+                  // Show based on user permissions
+                  if (item.systemAdminOnly && !user?.is_admin) return null;
+                  if (item.adminOnly && !user?.is_campus_admin && !user?.is_admin) return null;
+                  
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={closeMobileMenu}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        isActive
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                      }`}
+                    >
+                      <Icon className="w-5 h-5" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
               
               {/* Profile Section */}
               <div className="border-t border-gray-100 pt-4 mt-4">
