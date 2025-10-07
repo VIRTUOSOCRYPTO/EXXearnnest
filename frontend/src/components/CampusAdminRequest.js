@@ -72,10 +72,28 @@ const CampusAdminRequest = () => {
   const fetchRequestStatus = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API}/admin/campus/request/status`);
-      setRequestStatus(response.data);
+      
+      // Try to fetch campus admin request status first
+      try {
+        const campusResponse = await axios.get(`${API}/admin/campus/request/status`);
+        setRequestStatus(campusResponse.data);
+        return;
+      } catch (campusError) {
+        // If campus admin request not found, try club admin request
+        if (campusError.response?.status === 404) {
+          try {
+            const clubResponse = await axios.get(`${API}/admin/club/request/status`);
+            setRequestStatus(clubResponse.data);
+            return;
+          } catch (clubError) {
+            // Neither request type found
+            setRequestStatus(null);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error fetching request status:', error);
+      setRequestStatus(null);
     } finally {
       setLoading(false);
     }
@@ -124,11 +142,26 @@ const CampusAdminRequest = () => {
       return;
     }
 
+    // Validate club admin specific requirements
+    if (formData.requested_admin_type === 'club_admin' && !formData.club_name) {
+      alert('Club name is required for club admin requests');
+      return;
+    }
+
     try {
       setSubmitting(true);
-      const response = await axios.post(`${API}/admin/campus/request`, formData);
       
-      alert('Admin request submitted successfully! You will receive an email notification about the review status.');
+      // Use the correct endpoint based on admin type
+      const endpoint = formData.requested_admin_type === 'club_admin' 
+        ? `${API}/admin/club/request` 
+        : `${API}/admin/campus/request`;
+      
+      const response = await axios.post(endpoint, formData);
+      
+      const adminType = formData.requested_admin_type === 'club_admin' ? 'Club Admin' : 'Campus Admin';
+      const approver = formData.requested_admin_type === 'club_admin' ? 'campus admin' : 'super admin';
+      
+      alert(`${adminType} request submitted successfully! Your request has been sent to the ${approver} for review. You will receive a notification about the review status.`);
       setShowRequestForm(false);
       fetchRequestStatus();
       
@@ -276,15 +309,23 @@ const CampusAdminRequest = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Club Name (Optional)</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Club Name {formData.requested_admin_type === 'club_admin' ? '*' : '(Optional)'}
+                  </label>
                   <input
                     type="text"
                     name="club_name"
                     value={formData.club_name}
                     onChange={handleInputChange}
-                    className="w-full p-3 border rounded-lg"
-                    placeholder="Student club or organization"
+                    className={`w-full p-3 border rounded-lg ${formData.requested_admin_type === 'club_admin' ? 'border-blue-300' : ''}`}
+                    placeholder={formData.requested_admin_type === 'club_admin' ? "Club name (required for club admin)" : "Student club or organization"}
+                    required={formData.requested_admin_type === 'club_admin'}
                   />
+                  {formData.requested_admin_type === 'club_admin' && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Club name is required for club admin requests
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Club Type</label>
