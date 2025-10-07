@@ -74,8 +74,9 @@ const Navigation = () => {
   // Admin navigation items (conditionally shown)
   const adminItems = [
     { path: '/campus-admin/request', label: 'Request Admin Access', icon: BuildingOffice2Icon },
-    { path: '/campus-admin/dashboard', label: 'Admin Dashboard', icon: ChartBarIcon, adminOnly: true },
+    { path: '/campus-admin/dashboard', label: 'Campus Admin Dashboard', icon: ChartBarIcon, adminOnly: true },
     { path: '/system-admin', label: 'System Admin', icon: UserCircleIcon, systemAdminOnly: true },
+    { path: '/super-admin', label: 'Super Admin Dashboard', icon: UserCircleIcon, superAdminOnly: true },
   ];
 
   const viralItems = [
@@ -246,6 +247,7 @@ const Navigation = () => {
                   {adminItems.map((item) => {
                     // Show based on user permissions
                     if (item.systemAdminOnly && !user?.is_admin) return null;
+                    if (item.superAdminOnly && !user?.is_super_admin && !user?.is_admin) return null;
                     if (item.adminOnly && !user?.is_campus_admin && !user?.is_admin) return null;
                     
                     const Icon = item.icon;
@@ -439,6 +441,7 @@ const Navigation = () => {
                 {adminItems.map((item) => {
                   // Show based on user permissions
                   if (item.systemAdminOnly && !user?.is_admin) return null;
+                  if (item.superAdminOnly && !user?.is_super_admin && !user?.is_admin) return null;
                   if (item.adminOnly && !user?.is_campus_admin && !user?.is_admin) return null;
                   
                   const Icon = item.icon;
