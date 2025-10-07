@@ -4972,7 +4972,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://super-campus-admin.preview.emergentagent.com"
+        base_url = "https://campus-approval.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6266,7 +6266,7 @@ async def request_beta_feature_access_endpoint(
 async def create_inter_college_competition(
     request: Request,
     competition_data: InterCollegeCompetitionCreate,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: str = Depends(get_current_user)
 ):
     """Create a new inter-college competition (System Admin or Campus Admin with privileges)"""
     try:
@@ -6274,7 +6274,10 @@ async def create_inter_college_competition(
         
         # Check if user is system admin OR campus admin with inter-college privileges
         user = await get_user_by_id(current_user)
-        is_system_admin = user and user.get("is_admin", False)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        is_system_admin = user.get("is_admin", False) or user.get("is_super_admin", False)
         
         campus_admin = None
         if not is_system_admin:
@@ -6311,7 +6314,7 @@ async def create_inter_college_competition(
         competition_dict.update({
             "id": str(uuid.uuid4()),
             "duration_days": duration_days,
-            "created_by": current_user["id"],
+            "created_by": current_user,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
@@ -6643,6 +6646,129 @@ async def get_inter_college_leaderboard(
         logger.error(f"Get inter-college leaderboard error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get leaderboard")
 
+@api_router.post("/inter-college/competitions/{competition_id}/complete")
+@limiter.limit("5/minute")
+async def complete_inter_college_competition(
+    request: Request,
+    competition_id: str,
+    completion_data: Dict[str, Any],  # Contains final rankings and results
+    current_user: str = Depends(get_current_user)
+):
+    """Complete an inter-college competition and award reputation points (Admin only)"""
+    try:
+        db = await get_database()
+        
+        # Check if user is system admin OR campus admin
+        user = await get_user_by_id(current_user)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        is_system_admin = user.get("is_admin", False) or user.get("is_super_admin", False)
+        
+        campus_admin = None
+        if not is_system_admin:
+            campus_admin = await db.campus_admins.find_one({
+                "user_id": current_user,
+                "status": "active"
+            })
+            
+            if not campus_admin:
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Competition completion requires system admin or campus admin privileges"
+                )
+        
+        # Get competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Check if competition is already completed
+        if competition.get("status") == "completed":
+            raise HTTPException(status_code=400, detail="Competition is already completed")
+        
+        # Get all participants for automatic ranking if not provided
+        participants = await db.inter_college_participations.find({
+            "competition_id": competition_id
+        }).to_list(None)
+        
+        if not participants:
+            raise HTTPException(status_code=400, detail="No participants found for this competition")
+        
+        # Use provided rankings or generate automatic rankings based on points/metrics
+        final_rankings = completion_data.get("final_rankings", [])
+        
+        if not final_rankings:
+            # Generate rankings based on participant scores (if available)
+            participants_with_scores = []
+            for participant in participants:
+                user_id = participant["user_id"]
+                # Get participant's score from their profile or transactions
+                participant_user = await get_user_by_id(user_id)
+                if participant_user:
+                    # Use experience points or custom metric as score
+                    score = participant_user.get("experience_points", 0)
+                    participants_with_scores.append({
+                        "user_id": user_id,
+                        "score": score,
+                        "campus": participant_user.get("university", "Unknown")
+                    })
+            
+            # Sort by score (highest first)
+            participants_with_scores.sort(key=lambda x: x["score"], reverse=True)
+            final_rankings = participants_with_scores
+        
+        # Award reputation points based on rankings
+        await award_competition_reputation(competition_id, final_rankings)
+        
+        # Update competition status
+        await db.inter_college_competitions.update_one(
+            {"id": competition_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "completed_at": datetime.now(timezone.utc),
+                    "completed_by": current_user,
+                    "final_rankings": final_rankings[:10],  # Store top 10
+                    "total_participants": len(participants),
+                    "reputation_points_awarded": True
+                }
+            }
+        )
+        
+        # Create audit log
+        audit_log = {
+            "id": str(uuid.uuid4()),
+            "admin_user_id": current_user,
+            "action_type": "complete_competition",
+            "action_description": f"Completed inter-college competition: {competition['title']}",
+            "target_type": "competition",
+            "target_id": competition_id,
+            "affected_entities": [{"type": "competition", "id": competition_id, "name": competition["title"]}],
+            "ip_address": request.client.host,
+            "severity": "info",
+            "admin_level": "campus_admin" if campus_admin else "super_admin",
+            "college_name": campus_admin.get("college_name") if campus_admin else "system",
+            "success": True,
+            "created_at": datetime.now(timezone.utc)
+        }
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Competition completed successfully",
+            "competition_id": competition_id,
+            "total_participants": len(participants),
+            "reputation_points_awarded": True,
+            "final_rankings": final_rankings[:10],
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Complete competition error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to complete competition")
+
 # ===== PRIZE-BASED CHALLENGE SYSTEM =====
 
 @api_router.post("/prize-challenges")
@@ -6650,7 +6776,7 @@ async def get_inter_college_leaderboard(
 async def create_prize_challenge(
     request: Request,
     challenge_data: PrizeChallengeCreate,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: str = Depends(get_current_user)
 ):
     """Create a new prize-based challenge (System Admin or Campus Admin with privileges)"""
     try:
@@ -6658,7 +6784,10 @@ async def create_prize_challenge(
         
         # Check if user is system admin OR campus admin with challenge creation privileges
         user = await get_user_by_id(current_user)
-        is_system_admin = user and user.get("is_admin", False)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        is_system_admin = user.get("is_admin", False) or user.get("is_super_admin", False)
         
         campus_admin = None
         if not is_system_admin:
@@ -6730,7 +6859,7 @@ async def create_prize_challenge(
         # Create audit log
         creator_type = "campus_admin" if campus_admin else "system_admin"
         audit_log = await admin_workflow_manager.create_audit_log(
-            admin_user_id=current_user["id"],
+            admin_user_id=current_user,
             action_type="create_prize_challenge",
             action_description=f"Created prize challenge: {challenge_data.title}",
             target_type="challenge",
@@ -7146,6 +7275,110 @@ async def get_campus_reputation_details(
         logger.error(f"Get campus reputation details error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get campus reputation details")
 
+@api_router.post("/campus-admin/reputation/update")
+@limiter.limit("10/minute")
+async def update_campus_reputation(
+    request: Request,
+    reputation_data: Dict[str, Any],
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Update campus reputation points for managed events (Campus Admin only)"""
+    try:
+        db = await get_database()
+        
+        # Validate that campus admin has reputation management permissions
+        if not current_campus_admin.get("can_manage_reputation"):
+            raise HTTPException(
+                status_code=403, 
+                detail="You don't have permission to manage campus reputation"
+            )
+        
+        # Extract data
+        points = reputation_data.get("points", 0)
+        category = reputation_data.get("category", "event")
+        event_name = reputation_data.get("event_name", "Campus Event")
+        description = reputation_data.get("description", "")
+        
+        # Validate points range (prevent abuse)
+        if points < 1 or points > 100:
+            raise HTTPException(
+                status_code=400, 
+                detail="Reputation points must be between 1 and 100 per event"
+            )
+        
+        # Check daily limit for campus admin reputation awards
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_awards = await db.reputation_transactions.count_documents({
+            "campus": current_campus_admin["college_name"],
+            "source_type": "campus_admin_event",
+            "created_at": {"$gte": today_start},
+            "user_id": current_campus_admin["user_id"]
+        })
+        
+        # Limit: 5 reputation updates per campus admin per day
+        if today_awards >= 5:
+            raise HTTPException(
+                status_code=429,
+                detail="Daily limit reached. You can award reputation for maximum 5 events per day."
+            )
+        
+        # Award reputation points to campus
+        campus_name = current_campus_admin["college_name"]
+        source_id = f"event_{int(datetime.now().timestamp())}"
+        
+        await add_campus_reputation_points(
+            campus=campus_name,
+            points=points,
+            category=category,
+            source_id=source_id,
+            source_type="campus_admin_event",
+            user_id=current_campus_admin["user_id"],
+            reason=f"Campus event: {event_name}" + (f" - {description}" if description else "")
+        )
+        
+        # Update campus admin statistics
+        await db.campus_admins.update_one(
+            {"user_id": current_campus_admin["user_id"]},
+            {
+                "$inc": {"reputation_points_awarded": points},
+                "$set": {"last_activity": datetime.now(timezone.utc)}
+            }
+        )
+        
+        # Create audit log
+        audit_log = {
+            "id": str(uuid.uuid4()),
+            "admin_user_id": current_campus_admin["user_id"],
+            "action_type": "award_campus_reputation",
+            "action_description": f"Awarded {points} reputation points for {event_name}",
+            "target_type": "campus_reputation",
+            "target_id": source_id,
+            "affected_entities": [{"type": "campus", "id": campus_name, "name": campus_name}],
+            "ip_address": request.client.host,
+            "severity": "info",
+            "admin_level": "campus_admin",
+            "college_name": campus_name,
+            "success": True,
+            "created_at": datetime.now(timezone.utc)
+        }
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Campus reputation updated successfully",
+            "campus": campus_name,
+            "points_awarded": points,
+            "category": category,
+            "event_name": event_name,
+            "daily_awards_remaining": 5 - today_awards - 1,
+            "total_reputation_points_awarded": current_campus_admin.get("reputation_points_awarded", 0) + points
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update campus reputation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update campus reputation")
+
 # ===== HELPER FUNCTIONS FOR NEW SYSTEMS =====
 
 async def update_competition_progress():
@@ -7499,7 +7732,7 @@ async def award_prize_challenge_completion(challenge_id: str, user_id: str, rank
             campus = user.get("university") if user else None
             if campus:
                 points = int(prize_info.get("reputation_points", 0))
-                await add_campus_reputation_points(campus, points, "prize_challenge", challenge_id, user_id)
+                await add_campus_reputation_points(campus, points, "prize_challenge", challenge_id, "prize_challenge", user_id)
                 reward.campus_reputation_points = points
                 reward.campus_affected = campus
         
@@ -7517,7 +7750,7 @@ async def award_prize_challenge_completion(challenge_id: str, user_id: str, rank
     except Exception as e:
         logger.error(f"Award prize challenge completion error: {str(e)}")
 
-async def add_campus_reputation_points(campus: str, points: int, category: str, source_id: str, user_id: str = None):
+async def add_campus_reputation_points(campus: str, points: int, category: str, source_id: str, source_type: str = "challenge", user_id: str = None, reason: str = None):
     """Add reputation points to a campus"""
     try:
         db = await get_database()
@@ -7537,21 +7770,105 @@ async def add_campus_reputation_points(campus: str, points: int, category: str, 
         )
         
         # Create reputation transaction record
+        default_reason = f"{source_type.replace('_', ' ').title()} completion - {source_id}"
         transaction = ReputationTransaction(
             campus=campus,
             transaction_type="earned",
             points=points,
-            reason=f"Prize challenge completion - {source_id}",
+            reason=reason or default_reason,
             category=category,
-            source_type="challenge",
+            source_type=source_type,
             source_id=source_id,
             user_id=user_id
         )
         
         await db.reputation_transactions.insert_one(transaction.dict())
         
+        # Update campus ranking after points change
+        await update_campus_rankings()
+        
+        logger.info(f"Added {points} reputation points to {campus} for {category} ({source_type})")
+        
     except Exception as e:
         logger.error(f"Add campus reputation points error: {str(e)}")
+
+async def update_campus_rankings():
+    """Update campus rankings based on total reputation points"""
+    try:
+        db = await get_database()
+        
+        # Get all campuses sorted by total reputation points
+        campus_reputations = await db.campus_reputations.find({}).sort("total_reputation_points", -1).to_list(None)
+        
+        # Update ranks
+        for idx, campus in enumerate(campus_reputations):
+            new_rank = idx + 1
+            if campus.get("current_rank") != new_rank:
+                await db.campus_reputations.update_one(
+                    {"_id": campus["_id"]},
+                    {"$set": {"current_rank": new_rank, "previous_rank": campus.get("current_rank", new_rank)}}
+                )
+                
+    except Exception as e:
+        logger.error(f"Update campus rankings error: {str(e)}")
+
+async def award_competition_reputation(competition_id: str, participant_rankings: list):
+    """Award reputation points based on inter-college competition results"""
+    try:
+        db = await get_database()
+        
+        # Get competition details
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            logger.error(f"Competition {competition_id} not found")
+            return
+        
+        # Get campus reputation points configuration from competition
+        reputation_rewards = competition.get("campus_reputation_points", {
+            "1": 100,  # 1st place
+            "2": 70,   # 2nd place
+            "3": 50,   # 3rd place
+            "participation": 20  # All other participants
+        })
+        
+        # Award points based on rankings
+        for rank, participant in enumerate(participant_rankings[:3], 1):  # Top 3
+            user = await get_user_by_id(participant["user_id"])
+            if user and user.get("university"):
+                campus = user["university"]
+                points = reputation_rewards.get(str(rank), 0)
+                if points > 0:
+                    await add_campus_reputation_points(
+                        campus=campus,
+                        points=points,
+                        category="competition",
+                        source_id=competition_id,
+                        source_type="inter_college_competition",
+                        user_id=participant["user_id"],
+                        reason=f"Rank #{rank} in '{competition['title']}'"
+                    )
+        
+        # Award participation points to all other participants
+        participation_points = reputation_rewards.get("participation", 20)
+        if participation_points > 0:
+            for participant in participant_rankings[3:]:  # Participants beyond top 3
+                user = await get_user_by_id(participant["user_id"])
+                if user and user.get("university"):
+                    campus = user["university"]
+                    await add_campus_reputation_points(
+                        campus=campus,
+                        points=participation_points,
+                        category="competition",
+                        source_id=competition_id,
+                        source_type="inter_college_competition",
+                        user_id=participant["user_id"],
+                        reason=f"Participated in '{competition['title']}'"
+                    )
+        
+        logger.info(f"Awarded reputation points for competition {competition_id} to {len(participant_rankings)} participants")
+        
+    except Exception as e:
+        logger.error(f"Award competition reputation error: {str(e)}")
 
 # Helper function for creating notifications (reuse existing function)
 async def create_notification(user_id: str, notification_type: str, title: str, message: str, action_url: str = None, related_id: str = None):
@@ -7655,7 +7972,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://super-campus-admin.preview.emergentagent.com"
+        base_url = "https://campus-approval.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -14415,9 +14732,16 @@ async def request_campus_admin_privileges(
     admin_request_data: CampusAdminRequestCreate,
     current_user: str = Depends(get_current_user)
 ):
-    """Request campus admin privileges with verification workflow"""
+    """Request campus admin privileges with verification workflow - Routes to Super Admin"""
     try:
         db = await get_database()
+        
+        # Only allow campus_admin requests on this endpoint
+        if admin_request_data.requested_admin_type != "campus_admin":
+            raise HTTPException(
+                status_code=400, 
+                detail="This endpoint is only for campus admin requests. Use /admin/club/request for club admin requests."
+            )
         
         # Check if user already has pending or approved request
         existing_request = await db.campus_admin_requests.find_one({
@@ -14441,30 +14765,18 @@ async def request_campus_admin_privileges(
         college_name = admin_request_data.college_name
         requested_type = admin_request_data.requested_admin_type
         
-        # Count existing approved admins for this college
+        # Count existing approved campus admins for this college
         existing_campus_admins = await db.campus_admins.count_documents({
             "college_name": college_name,
             "admin_type": "campus_admin",
             "status": "active"
         })
         
-        existing_club_admins = await db.campus_admins.count_documents({
-            "college_name": college_name,
-            "admin_type": "club_admin", 
-            "status": "active"
-        })
-        
-        # Check limits: max 5 campus admins, max 10 club admins per college
-        if requested_type == "campus_admin" and existing_campus_admins >= 5:
+        # Check limits: max 5 campus admins per college
+        if existing_campus_admins >= 5:
             raise HTTPException(
                 status_code=400, 
                 detail=f"College '{college_name}' has reached the maximum limit of 5 Campus Admins. Current count: {existing_campus_admins}"
-            )
-        
-        if requested_type == "club_admin" and existing_club_admins >= 10:
-            raise HTTPException(
-                status_code=400,
-                detail=f"College '{college_name}' has reached the maximum limit of 10 Club Admins. Current count: {existing_club_admins}"
             )
         
         # Process the admin request
@@ -14535,6 +14847,161 @@ async def request_campus_admin_privileges(
     except Exception as e:
         logger.error(f"Campus admin request error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to submit admin request")
+
+@api_router.post("/admin/club/request")
+@limiter.limit("3/day")  # Limited to prevent spam
+async def request_club_admin_privileges(
+    request: Request,
+    admin_request_data: CampusAdminRequestCreate,
+    current_user: str = Depends(get_current_user)
+):
+    """Request club admin privileges - Routes to Campus Admin for approval"""
+    try:
+        db = await get_database()
+        
+        # Only allow club_admin requests on this endpoint
+        if admin_request_data.requested_admin_type != "club_admin":
+            raise HTTPException(
+                status_code=400, 
+                detail="This endpoint is only for club admin requests. Use /admin/campus/request for campus admin requests."
+            )
+        
+        # Ensure club_name is provided for club admin requests
+        if not admin_request_data.club_name:
+            raise HTTPException(status_code=400, detail="Club name is required for club admin requests")
+        
+        # Check if user already has pending or approved club admin request
+        existing_request = await db.club_admin_requests.find_one({
+            "user_id": current_user,
+            "status": {"$in": ["pending", "approved"]}
+        })
+        
+        if existing_request:
+            status = existing_request.get("status")
+            if status == "approved":
+                raise HTTPException(status_code=400, detail="You already have club admin privileges")
+            else:
+                raise HTTPException(status_code=400, detail=f"You already have a {status} club admin request")
+        
+        # Get user details
+        user = await get_user_by_id(current_user)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check college-specific club admin limits
+        college_name = admin_request_data.college_name
+        existing_club_admins = await db.campus_admins.count_documents({
+            "college_name": college_name,
+            "admin_type": "club_admin", 
+            "status": "active"
+        })
+        
+        # Check limits: max 10 club admins per college
+        if existing_club_admins >= 10:
+            raise HTTPException(
+                status_code=400,
+                detail=f"College '{college_name}' has reached the maximum limit of 10 Club Admins. Current count: {existing_club_admins}"
+            )
+        
+        # Find campus admin for this college
+        campus_admin = await db.campus_admins.find_one({
+            "college_name": college_name,
+            "admin_type": "campus_admin",
+            "status": "active"
+        })
+        
+        if not campus_admin:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No active campus admin found for {college_name}. Contact your college administration to request a campus admin first."
+            )
+        
+        # Create club admin request
+        club_admin_request = ClubAdminRequest(
+            user_id=current_user,
+            campus_admin_id=campus_admin["user_id"],
+            college_name=college_name,
+            club_name=admin_request_data.club_name,
+            club_type=admin_request_data.club_type,
+            full_name=admin_request_data.full_name,
+            email=user.get("email"),
+            phone_number=admin_request_data.phone_number,
+            motivation=admin_request_data.motivation,
+            previous_experience=admin_request_data.previous_experience,
+            status="pending"
+        )
+        
+        # Save the request to database
+        await db.club_admin_requests.insert_one(club_admin_request.dict())
+        
+        # Create campus admin notification
+        notification = {
+            "id": str(uuid.uuid4()),
+            "title": f"New Club Admin Request: {admin_request_data.club_name}",
+            "message": f"{admin_request_data.full_name} has requested club admin privileges for {admin_request_data.club_name} at {college_name}",
+            "notification_type": "club_admin_request",
+            "priority": "normal",
+            "source_type": "user",
+            "source_id": current_user,
+            "related_request_id": club_admin_request.id,
+            "related_user_id": current_user,
+            "action_buttons": [
+                {"label": "Review Request", "action": "review_club_admin_request"},
+                {"label": "View Profile", "action": "view_user_profile"}
+            ],
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=30)
+        }
+        
+        # Send notification to campus admin, not super admin
+        await db.campus_admin_notifications.insert_one(notification)
+        
+        # Send real-time notification to campus admin
+        try:
+            notification_service = await get_notification_service(db)
+            await notification_service.notify_campus_admin_club_request(campus_admin["user_id"], club_admin_request.dict())
+        except Exception as e:
+            logger.error(f"Failed to send real-time notification: {str(e)}")
+        
+        # Log the action
+        audit_log = {
+            "id": str(uuid.uuid4()),
+            "admin_user_id": campus_admin["user_id"],
+            "action_type": "club_admin_request_submitted",
+            "action_description": f"Club admin request submitted by {user.get('email')} for {admin_request_data.club_name}",
+            "target_type": "club_admin_request",
+            "target_id": club_admin_request.id,
+            "affected_entities": [{"type": "user", "id": current_user, "name": user.get("full_name", "Unknown")}],
+            "ip_address": request.client.host,
+            "severity": "info",
+            "admin_level": "campus_admin",
+            "college_name": college_name,
+            "success": True,
+            "created_at": datetime.now(timezone.utc)
+        }
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Club admin request submitted successfully",
+            "request_id": club_admin_request.id,
+            "status": "pending",
+            "campus_admin_notified": True,
+            "college_name": college_name,
+            "club_name": admin_request_data.club_name,
+            "next_steps": [
+                f"Your request has been sent to the campus admin of {college_name}",
+                "The campus admin will review your request and club details",
+                "You will receive a notification once the decision is made",
+                "Check your notifications for updates"
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Club admin request error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to submit club admin request")
 
 @api_router.post("/admin/campus/verify-email/{request_id}")
 @limiter.limit("10/minute")
@@ -14775,6 +15242,58 @@ async def get_admin_request_status(
     except Exception as e:
         logger.error(f"Get admin request status error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get request status")
+
+@api_router.get("/admin/club/request/status")
+@limiter.limit("20/minute")
+async def get_club_admin_request_status(
+    request: Request,
+    current_user: str = Depends(get_current_user)
+):
+    """Get current user's club admin request status"""
+    try:
+        db = await get_database()
+        
+        # Get user's club admin request
+        club_admin_request = await db.club_admin_requests.find_one({"user_id": current_user})
+        
+        if not club_admin_request:
+            return {
+                "has_request": False,
+                "is_admin": False,
+                "message": "No club admin request found"
+            }
+        
+        # Check if user is already a club admin
+        club_admin_record = await db.campus_admins.find_one({
+            "user_id": current_user,
+            "admin_type": "club_admin",
+            "status": "active"
+        })
+        
+        response = {
+            "has_request": True,
+            "request": {
+                "id": club_admin_request["id"],
+                "status": club_admin_request["status"],
+                "requested_admin_type": "club_admin",
+                "college_name": club_admin_request["college_name"],
+                "club_name": club_admin_request.get("club_name"),
+                "submission_date": club_admin_request["submitted_at"],
+                "email_verified": True,  # Club admin requests don't require email verification
+                "documents_uploaded": 0,  # Club admin requests don't require document uploads
+                "verification_method": "campus_admin_review",
+                "review_notes": club_admin_request.get("review_notes"),
+                "rejection_reason": club_admin_request.get("rejection_reason")
+            },
+            "is_admin": bool(club_admin_record),
+            "admin_details": clean_mongo_doc(club_admin_record) if club_admin_record else None
+        }
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Get club admin request status error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get club admin request status")
 
 # ===== SYSTEM ADMIN ENDPOINTS =====
 
