@@ -144,8 +144,20 @@ const FriendsAndReferrals = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setInvitations(data.invitations || []);
-        setInviteStats(data.stats || null);
+        setInvitations(data.sent_invitations || []);
+        
+        // Map invitation_stats to expected format and calculate success rate
+        const invStats = data.invitation_stats || {};
+        const totalSent = invStats.monthly_sent || 0;
+        const totalSuccessful = invStats.total_successful || 0;
+        const successRate = totalSent > 0 ? Math.round((totalSuccessful / totalSent) * 100) : 0;
+        
+        setInviteStats({
+          monthly_sent: invStats.monthly_sent || 0,
+          monthly_limit: invStats.monthly_limit || 15,
+          success_rate: successRate,
+          total_successful: totalSuccessful
+        });
       } else {
         // If API fails, ensure invitations is still an array
         setInvitations([]);
@@ -666,13 +678,9 @@ const FriendsAndReferrals = () => {
                   {friends && friends.map((friend) => (
                     <div key={friend.user_id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                       <div className="flex items-center space-x-3">
-                        <Avatar className="w-10 h-10">
-                          <img
-                            src={`https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=40&h=40&fit=crop&crop=face`}
-                            alt={friend.full_name}
-                            className="w-full h-full object-cover rounded-full"
-                          />
-                        </Avatar>
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center text-white font-bold text-lg">
+                          {friend.full_name ? friend.full_name.charAt(0).toUpperCase() : 'U'}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
                             {friend.full_name}
@@ -697,7 +705,7 @@ const FriendsAndReferrals = () => {
                         </div>
                         
                         {/* Challenge Friend Button */}
-                        <div className="mt-3 pt-2 border-t">
+                        <div className="mt-3 pt-2">
                           <Button 
                             size="sm" 
                             variant="outline" 
@@ -814,7 +822,7 @@ const FriendsAndReferrals = () => {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-purple-600">
-                  {stats?.recent_referrals?.length || 0}
+                  {stats?.monthly_referrals || 0}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   New referrals
@@ -1031,12 +1039,9 @@ const FriendsAndReferrals = () => {
                 <div className="space-y-4 max-h-96 overflow-y-auto">
                   {recentActivity && recentActivity.map((activity, index) => (
                     <div key={index} className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <Avatar className="w-10 h-10">
-                        <img 
-                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activity.friend_avatar}`}
-                          alt={activity.friend_name}
-                        />
-                      </Avatar>
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                        {activity.friend_name ? activity.friend_name.charAt(0).toUpperCase() : 'U'}
+                      </div>
                       
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center space-x-2">
