@@ -55,7 +55,7 @@ const CampusAdminRequest = () => {
     institutional_email: '',
     club_name: '',
     club_type: 'student_organization',
-    requested_admin_type: 'club_admin',
+    requested_admin_type: 'campus_admin',
     motivation: '',
     previous_experience: '',
     planned_activities: ''
@@ -312,9 +312,12 @@ const CampusAdminRequest = () => {
                   onChange={handleInputChange}
                   className="w-full p-3 border rounded-lg"
                 >
-                  <option value="club_admin">Club Admin - Manage specific club events</option>
-                  <option value="college_admin">College Admin - Oversee college-wide competitions</option>
+                  <option value="campus_admin">Campus Admin - Oversee college-wide competitions and manage club admins</option>
+                  <option value="club_admin">Club Admin - Manage specific club competitions and activities</option>
                 </select>
+                <p className="text-xs text-gray-600 mt-1">
+                  Note: Each college can have maximum 5 Campus Admins and 10 Club Admins. Choose the role that best fits your responsibilities.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -330,7 +333,7 @@ const CampusAdminRequest = () => {
             <CardContent className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">
-                  Why do you want to become a campus admin? *
+                  Why do you want to become a Campus Admin? *
                 </label>
                 <textarea
                   name="motivation"
