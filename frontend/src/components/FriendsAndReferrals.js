@@ -498,23 +498,16 @@ const FriendsAndReferrals = () => {
           </div>
         </div>
 
-        {/* **NEW: Auto-refresh Controls** */}
+        {/* Auto-refresh Controls */}
         <div className="flex items-center space-x-3">
-          <Button
-            onClick={toggleAutoRefresh}
-            variant={autoRefresh ? "default" : "outline"}
-            size="sm"
-            className="flex items-center space-x-2"
-          >
-            <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-            <span>{autoRefresh ? 'Live' : 'Paused'}</span>
-          </Button>
           <Button
             onClick={fetchAllData}
             variant="outline"
             size="sm"
+            className="flex items-center space-x-1"
           >
             <ArrowUpIcon className="w-4 h-4" />
+            <span className="hidden sm:inline text-sm">Refresh</span>
           </Button>
           {liveStats?.last_updated && (
             <span className="text-xs text-gray-500">
