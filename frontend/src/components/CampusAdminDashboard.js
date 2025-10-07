@@ -63,7 +63,10 @@ const CampusAdminDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await axios.get(`${API}/campus-admin/dashboard`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/campus-admin/dashboard`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setDashboardData(response.data);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -75,7 +78,10 @@ const CampusAdminDashboard = () => {
 
   const fetchCompetitions = async () => {
     try {
-      const response = await axios.get(`${API}/campus-admin/competitions`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/campus-admin/competitions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setCompetitions(response.data.competitions || []);
     } catch (error) {
       console.error('Error fetching competitions:', error);
@@ -84,7 +90,10 @@ const CampusAdminDashboard = () => {
 
   const fetchChallenges = async () => {
     try {
-      const response = await axios.get(`${API}/campus-admin/challenges`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/campus-admin/challenges`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setChallenges(response.data.challenges || []);
     } catch (error) {
       console.error('Error fetching challenges:', error);
@@ -100,12 +109,16 @@ const CampusAdminDashboard = () => {
     }
 
     try {
+      const token = localStorage.getItem('token');
       await axios.post(
         `${API}/campus-admin/competitions/${selectedParticipant.competition_id}/moderate`,
         {
           user_id: selectedParticipant.user_id,
           action: moderationAction,
           reason: moderationReason
+        },
+        {
+          headers: { 'Authorization': `Bearer ${token}` }
         }
       );
 
@@ -128,7 +141,10 @@ const CampusAdminDashboard = () => {
   const fetchClubAdminRequests = async () => {
     try {
       setClubAdminsLoading(true);
-      const response = await axios.get(`${API}/campus-admin/club-admin-requests`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/campus-admin/club-admin-requests`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setClubAdminRequests(response.data.requests || []);
     } catch (error) {
       console.error('Error fetching club admin requests:', error);
@@ -139,7 +155,10 @@ const CampusAdminDashboard = () => {
 
   const fetchMyClubAdmins = async () => {
     try {
-      const response = await axios.get(`${API}/campus-admin/my-club-admins`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/campus-admin/my-club-admins`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setMyClubAdmins(response.data.club_admins || []);
     } catch (error) {
       console.error('Error fetching my club admins:', error);
@@ -148,6 +167,7 @@ const CampusAdminDashboard = () => {
 
   const approveClubAdminRequest = async (requestId) => {
     try {
+      const token = localStorage.getItem('token');
       const approvalData = {
         permissions: ['create_events', 'manage_participants'],
         max_events_per_month: 5,
@@ -155,7 +175,9 @@ const CampusAdminDashboard = () => {
         review_notes: 'Approved by campus admin'
       };
 
-      await axios.post(`${API}/campus-admin/club-admin-requests/${requestId}/approve`, approvalData);
+      await axios.post(`${API}/campus-admin/club-admin-requests/${requestId}/approve`, approvalData, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
       // Refresh data
       fetchClubAdminRequests();
@@ -171,12 +193,15 @@ const CampusAdminDashboard = () => {
 
   const rejectClubAdminRequest = async (requestId, reason) => {
     try {
+      const token = localStorage.getItem('token');
       const rejectionData = {
         rejection_reason: reason,
         review_notes: 'Rejected by campus admin'
       };
 
-      await axios.post(`${API}/campus-admin/club-admin-requests/${requestId}/reject`, rejectionData);
+      await axios.post(`${API}/campus-admin/club-admin-requests/${requestId}/reject`, rejectionData, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
       // Refresh data
       fetchClubAdminRequests();
@@ -191,12 +216,15 @@ const CampusAdminDashboard = () => {
 
   const suspendClubAdmin = async (clubAdminId, reason) => {
     try {
+      const token = localStorage.getItem('token');
       const suspensionData = {
         reason,
         suspension_days: 30
       };
 
-      await axios.put(`${API}/campus-admin/club-admins/${clubAdminId}/suspend`, suspensionData);
+      await axios.put(`${API}/campus-admin/club-admins/${clubAdminId}/suspend`, suspensionData, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
       // Refresh data
       fetchMyClubAdmins();
@@ -210,7 +238,10 @@ const CampusAdminDashboard = () => {
 
   const inviteClubAdmin = async () => {
     try {
-      await axios.post(`${API}/campus-admin/invite-club-admin`, inviteForm);
+      const token = localStorage.getItem('token');
+      await axios.post(`${API}/campus-admin/invite-club-admin`, inviteForm, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
       // Refresh data and reset form
       fetchClubAdminRequests();
