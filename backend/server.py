@@ -191,6 +191,11 @@ async def get_current_campus_admin(user_id: str = Depends(get_current_user)) -> 
         "user_id": user_id,
         "status": "active"
     })
+    
+    if not campus_admin:
+        raise HTTPException(status_code=403, detail="Campus admin privileges required")
+    
+    return campus_admin
 
 
 async def create_audit_log(
@@ -4967,7 +4972,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://admin-oversight-2.preview.emergentagent.com"
+        base_url = "https://admin-dashboard-275.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7650,7 +7655,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://admin-oversight-2.preview.emergentagent.com"
+        base_url = "https://admin-dashboard-275.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -16071,6 +16076,551 @@ async def moderate_competition_participant(
     except Exception as e:
         logger.error(f"Moderate competition participant error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to moderate participant")
+
+# ===== CAMPUS ADMIN CLUB ADMIN MANAGEMENT ENDPOINTS =====
+
+@api_router.get("/campus-admin/club-admin-requests")
+@limiter.limit("20/minute")
+async def get_club_admin_requests(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Get club admin requests for campus admin's college"""
+    try:
+        db = await get_database()
+        
+        # Build query filter for requests in campus admin's college
+        query_filter = {"college_name": current_campus_admin["college_name"]}
+        if status:
+            query_filter["status"] = status
+        
+        # Get total count
+        total_count = await db.club_admin_requests.count_documents(query_filter)
+        
+        # Get paginated requests
+        skip = (page - 1) * limit
+        requests_cursor = db.club_admin_requests.find(query_filter).sort("submitted_at", -1).skip(skip).limit(limit)
+        requests = await requests_cursor.to_list(None)
+        
+        # Enrich with user details
+        for req in requests:
+            user = await get_user_by_id(req["user_id"])
+            if user:
+                req["user_details"] = {
+                    "full_name": user.get("full_name"),
+                    "email": user.get("email"),
+                    "avatar": user.get("avatar"),
+                    "university": user.get("university")
+                }
+        
+        return {
+            "requests": clean_mongo_doc(requests),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get club admin requests error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get club admin requests")
+
+@api_router.post("/campus-admin/club-admin-requests/{request_id}/approve")
+@limiter.limit("10/minute")
+async def approve_club_admin_request(
+    request: Request,
+    request_id: str,
+    approval_data: Dict[str, Any],  # Contains permissions and limits
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Approve club admin request and create club admin record"""
+    try:
+        db = await get_database()
+        
+        # Get the request
+        club_request = await db.club_admin_requests.find_one({
+            "id": request_id,
+            "college_name": current_campus_admin["college_name"],
+            "status": "pending"
+        })
+        
+        if not club_request:
+            raise HTTPException(status_code=404, detail="Request not found or already processed")
+        
+        # Update request status
+        await db.club_admin_requests.update_one(
+            {"id": request_id},
+            {
+                "$set": {
+                    "status": "approved",
+                    "reviewed_at": datetime.now(timezone.utc),
+                    "review_notes": approval_data.get("review_notes", ""),
+                    "approved_permissions": approval_data.get("permissions", ["create_events"]),
+                    "max_events_per_month": approval_data.get("max_events_per_month", 3),
+                    "expires_in_months": approval_data.get("expires_in_months", 6)
+                }
+            }
+        )
+        
+        # Create club admin record
+        club_admin_data = {
+            "id": str(uuid.uuid4()),
+            "user_id": club_request["user_id"],
+            "admin_type": "club_admin",
+            "college_name": club_request["college_name"],
+            "club_name": club_request["club_name"],
+            "appointed_by": current_campus_admin["user_id"],  # Campus admin who approved
+            "appointed_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=approval_data.get("expires_in_months", 6) * 30),
+            "status": "active",
+            "permissions": approval_data.get("permissions", ["create_events"]),
+            "max_events_per_month": approval_data.get("max_events_per_month", 3),
+            "events_created": 0,
+            "participants_managed": 0,
+            "reputation_points_awarded": 0
+        }
+        
+        await db.campus_admins.insert_one(club_admin_data)
+        
+        # Update user's admin level
+        await db.users.update_one(
+            {"id": club_request["user_id"]},
+            {"$set": {"admin_level": "club_admin", "is_admin": True}}
+        )
+        
+        # Update campus admin's stats
+        await db.campus_admins.update_one(
+            {"id": current_campus_admin["id"]},
+            {
+                "$inc": {"club_admins_managed": 1},
+                "$set": {"last_activity": datetime.now(timezone.utc)}
+            }
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_campus_admin["user_id"],
+            action_type="approve_club_admin_request",
+            action_description=f"Approved club admin request for {club_request['club_name']}",
+            target_type="club_admin_request",
+            target_id=request_id,
+            affected_entities=[
+                {"type": "user", "id": club_request["user_id"], "name": club_request["full_name"]},
+                {"type": "club", "id": club_request["club_name"], "name": club_request["club_name"]}
+            ],
+            severity="info",
+            ip_address=request.client.host,
+            admin_level="campus_admin",
+            college_name=current_campus_admin["college_name"]
+        )
+        
+        return {
+            "message": "Club admin request approved successfully",
+            "request_id": request_id,
+            "club_admin_id": club_admin_data["id"],
+            "approved_permissions": club_admin_data["permissions"],
+            "expires_at": club_admin_data["expires_at"].isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Approve club admin request error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to approve club admin request")
+
+@api_router.post("/campus-admin/club-admin-requests/{request_id}/reject")
+@limiter.limit("10/minute")
+async def reject_club_admin_request(
+    request: Request,
+    request_id: str,
+    rejection_data: Dict[str, str],  # Contains rejection_reason and review_notes
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Reject club admin request with reason"""
+    try:
+        db = await get_database()
+        
+        # Get the request
+        club_request = await db.club_admin_requests.find_one({
+            "id": request_id,
+            "college_name": current_campus_admin["college_name"],
+            "status": "pending"
+        })
+        
+        if not club_request:
+            raise HTTPException(status_code=404, detail="Request not found or already processed")
+        
+        # Update request status
+        await db.club_admin_requests.update_one(
+            {"id": request_id},
+            {
+                "$set": {
+                    "status": "rejected",
+                    "reviewed_at": datetime.now(timezone.utc),
+                    "rejection_reason": rejection_data.get("rejection_reason", ""),
+                    "review_notes": rejection_data.get("review_notes", "")
+                }
+            }
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_campus_admin["user_id"],
+            action_type="reject_club_admin_request",
+            action_description=f"Rejected club admin request for {club_request['club_name']}: {rejection_data.get('rejection_reason', '')}",
+            target_type="club_admin_request",
+            target_id=request_id,
+            affected_entities=[
+                {"type": "user", "id": club_request["user_id"], "name": club_request["full_name"]},
+                {"type": "club", "id": club_request["club_name"], "name": club_request["club_name"]}
+            ],
+            severity="info",
+            ip_address=request.client.host,
+            admin_level="campus_admin",
+            college_name=current_campus_admin["college_name"]
+        )
+        
+        return {
+            "message": "Club admin request rejected successfully",
+            "request_id": request_id,
+            "rejection_reason": rejection_data.get("rejection_reason", ""),
+            "rejected_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reject club admin request error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to reject club admin request")
+
+@api_router.get("/campus-admin/my-club-admins")
+@limiter.limit("20/minute")
+async def get_my_club_admins(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """List all club admins managed by this campus admin"""
+    try:
+        db = await get_database()
+        
+        # Build query filter for club admins appointed by this campus admin
+        query_filter = {
+            "appointed_by": current_campus_admin["user_id"],
+            "admin_type": "club_admin"
+        }
+        if status:
+            query_filter["status"] = status
+        
+        # Get total count
+        total_count = await db.campus_admins.count_documents(query_filter)
+        
+        # Get paginated club admins
+        skip = (page - 1) * limit
+        club_admins_cursor = db.campus_admins.find(query_filter).sort("appointed_at", -1).skip(skip).limit(limit)
+        club_admins = await club_admins_cursor.to_list(None)
+        
+        # Enrich with user details and statistics
+        for admin in club_admins:
+            user = await get_user_by_id(admin["user_id"])
+            if user:
+                admin["user_details"] = {
+                    "full_name": user.get("full_name"),
+                    "email": user.get("email"),
+                    "avatar": user.get("avatar"),
+                    "last_login": user.get("last_login")
+                }
+            
+            # Get recent activity statistics
+            current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            admin["monthly_stats"] = {
+                "events_this_month": admin.get("events_created", 0),  # You might want to count from events collection
+                "remaining_events": max(0, admin.get("max_events_per_month", 3) - admin.get("events_created", 0))
+            }
+        
+        return {
+            "club_admins": clean_mongo_doc(club_admins),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "summary": {
+                "total_managed": total_count,
+                "active": await db.campus_admins.count_documents({**query_filter, "status": "active"}),
+                "suspended": await db.campus_admins.count_documents({**query_filter, "status": "suspended"})
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Get my club admins error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get club admins")
+
+@api_router.put("/campus-admin/club-admins/{club_admin_id}/update-privileges")
+@limiter.limit("10/minute")
+async def update_club_admin_privileges(
+    request: Request,
+    club_admin_id: str,
+    privilege_data: Dict[str, Any],  # Contains permissions and limits
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Update club admin permissions and limits"""
+    try:
+        db = await get_database()
+        
+        # Verify the club admin is managed by this campus admin
+        club_admin = await db.campus_admins.find_one({
+            "id": club_admin_id,
+            "appointed_by": current_campus_admin["user_id"],
+            "admin_type": "club_admin"
+        })
+        
+        if not club_admin:
+            raise HTTPException(status_code=404, detail="Club admin not found or not authorized to manage")
+        
+        # Prepare update data
+        update_data = {}
+        if "permissions" in privilege_data:
+            update_data["permissions"] = privilege_data["permissions"]
+        if "max_events_per_month" in privilege_data:
+            update_data["max_events_per_month"] = privilege_data["max_events_per_month"]
+        if "expires_at" in privilege_data:
+            # Allow extending expiry date
+            update_data["expires_at"] = datetime.fromisoformat(privilege_data["expires_at"].replace("Z", "+00:00"))
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No valid privilege data provided")
+        
+        update_data["last_modified"] = datetime.now(timezone.utc)
+        update_data["last_modified_by"] = current_campus_admin["user_id"]
+        
+        # Update club admin record
+        await db.campus_admins.update_one(
+            {"id": club_admin_id},
+            {"$set": update_data}
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_campus_admin["user_id"],
+            action_type="update_club_admin_privileges",
+            action_description=f"Updated privileges for club admin {club_admin['club_name']}",
+            target_type="club_admin",
+            target_id=club_admin_id,
+            affected_entities=[
+                {"type": "user", "id": club_admin["user_id"], "name": club_admin["club_name"]},
+                {"type": "club", "id": club_admin["club_name"], "name": club_admin["club_name"]}
+            ],
+            before_state={"permissions": club_admin.get("permissions"), "max_events_per_month": club_admin.get("max_events_per_month")},
+            after_state=update_data,
+            severity="info",
+            ip_address=request.client.host,
+            admin_level="campus_admin",
+            college_name=current_campus_admin["college_name"]
+        )
+        
+        return {
+            "message": "Club admin privileges updated successfully",
+            "club_admin_id": club_admin_id,
+            "updated_privileges": update_data,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update club admin privileges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update club admin privileges")
+
+@api_router.put("/campus-admin/club-admins/{club_admin_id}/suspend")
+@limiter.limit("10/minute")
+async def suspend_club_admin(
+    request: Request,
+    club_admin_id: str,
+    suspension_data: Dict[str, Any],  # Contains reason and duration
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Suspend club admin (campus-level suspension)"""
+    try:
+        db = await get_database()
+        
+        # Verify the club admin is managed by this campus admin
+        club_admin = await db.campus_admins.find_one({
+            "id": club_admin_id,
+            "appointed_by": current_campus_admin["user_id"],
+            "admin_type": "club_admin",
+            "status": "active"
+        })
+        
+        if not club_admin:
+            raise HTTPException(status_code=404, detail="Club admin not found or not authorized to manage")
+        
+        # Calculate suspension end date
+        suspension_days = suspension_data.get("suspension_days", 30)  # Default 30 days
+        suspension_end = datetime.now(timezone.utc) + timedelta(days=suspension_days)
+        
+        # Update club admin record
+        update_data = {
+            "status": "suspended",
+            "suspension_reason": suspension_data.get("reason", ""),
+            "suspended_at": datetime.now(timezone.utc),
+            "suspended_by": current_campus_admin["user_id"],
+            "suspension_end": suspension_end,
+            "last_modified": datetime.now(timezone.utc),
+            "last_modified_by": current_campus_admin["user_id"]
+        }
+        
+        await db.campus_admins.update_one(
+            {"id": club_admin_id},
+            {"$set": update_data}
+        )
+        
+        # Update user's admin status (temporarily remove admin privileges)
+        await db.users.update_one(
+            {"id": club_admin["user_id"]},
+            {"$set": {"admin_level": "user", "is_admin": False, "suspension_status": "suspended"}}
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_campus_admin["user_id"],
+            action_type="suspend_club_admin",
+            action_description=f"Suspended club admin {club_admin['club_name']} for {suspension_days} days: {suspension_data.get('reason', '')}",
+            target_type="club_admin",
+            target_id=club_admin_id,
+            affected_entities=[
+                {"type": "user", "id": club_admin["user_id"], "name": club_admin["club_name"]},
+                {"type": "club", "id": club_admin["club_name"], "name": club_admin["club_name"]}
+            ],
+            severity="warning",
+            ip_address=request.client.host,
+            admin_level="campus_admin",
+            college_name=current_campus_admin["college_name"]
+        )
+        
+        return {
+            "message": "Club admin suspended successfully",
+            "club_admin_id": club_admin_id,
+            "suspension_reason": suspension_data.get("reason", ""),
+            "suspension_end": suspension_end.isoformat(),
+            "suspended_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Suspend club admin error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to suspend club admin")
+
+@api_router.post("/campus-admin/invite-club-admin")
+@limiter.limit("10/minute")
+async def invite_club_admin(
+    request: Request,
+    invitation_data: Dict[str, Any],  # Contains club details and user info
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Invite/create club admin request"""
+    try:
+        db = await get_database()
+        
+        # Validate required fields
+        required_fields = ["user_id", "club_name", "club_type"]
+        for field in required_fields:
+            if field not in invitation_data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        # Check if user exists
+        user = await get_user_by_id(invitation_data["user_id"])
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if user is already a club admin
+        existing_admin = await db.campus_admins.find_one({
+            "user_id": invitation_data["user_id"],
+            "admin_type": "club_admin",
+            "status": "active"
+        })
+        if existing_admin:
+            raise HTTPException(status_code=400, detail="User is already a club admin")
+        
+        # Check for existing pending request
+        existing_request = await db.club_admin_requests.find_one({
+            "user_id": invitation_data["user_id"],
+            "college_name": current_campus_admin["college_name"],
+            "status": "pending"
+        })
+        if existing_request:
+            raise HTTPException(status_code=400, detail="Pending request already exists for this user")
+        
+        # Create club admin request
+        club_request_data = {
+            "id": str(uuid.uuid4()),
+            "user_id": invitation_data["user_id"],
+            "campus_admin_id": current_campus_admin["user_id"],
+            "college_name": current_campus_admin["college_name"],
+            "club_name": invitation_data["club_name"],
+            "club_type": invitation_data.get("club_type", "student_organization"),
+            "full_name": user.get("full_name", ""),
+            "email": user.get("email", ""),
+            "phone_number": user.get("phone", ""),
+            "motivation": invitation_data.get("motivation", "Invited by campus admin"),
+            "previous_experience": invitation_data.get("previous_experience", ""),
+            "status": "pending",
+            "submitted_at": datetime.now(timezone.utc),
+            "approved_permissions": invitation_data.get("permissions", ["create_events"]),
+            "max_events_per_month": invitation_data.get("max_events_per_month", 3),
+            "expires_in_months": invitation_data.get("expires_in_months", 6)
+        }
+        
+        await db.club_admin_requests.insert_one(club_request_data)
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_campus_admin["user_id"],
+            action_type="invite_club_admin",
+            action_description=f"Invited user to be club admin for {invitation_data['club_name']}",
+            target_type="club_admin_invitation",
+            target_id=club_request_data["id"],
+            affected_entities=[
+                {"type": "user", "id": invitation_data["user_id"], "name": user.get("full_name", "")},
+                {"type": "club", "id": invitation_data["club_name"], "name": invitation_data["club_name"]}
+            ],
+            severity="info",
+            ip_address=request.client.host,
+            admin_level="campus_admin",
+            college_name=current_campus_admin["college_name"]
+        )
+        
+        return {
+            "message": "Club admin invitation created successfully",
+            "request_id": club_request_data["id"],
+            "club_name": invitation_data["club_name"],
+            "invited_user": {
+                "user_id": invitation_data["user_id"],
+                "full_name": user.get("full_name", ""),
+                "email": user.get("email", "")
+            },
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Invite club admin error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create club admin invitation")
 
 # ===== VIRAL IMPACT FEATURES =====
 
