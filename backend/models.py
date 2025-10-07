@@ -48,10 +48,19 @@ class User(BaseModel):
     campus_rank: Optional[int] = None
     email_verified: bool = False
     is_active: bool = True
-    is_admin: bool = False
+    is_admin: bool = False  # Keep for backward compatibility
+    is_super_admin: bool = False  # Top-level admin authority
+    admin_level: str = "user"  # "user", "club_admin", "campus_admin", "super_admin"
     failed_login_attempts: int = 0
     last_failed_login: Optional[datetime] = None
     last_login: Optional[datetime] = None
+    
+    @validator('admin_level')
+    def validate_admin_level(cls, v):
+        allowed_levels = ["user", "club_admin", "campus_admin", "super_admin"]
+        if v not in allowed_levels:
+            raise ValueError(f'Admin level must be one of: {", ".join(allowed_levels)}')
+        return v
     
     @validator('role')
     def validate_role(cls, v):
@@ -2217,9 +2226,20 @@ class CampusAdmin(BaseModel):
     participants_managed: int = 0
     reputation_points_awarded: int = 0
     warnings_count: int = 0
+    days_active: int = 0  # Number of days admin has been active
+    success_rate: float = 0.0  # Success rate of competitions/challenges
+    club_admins_managed: int = 0  # For campus admins managing club admins
     # Audit trail
     creation_ip: Optional[str] = None
     creation_user_agent: Optional[str] = None
+    last_login_ip: Optional[str] = None
+    last_login_at: Optional[datetime] = None
+    suspension_reason: Optional[str] = None
+    suspended_at: Optional[datetime] = None
+    suspended_by: Optional[str] = None  # Super admin user ID
+    revocation_reason: Optional[str] = None
+    revoked_at: Optional[datetime] = None
+    revoked_by: Optional[str] = None  # Super admin user ID
 
     @validator('admin_type')
     def validate_admin_type(cls, v):
@@ -2256,6 +2276,12 @@ class AdminAuditLog(BaseModel):
     severity: str = "info"  # "info", "warning", "error", "critical"
     category: str = "admin_action"  # "admin_action", "system_event", "security_event"
     is_system_generated: bool = False
+    # Additional context for super admin oversight
+    admin_level: Optional[str] = None  # "club_admin", "campus_admin", "super_admin"
+    college_name: Optional[str] = None  # For campus-specific actions
+    success: bool = True  # Whether the action was successful
+    error_message: Optional[str] = None  # If action failed
+    alert_sent: bool = False  # Whether real-time alert was sent
 
     @validator('severity')
     def validate_severity(cls, v):
@@ -2563,3 +2589,152 @@ class PrizeChallengeCreate(BaseModel):
     prize_structure: Dict[str, Any] = {}
     scholarship_details: Optional[Dict[str, Any]] = None
     campus_reputation_rewards: Dict[str, int] = {}
+
+
+# ===== SUPER ADMIN OVERSIGHT MODELS =====
+
+class AdminActivityMetrics(BaseModel):
+    """Comprehensive metrics for campus/club admin performance"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    admin_id: str
+    admin_user_id: str
+    admin_type: str  # "club_admin", "campus_admin"
+    college_name: str
+    # Time-based metrics
+    days_active: int = 0
+    last_active_date: Optional[datetime] = None
+    average_daily_actions: float = 0.0
+    # Activity metrics
+    total_competitions_created: int = 0
+    total_challenges_created: int = 0
+    total_participants_managed: int = 0
+    total_club_admins_approved: int = 0  # For campus admins
+    # Success metrics
+    competitions_completed: int = 0
+    competitions_cancelled: int = 0
+    success_rate: float = 0.0
+    average_participant_satisfaction: float = 0.0
+    # Engagement metrics
+    total_users_engaged: int = 0
+    reputation_points_awarded: int = 0
+    average_competition_size: float = 0.0
+    # Compliance metrics
+    warnings_received: int = 0
+    policy_violations: int = 0
+    response_time_hours: float = 0.0  # Average response time to issues
+    # Calculated at
+    calculated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    period_start: datetime
+    period_end: datetime
+
+class ClubAdminRequest(BaseModel):
+    """Request from campus admin to approve a club admin"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str  # User requesting club admin status
+    campus_admin_id: str  # Campus admin reviewing the request
+    # Club information
+    college_name: str
+    club_name: str
+    club_type: str = "student_organization"
+    # Request details
+    full_name: str
+    email: str
+    phone_number: Optional[str] = None
+    motivation: str
+    previous_experience: Optional[str] = None
+    # Status and workflow
+    status: str = "pending"  # "pending", "approved", "rejected"
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reviewed_at: Optional[datetime] = None
+    review_notes: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    # Approval details
+    approved_permissions: List[str] = []
+    max_events_per_month: int = 3
+    expires_in_months: int = 6
+
+class AdminSessionTracker(BaseModel):
+    """Track admin login sessions for security monitoring"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    admin_user_id: str
+    admin_level: str  # "club_admin", "campus_admin", "super_admin"
+    session_id: str
+    # Session details
+    login_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    logout_at: Optional[datetime] = None
+    last_activity: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Security tracking
+    ip_address: str
+    user_agent: str
+    location: Optional[Dict[str, str]] = None  # Geolocation data
+    device_fingerprint: Optional[str] = None
+    # Anomaly detection
+    is_suspicious: bool = False
+    suspicious_reasons: List[str] = []
+    risk_score: float = 0.0
+    # Actions performed
+    actions_count: int = 0
+    critical_actions_count: int = 0
+    last_action_type: Optional[str] = None
+
+class AdminAlert(BaseModel):
+    """Real-time alerts for super admin"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    alert_type: str  # "new_request", "suspicious_activity", "high_priority_action", "policy_violation"
+    severity: str  # "info", "warning", "critical"
+    title: str
+    message: str
+    # Target information
+    admin_user_id: Optional[str] = None
+    admin_level: Optional[str] = None
+    related_entity_type: Optional[str] = None  # "admin_request", "campus_admin", "competition"
+    related_entity_id: Optional[str] = None
+    # Alert metadata
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    read_at: Optional[datetime] = None
+    acknowledged_at: Optional[datetime] = None
+    acknowledged_by: Optional[str] = None  # Super admin user ID
+    # Action required
+    requires_action: bool = False
+    action_deadline: Optional[datetime] = None
+    action_taken: Optional[str] = None
+    action_taken_at: Optional[datetime] = None
+
+    @validator('alert_type')
+    def validate_alert_type(cls, v):
+        allowed_types = ["new_request", "suspicious_activity", "high_priority_action", "policy_violation", "performance_issue", "security_alert"]
+        if v not in allowed_types:
+            raise ValueError(f'Alert type must be one of: {", ".join(allowed_types)}')
+        return v
+
+class AdminPerformanceReport(BaseModel):
+    """Aggregated performance report for super admin review"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    report_type: str  # "daily", "weekly", "monthly", "quarterly"
+    period_start: datetime
+    period_end: datetime
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Overall metrics
+    total_campus_admins: int = 0
+    active_campus_admins: int = 0
+    total_club_admins: int = 0
+    active_club_admins: int = 0
+    # Activity summary
+    total_competitions_created: int = 0
+    total_challenges_created: int = 0
+    total_participants: int = 0
+    total_requests_received: int = 0
+    total_requests_approved: int = 0
+    total_requests_rejected: int = 0
+    # Performance indicators
+    average_success_rate: float = 0.0
+    average_response_time_hours: float = 0.0
+    total_warnings_issued: int = 0
+    total_suspensions: int = 0
+    # Top performers
+    top_campus_admins: List[Dict[str, Any]] = []
+    underperforming_admins: List[Dict[str, Any]] = []
+    # Issues and alerts
+    critical_issues: List[Dict[str, Any]] = []
+    pending_actions: List[Dict[str, Any]] = []
+
