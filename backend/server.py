@@ -4860,7 +4860,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://login-issue-5.preview.emergentagent.com"
+        base_url = "https://menu-ui-overhaul.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7543,7 +7543,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://login-issue-5.preview.emergentagent.com"
+        base_url = "https://menu-ui-overhaul.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -7578,11 +7578,20 @@ async def get_referral_stats(request: Request, current_user: dict = Depends(get_
                 "recent_referrals": []
             }
         
-        # Get recent successful referrals
+        # Get recent successful referrals (all time)
         recent_referrals = await db.referred_users.find({
             "referrer_id": current_user["id"],
             "status": "completed"
         }).sort("completed_at", -1).limit(10).to_list(None)
+        
+        # Get this month's referrals
+        from datetime import datetime, timezone, timedelta
+        start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        monthly_referrals = await db.referred_users.find({
+            "referrer_id": current_user["id"],
+            "signed_up_at": {"$gte": start_of_month}
+        }).to_list(None)
         
         # Get user details for recent referrals
         referral_details = []
@@ -7603,7 +7612,8 @@ async def get_referral_stats(request: Request, current_user: dict = Depends(get_
             "conversion_rate": round(conversion_rate, 1),
             "total_earnings": referral["total_earnings"],
             "pending_earnings": referral["pending_earnings"],
-            "recent_referrals": referral_details
+            "recent_referrals": referral_details,
+            "monthly_referrals": len(monthly_referrals)
         }
         
     except Exception as e:
