@@ -198,6 +198,58 @@ async def get_current_campus_admin(user_id: str = Depends(get_current_user)) -> 
     return campus_admin
 
 
+async def get_current_club_admin(user_id: str = Depends(get_current_user)) -> Dict[str, Any]:
+    """Get current authenticated club admin with privileges"""
+    db = await get_database()
+    
+    # Check if user is a club admin
+    club_admin = await db.campus_admins.find_one({
+        "user_id": user_id,
+        "status": "active",
+        "admin_type": "club_admin"
+    })
+    
+    if not club_admin:
+        raise HTTPException(status_code=403, detail="Club admin privileges required")
+    
+    return club_admin
+
+
+async def get_current_admin_with_challenge_permissions(user_id: str = Depends(get_current_user)) -> Dict[str, Any]:
+    """Get current authenticated admin (campus or club) with challenge creation privileges"""
+    db = await get_database()
+    
+    # Check if user is system admin first
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    is_system_admin = user.get("is_admin", False) or user.get("is_super_admin", False)
+    if is_system_admin:
+        return {
+            "user_id": user_id,
+            "admin_type": "system_admin",
+            "is_system_admin": True,
+            "can_create_challenges": True,
+            "max_challenges_per_month": float('inf')
+        }
+    
+    # Check if user is campus admin OR club admin
+    admin = await db.campus_admins.find_one({
+        "user_id": user_id,
+        "status": "active",
+        "admin_type": {"$in": ["campus_admin", "club_admin"]}
+    })
+    
+    if not admin:
+        raise HTTPException(
+            status_code=403, 
+            detail="Challenge creation requires system admin, campus admin, or club admin privileges"
+        )
+    
+    return admin
+
+
 async def create_audit_log(
     db: Any,
     admin_user_id: str,
@@ -4972,7 +5024,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://campus-approval.preview.emergentagent.com"
+        base_url = "https://prize-compete-1.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6266,44 +6318,35 @@ async def request_beta_feature_access_endpoint(
 async def create_inter_college_competition(
     request: Request,
     competition_data: InterCollegeCompetitionCreate,
-    current_user: str = Depends(get_current_user)
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
 ):
-    """Create a new inter-college competition (System Admin or Campus Admin with privileges)"""
+    """Create a new inter-college competition (System Admin, Campus Admin, or Club Admin with privileges)"""
     try:
         db = await get_database()
         
-        # Check if user is system admin OR campus admin with inter-college privileges
-        user = await get_user_by_id(current_user)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        is_system_admin = user.get("is_admin", False) or user.get("is_super_admin", False)
+        current_user = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
         
-        campus_admin = None
+        # Check monthly limit for non-system admins
         if not is_system_admin:
-            campus_admin = await db.campus_admins.find_one({
-                "user_id": current_user,
-                "status": "active",
-                "can_create_inter_college": True
-            })
-            
-            if not campus_admin:
+            # Check if campus admin has inter-college privileges OR if it's a club admin
+            if current_admin["admin_type"] == "campus_admin" and not current_admin.get("can_create_inter_college", False):
                 raise HTTPException(
-                    status_code=403, 
-                    detail="Inter-college competition creation requires system admin or campus admin with inter-college privileges"
+                    status_code=403,
+                    detail="Campus admin requires inter-college creation privileges"
                 )
             
-            # Check monthly limit for campus admins
             current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             competitions_this_month = await db.inter_college_competitions.count_documents({
                 "created_by": current_user,
                 "created_at": {"$gte": current_month}
             })
             
-            if competitions_this_month >= campus_admin["max_competitions_per_month"]:
+            max_limit = current_admin.get("max_competitions_per_month", current_admin.get("max_challenges_per_month", 5))
+            if competitions_this_month >= max_limit:
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Monthly competition limit reached ({campus_admin['max_competitions_per_month']})"
+                    detail=f"Monthly competition limit reached ({max_limit})"
                 )
         
         # Calculate duration
@@ -6319,27 +6362,30 @@ async def create_inter_college_competition(
             "updated_at": datetime.now(timezone.utc)
         })
         
-        # Add campus admin metadata if created by campus admin
-        if campus_admin:
+        # Add admin metadata
+        if is_system_admin:
             competition_dict.update({
-                "created_by_campus_admin": True,
-                "campus_admin_id": campus_admin["id"],
-                "creator_college": campus_admin["college_name"],
-                "creator_admin_type": campus_admin["admin_type"]
+                "created_by_system_admin": True,
+                "created_by_campus_admin": False,
+                "created_by_club_admin": False
             })
         else:
             competition_dict.update({
-                "created_by_campus_admin": False,
-                "created_by_system_admin": True
+                "created_by_system_admin": False,
+                "created_by_campus_admin": current_admin["admin_type"] == "campus_admin",
+                "created_by_club_admin": current_admin["admin_type"] == "club_admin",
+                "admin_id": current_admin["id"],
+                "creator_college": current_admin["college_name"],
+                "creator_admin_type": current_admin["admin_type"]
             })
         
         competition = InterCollegeCompetition(**competition_dict)
         await db.inter_college_competitions.insert_one(competition.dict())
         
-        # Update campus admin statistics if applicable
-        if campus_admin:
+        # Update admin statistics if applicable (campus admin or club admin)
+        if not is_system_admin:
             await db.campus_admins.update_one(
-                {"id": campus_admin["id"]},
+                {"id": current_admin["id"]},
                 {
                     "$inc": {"competitions_created": 1},
                     "$set": {"last_activity": datetime.now(timezone.utc)}
@@ -6776,43 +6822,29 @@ async def complete_inter_college_competition(
 async def create_prize_challenge(
     request: Request,
     challenge_data: PrizeChallengeCreate,
-    current_user: str = Depends(get_current_user)
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
 ):
-    """Create a new prize-based challenge (System Admin or Campus Admin with privileges)"""
+    """Create a new prize-based challenge (System Admin, Campus Admin, or Club Admin with privileges)"""
     try:
         db = await get_database()
         
-        # Check if user is system admin OR campus admin with challenge creation privileges
-        user = await get_user_by_id(current_user)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        is_system_admin = user.get("is_admin", False) or user.get("is_super_admin", False)
+        current_user = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
         
-        campus_admin = None
+        # Check monthly limit for non-system admins
         if not is_system_admin:
-            campus_admin = await db.campus_admins.find_one({
-                "user_id": current_user,
-                "status": "active"
-            })
-            
-            if not campus_admin:
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Prize challenge creation requires system admin or campus admin privileges"
-                )
-            
-            # Check monthly limit for campus admins
+            # Check monthly limit for campus and club admins
             current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             challenges_this_month = await db.prize_challenges.count_documents({
                 "created_by": current_user,
                 "created_at": {"$gte": current_month}
             })
             
-            if challenges_this_month >= campus_admin["max_competitions_per_month"]:
+            max_limit = current_admin.get("max_competitions_per_month", current_admin.get("max_challenges_per_month", 5))
+            if challenges_this_month >= max_limit:
                 raise HTTPException(
                     status_code=429,
-                    detail=f"Monthly challenge limit reached ({campus_admin['max_competitions_per_month']})"
+                    detail=f"Monthly challenge limit reached ({max_limit})"
                 )
         
         # Calculate duration hours if not provided
@@ -6824,32 +6856,35 @@ async def create_prize_challenge(
         challenge_dict = challenge_data.dict()
         challenge_dict.update({
             "id": str(uuid.uuid4()),
-            "created_by": current_user["id"],
+            "created_by": current_user,
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         })
         
-        # Add campus admin metadata if created by campus admin
-        if campus_admin:
+        # Add admin metadata
+        if is_system_admin:
             challenge_dict.update({
-                "created_by_campus_admin": True,
-                "campus_admin_id": campus_admin["id"],
-                "creator_college": campus_admin["college_name"],
-                "creator_admin_type": campus_admin["admin_type"]
+                "created_by_system_admin": True,
+                "created_by_campus_admin": False,
+                "created_by_club_admin": False
             })
         else:
             challenge_dict.update({
-                "created_by_campus_admin": False,
-                "created_by_system_admin": True
+                "created_by_system_admin": False,
+                "created_by_campus_admin": current_admin["admin_type"] == "campus_admin",
+                "created_by_club_admin": current_admin["admin_type"] == "club_admin",
+                "admin_id": current_admin["id"],
+                "creator_college": current_admin["college_name"],
+                "creator_admin_type": current_admin["admin_type"]
             })
         
         challenge = PrizeChallenge(**challenge_dict)
         await db.prize_challenges.insert_one(challenge.dict())
         
-        # Update campus admin statistics if applicable
-        if campus_admin:
+        # Update admin statistics if applicable (campus admin or club admin)
+        if not is_system_admin:
             await db.campus_admins.update_one(
-                {"id": campus_admin["id"]},
+                {"id": current_admin["id"]},
                 {
                     "$inc": {"challenges_created": 1},
                     "$set": {"last_activity": datetime.now(timezone.utc)}
@@ -7949,7 +7984,7 @@ async def grant_feature_access(user_id: str, feature_name: str):
 
 @api_router.get("/referrals/my-link")
 @limiter.limit("5/minute")
-async def get_referral_link(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_referral_link(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get user's referral link for direct sharing"""
     try:
         db = await get_database()
@@ -7972,7 +8007,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://campus-approval.preview.emergentagent.com"
+        base_url = "https://prize-compete-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -7990,7 +8025,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
 
 @api_router.get("/referrals/stats")
 @limiter.limit("10/minute")
-async def get_referral_stats(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_referral_stats(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get detailed referral statistics"""
     try:
         db = await get_database()
@@ -8864,7 +8899,7 @@ async def update_challenge_progress(challenge_id: str, user_id: str):
 
 @api_router.post("/friends/invite")
 @limiter.limit("10/hour")
-async def invite_friend(request: Request, invite_data: FriendInviteRequest, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def invite_friend(request: Request, invite_data: FriendInviteRequest, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Send friend invitation via referral code"""
     try:
         db = await get_database()
@@ -8944,11 +8979,11 @@ async def invite_friend(request: Request, invite_data: FriendInviteRequest, curr
 
 @api_router.get("/friends")
 @limiter.limit("20/minute")
-async def get_friends(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_friends(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get user's friends list"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get all friendships where user is involved
         friendships = await db.friendships.find({
@@ -8995,7 +9030,7 @@ async def get_invitations(request: Request, current_user: Dict[str, Any] = Depen
     """Get sent and received invitations"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get sent invitations
         sent_invitations = await db.friend_invitations.find({
@@ -9025,11 +9060,11 @@ async def get_invitations(request: Request, current_user: Dict[str, Any] = Depen
 
 @api_router.post("/friends/accept-invitation")
 @limiter.limit("5/minute")
-async def accept_friend_invitation(request: Request, referral_code: str, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def accept_friend_invitation(request: Request, referral_code: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Accept friend invitation using referral code"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # First try to find formal invitation
         invitation = await db.friend_invitations.find_one({
@@ -9157,7 +9192,7 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
 
 @api_router.get("/friends/suggestions")
 @limiter.limit("20/minute")
-async def get_friend_suggestions(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_friend_suggestions(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get campus-specific friend suggestions"""
     try:
         db = await get_database()
@@ -9251,11 +9286,11 @@ async def get_friend_suggestions(request: Request, current_user: Dict[str, Any] 
 
 @api_router.get("/friends/recent-activity")
 @limiter.limit("30/minute")  
-async def get_recent_friend_activity(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_recent_friend_activity(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get recent activity from friends for real-time updates"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get user's friends
         friendships = await db.friendships.find({
@@ -9374,11 +9409,11 @@ async def get_recent_friend_activity(request: Request, current_user: Dict[str, A
 
 @api_router.get("/friends/live-stats")
 @limiter.limit("60/minute")  # Higher limit for live data
-async def get_live_friend_stats(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_live_friend_stats(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get live friend statistics for real-time dashboard updates"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get friends count
         friends_count = await db.friendships.count_documents({
@@ -9428,11 +9463,33 @@ async def get_live_friend_stats(request: Request, current_user: Dict[str, Any] =
 
 @api_router.post("/group-challenges")
 @limiter.limit("5/hour")
-async def create_group_challenge(request: Request, challenge_data: GroupChallengeCreateRequest, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
-    """Create a new group savings challenge"""
+async def create_group_challenge(request: Request, challenge_data: GroupChallengeCreateRequest, current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)):
+    """Create a new group savings challenge (System Admin, Campus Admin, or Club Admin)"""
     try:
         db = await get_database()
-        user = current_user
+        
+        current_user = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check monthly limit for non-system admins
+        if not is_system_admin:
+            current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            challenges_this_month = await db.group_challenges.count_documents({
+                "created_by": current_user,
+                "created_at": {"$gte": current_month}
+            })
+            
+            max_limit = current_admin.get("max_competitions_per_month", current_admin.get("max_challenges_per_month", 5))
+            if challenges_this_month >= max_limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Monthly group challenge limit reached ({max_limit})"
+                )
+        
+        # Get user details for university restriction
+        user = await get_user_by_id(current_user)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
         
         # Calculate dates
         start_date = datetime.now(timezone.utc)
@@ -9454,7 +9511,7 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
             duration_days=challenge_data.duration_days,
             max_participants=challenge_data.max_participants,
             university=university,
-            created_by=user_id,
+            created_by=current_user,
             start_date=start_date,
             end_date=end_date
         )
@@ -9464,7 +9521,7 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
         # Auto-join creator as first participant
         participant = GroupChallengeParticipant(
             group_challenge_id=group_challenge.id,
-            user_id=user_id,
+            user_id=current_user,
             individual_target=challenge_data.target_amount_per_person
         )
         await db.group_challenge_participants.insert_one(participant.dict())
@@ -9475,9 +9532,19 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
             {"$inc": {"current_participants": 1}}
         )
         
+        # Update admin statistics if applicable (campus admin or club admin)
+        if not is_system_admin:
+            await db.campus_admins.update_one(
+                {"id": current_admin["id"]},
+                {
+                    "$inc": {"challenges_created": 1},
+                    "$set": {"last_activity": datetime.now(timezone.utc)}
+                }
+            )
+        
         # Create notification
         await create_notification(
-            user_id,
+            current_user,
             "challenge_created",
             f"Group Challenge Created: {group_challenge.title}",
             f"You've created a {challenge_data.duration_days}-day group challenge. Invite friends to join!",
@@ -9497,7 +9564,7 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
 
 @api_router.get("/group-challenges")
 @limiter.limit("20/minute")
-async def get_group_challenges(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_group_challenges(request: Request, current_user: str = Depends(get_current_user)):
     """Get available group challenges (campus-specific and open)"""
     try:
         db = await get_database()
@@ -9565,11 +9632,11 @@ async def get_group_challenges(request: Request, current_user: Dict[str, Any] = 
 
 @api_router.post("/group-challenges/{challenge_id}/join")
 @limiter.limit("10/minute")
-async def join_group_challenge(request: Request, challenge_id: str, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def join_group_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
     """Join a group challenge"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Check if challenge exists and is active
         challenge = await db.group_challenges.find_one({
@@ -9651,7 +9718,7 @@ async def join_group_challenge(request: Request, challenge_id: str, current_user
 
 @api_router.get("/group-challenges/{challenge_id}")
 @limiter.limit("20/minute")
-async def get_group_challenge_details(request: Request, challenge_id: str, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_group_challenge_details(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
     """Get detailed information about a specific group challenge"""
     try:
         db = await get_database()
@@ -9727,7 +9794,7 @@ async def get_notifications(request: Request, current_user: Dict[str, Any] = Dep
     """Get user's notifications"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get recent notifications
         notifications = await db.notifications.find({
@@ -9756,7 +9823,7 @@ async def mark_notification_read(request: Request, notification_id: str, current
     """Mark notification as read"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Update notification
         result = await db.notifications.update_one(
@@ -9788,7 +9855,7 @@ async def mark_all_notifications_read(request: Request, current_user: Dict[str, 
     """Mark all notifications as read"""
     try:
         db = await get_database()
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Update all unread notifications
         result = await db.notifications.update_many(
@@ -17420,7 +17487,7 @@ async def check_viral_milestones():
 async def get_friend_comparison_insights(current_user = Depends(get_current_user_dict)):
     """Get anonymous friend spending comparisons"""
     try:
-        user_id = current_user["id"]
+        user_id = current_user
         
         # Get user's friends from friendships collection
         db = await get_database()
