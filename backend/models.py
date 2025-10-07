@@ -2152,7 +2152,7 @@ class CampusAdminRequest(BaseModel):
     college_email_domain: Optional[str] = None  # Extracted from institutional email
     club_name: Optional[str] = None
     club_type: str = "student_organization"  # "student_organization", "academic_society", "cultural_club", "sports_club"
-    requested_admin_type: str = "club_admin"  # "club_admin", "college_admin"
+    requested_admin_type: str = "campus_admin"  # "campus_admin" only for user requests
     # Verification details
     verification_method: str = "email"  # "email", "manual", "both"
     institutional_email: Optional[str] = None
@@ -2188,7 +2188,7 @@ class CampusAdminRequest(BaseModel):
 
     @validator('requested_admin_type')
     def validate_admin_type(cls, v):
-        allowed_types = ["club_admin", "college_admin"]
+        allowed_types = ["club_admin", "campus_admin"]
         if v not in allowed_types:
             raise ValueError(f'Admin type must be one of: {", ".join(allowed_types)}')
         return v
@@ -2205,7 +2205,7 @@ class CampusAdmin(BaseModel):
     user_id: str
     request_id: str  # Reference to original admin request
     # Admin details
-    admin_type: str = "club_admin"  # "club_admin", "college_admin"
+    admin_type: str = "club_admin"  # "club_admin", "campus_admin"
     college_name: str
     club_name: Optional[str] = None
     # Privileges and permissions
@@ -2243,7 +2243,7 @@ class CampusAdmin(BaseModel):
 
     @validator('admin_type')
     def validate_admin_type(cls, v):
-        allowed_types = ["club_admin", "college_admin"]
+        allowed_types = ["club_admin", "campus_admin"]
         if v not in allowed_types:
             raise ValueError(f'Admin type must be one of: {", ".join(allowed_types)}')
         return v
@@ -2365,7 +2365,7 @@ class CampusAdminRequestCreate(BaseModel):
     institutional_email: Optional[str] = Field(None, pattern=r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     club_name: Optional[str] = Field(None, max_length=200)
     club_type: str = Field(default="student_organization")
-    requested_admin_type: str = Field(default="club_admin")
+    requested_admin_type: str = Field(default="campus_admin")
     # Reasoning and motivation
     motivation: str = Field(..., min_length=50, max_length=1000)
     previous_experience: Optional[str] = Field(None, max_length=1000)
@@ -2373,9 +2373,10 @@ class CampusAdminRequestCreate(BaseModel):
 
     @validator('requested_admin_type')
     def validate_admin_type(cls, v):
-        allowed_types = ["club_admin", "college_admin"]
+        # Allow both campus_admin and club_admin requests
+        allowed_types = ["campus_admin", "club_admin"]
         if v not in allowed_types:
-            raise ValueError(f'Admin type must be one of: {", ".join(allowed_types)}')
+            raise ValueError('Admin type must be either campus_admin or club_admin.')
         return v
 
     @validator('club_type')
