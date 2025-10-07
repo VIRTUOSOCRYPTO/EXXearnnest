@@ -11,7 +11,8 @@ import {
   Trophy, Users, Calendar, Award, Target, Medal, Star, 
   Plus, Settings, BarChart3, Clock, CheckCircle, AlertCircle,
   FileText, GraduationCap, Building, User, Shield, Activity,
-  TrendingUp, UserCheck, Flag, Eye, Edit, Trash, AlertTriangle
+  TrendingUp, UserCheck, Flag, Eye, Edit, Trash, AlertTriangle,
+  Check, X, Ban
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -31,11 +32,34 @@ const CampusAdminDashboard = () => {
   const [moderationAction, setModerationAction] = useState('warn');
   const [moderationReason, setModerationReason] = useState('');
 
+  // Club Admin Management State
+  const [clubAdminRequests, setClubAdminRequests] = useState([]);
+  const [myClubAdmins, setMyClubAdmins] = useState([]);
+  const [clubAdminsLoading, setClubAdminsLoading] = useState(false);
+  const [selectedClubRequest, setSelectedClubRequest] = useState(null);
+  const [showClubRequestModal, setShowClubRequestModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    user_id: '',
+    club_name: '',
+    club_type: 'student_organization',
+    permissions: ['create_events'],
+    max_events_per_month: 3,
+    expires_in_months: 6
+  });
+
   useEffect(() => {
     fetchDashboardData();
     fetchCompetitions();
     fetchChallenges();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "club-admins") {
+      fetchClubAdminRequests();
+      fetchMyClubAdmins();
+    }
+  }, [activeTab]);
 
   const fetchDashboardData = async () => {
     try {
@@ -97,6 +121,113 @@ const CampusAdminDashboard = () => {
     } catch (error) {
       console.error('Moderation error:', error);
       alert(error.response?.data?.detail || 'Failed to moderate participant');
+    }
+  };
+
+  // Club Admin Management Functions
+  const fetchClubAdminRequests = async () => {
+    try {
+      setClubAdminsLoading(true);
+      const response = await axios.get(`${API}/campus-admin/club-admin-requests`);
+      setClubAdminRequests(response.data.requests || []);
+    } catch (error) {
+      console.error('Error fetching club admin requests:', error);
+    } finally {
+      setClubAdminsLoading(false);
+    }
+  };
+
+  const fetchMyClubAdmins = async () => {
+    try {
+      const response = await axios.get(`${API}/campus-admin/my-club-admins`);
+      setMyClubAdmins(response.data.club_admins || []);
+    } catch (error) {
+      console.error('Error fetching my club admins:', error);
+    }
+  };
+
+  const approveClubAdminRequest = async (requestId) => {
+    try {
+      const approvalData = {
+        permissions: ['create_events', 'manage_participants'],
+        max_events_per_month: 5,
+        expires_in_months: 12,
+        review_notes: 'Approved by campus admin'
+      };
+
+      await axios.post(`${API}/campus-admin/club-admin-requests/${requestId}/approve`, approvalData);
+      
+      // Refresh data
+      fetchClubAdminRequests();
+      fetchMyClubAdmins();
+      setShowClubRequestModal(false);
+      
+      alert('Club admin request approved successfully!');
+    } catch (error) {
+      console.error('Error approving club admin request:', error);
+      alert(error.response?.data?.detail || 'Failed to approve request');
+    }
+  };
+
+  const rejectClubAdminRequest = async (requestId, reason) => {
+    try {
+      const rejectionData = {
+        rejection_reason: reason,
+        review_notes: 'Rejected by campus admin'
+      };
+
+      await axios.post(`${API}/campus-admin/club-admin-requests/${requestId}/reject`, rejectionData);
+      
+      // Refresh data
+      fetchClubAdminRequests();
+      setShowClubRequestModal(false);
+      
+      alert('Club admin request rejected successfully!');
+    } catch (error) {
+      console.error('Error rejecting club admin request:', error);
+      alert(error.response?.data?.detail || 'Failed to reject request');
+    }
+  };
+
+  const suspendClubAdmin = async (clubAdminId, reason) => {
+    try {
+      const suspensionData = {
+        reason,
+        suspension_days: 30
+      };
+
+      await axios.put(`${API}/campus-admin/club-admins/${clubAdminId}/suspend`, suspensionData);
+      
+      // Refresh data
+      fetchMyClubAdmins();
+      
+      alert('Club admin suspended successfully!');
+    } catch (error) {
+      console.error('Error suspending club admin:', error);
+      alert(error.response?.data?.detail || 'Failed to suspend club admin');
+    }
+  };
+
+  const inviteClubAdmin = async () => {
+    try {
+      await axios.post(`${API}/campus-admin/invite-club-admin`, inviteForm);
+      
+      // Refresh data and reset form
+      fetchClubAdminRequests();
+      setInviteForm({
+        user_id: '',
+        club_name: '',
+        club_type: 'student_organization',
+        permissions: ['create_events'],
+        max_events_per_month: 3,
+        expires_in_months: 6
+      });
+      setShowInviteModal(false);
+      
+      alert('Club admin invitation sent successfully!');
+    } catch (error) {
+      console.error('Error inviting club admin:', error);
+      alert(error.response?.data?.detail || 'Failed to send invitation');
     }
   };
 
@@ -526,6 +657,187 @@ const CampusAdminDashboard = () => {
     </div>
   );
 
+  const renderClubAdmins = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold">Club Admin Management</h3>
+        <Button 
+          className="bg-purple-600 hover:bg-purple-700"
+          onClick={() => setShowInviteModal(true)}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Invite Club Admin
+        </Button>
+      </div>
+
+      {/* Club Admin Requests */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <FileText className="w-5 h-5 mr-2" />
+            Pending Club Admin Requests
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {clubAdminsLoading ? (
+            <div className="text-center py-4">
+              <Clock className="w-6 h-6 animate-spin mx-auto" />
+              <p className="text-gray-600 mt-2">Loading requests...</p>
+            </div>
+          ) : clubAdminRequests.length > 0 ? (
+            <div className="space-y-4">
+              {clubAdminRequests.map((request) => (
+                <div key={request.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <h4 className="font-semibold">{request.full_name}</h4>
+                        <Badge className={
+                          request.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                          request.status === 'approved' ? 'bg-green-100 text-green-700' :
+                          'bg-red-100 text-red-700'
+                        }>
+                          {request.status}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                        <div>
+                          <p><strong>Club:</strong> {request.club_name}</p>
+                          <p><strong>Email:</strong> {request.email}</p>
+                        </div>
+                        <div>
+                          <p><strong>Type:</strong> {request.club_type}</p>
+                          <p><strong>Submitted:</strong> {new Date(request.submitted_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      {request.motivation && (
+                        <p className="text-sm text-gray-700 mt-2 italic">"{request.motivation}"</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      {request.status === 'pending' && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => approveClubAdminRequest(request.id)}
+                          >
+                            <Check className="w-4 h-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const reason = prompt('Enter rejection reason:');
+                              if (reason) rejectClubAdminRequest(request.id, reason);
+                            }}
+                          >
+                            <X className="w-4 h-4 mr-1" />
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedClubRequest(request);
+                          setShowClubRequestModal(true);
+                        }}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View Details
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">No club admin requests found</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* My Club Admins */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Users className="w-5 h-5 mr-2" />
+            My Club Admins ({myClubAdmins.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {myClubAdmins.length > 0 ? (
+            <div className="space-y-4">
+              {myClubAdmins.map((admin) => (
+                <div key={admin.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <h4 className="font-semibold">{admin.user_details?.full_name}</h4>
+                        <Badge className={
+                          admin.status === 'active' ? 'bg-green-100 text-green-700' :
+                          admin.status === 'suspended' ? 'bg-red-100 text-red-700' :
+                          'bg-gray-100 text-gray-700'
+                        }>
+                          {admin.status}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                        <div>
+                          <p><strong>Club:</strong> {admin.club_name}</p>
+                          <p><strong>Email:</strong> {admin.user_details?.email}</p>
+                          <p><strong>Appointed:</strong> {new Date(admin.appointed_at).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p><strong>Events Created:</strong> {admin.events_created || 0}</p>
+                          <p><strong>Max Events/Month:</strong> {admin.max_events_per_month}</p>
+                          <p><strong>Expires:</strong> {new Date(admin.expires_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-2">
+                      {admin.status === 'active' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 border-red-300 hover:bg-red-50"
+                          onClick={() => {
+                            const reason = prompt('Enter suspension reason:');
+                            if (reason) suspendClubAdmin(admin.id, reason);
+                          }}
+                        >
+                          <Ban className="w-4 h-4 mr-1" />
+                          Suspend
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline">
+                        <Settings className="w-4 h-4 mr-1" />
+                        Manage
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">No club admins under your management</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   if (loading) {
     return (
       <Card className="w-full max-w-6xl mx-auto">
@@ -563,10 +875,11 @@ const CampusAdminDashboard = () => {
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="competitions">Competitions</TabsTrigger>
           <TabsTrigger value="challenges">Challenges</TabsTrigger>
+          <TabsTrigger value="club-admins">Club Admins</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -579,6 +892,10 @@ const CampusAdminDashboard = () => {
 
         <TabsContent value="challenges" className="space-y-6">
           {renderChallenges()}
+        </TabsContent>
+
+        <TabsContent value="club-admins" className="space-y-6">
+          {renderClubAdmins()}
         </TabsContent>
       </Tabs>
 
@@ -637,6 +954,206 @@ const CampusAdminDashboard = () => {
               >
                 <Flag className="w-4 h-4 mr-2" />
                 Apply Action
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Club Admin Request Details Modal */}
+      {selectedClubRequest && (
+        <Dialog open={showClubRequestModal} onOpenChange={setShowClubRequestModal}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Club Admin Request Details</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-medium">Applicant Information</h4>
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p><strong>Name:</strong> {selectedClubRequest.full_name}</p>
+                    <p><strong>Email:</strong> {selectedClubRequest.email}</p>
+                    <p><strong>Phone:</strong> {selectedClubRequest.phone_number}</p>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium">Club Details</h4>
+                  <div className="text-sm text-gray-600 space-y-1">
+                    <p><strong>Club Name:</strong> {selectedClubRequest.club_name}</p>
+                    <p><strong>Club Type:</strong> {selectedClubRequest.club_type}</p>
+                    <p><strong>Status:</strong> {selectedClubRequest.status}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <h4 className="font-medium mb-2">Motivation</h4>
+                <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded">{selectedClubRequest.motivation}</p>
+              </div>
+              
+              {selectedClubRequest.previous_experience && (
+                <div>
+                  <h4 className="font-medium mb-2">Previous Experience</h4>
+                  <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded">{selectedClubRequest.previous_experience}</p>
+                </div>
+              )}
+              
+              <div className="flex justify-end space-x-4 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowClubRequestModal(false)}
+                >
+                  Close
+                </Button>
+                {selectedClubRequest.status === 'pending' && (
+                  <div className="flex space-x-2">
+                    <Button
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => approveClubAdminRequest(selectedClubRequest.id)}
+                    >
+                      <Check className="w-4 h-4 mr-2" />
+                      Approve
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const reason = prompt('Enter rejection reason:');
+                        if (reason) rejectClubAdminRequest(selectedClubRequest.id, reason);
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Reject
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Invite Club Admin Modal */}
+      <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite Club Admin</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">User ID *</label>
+              <input
+                type="text"
+                value={inviteForm.user_id}
+                onChange={(e) => setInviteForm({...inviteForm, user_id: e.target.value})}
+                className="w-full p-3 border rounded-lg"
+                placeholder="Enter user ID to invite"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-2">Club Name *</label>
+              <input
+                type="text"
+                value={inviteForm.club_name}
+                onChange={(e) => setInviteForm({...inviteForm, club_name: e.target.value})}
+                className="w-full p-3 border rounded-lg"
+                placeholder="Enter club name"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-2">Club Type</label>
+              <select
+                value={inviteForm.club_type}
+                onChange={(e) => setInviteForm({...inviteForm, club_type: e.target.value})}
+                className="w-full p-3 border rounded-lg"
+              >
+                <option value="student_organization">Student Organization</option>
+                <option value="academic_club">Academic Club</option>
+                <option value="sports_club">Sports Club</option>
+                <option value="cultural_club">Cultural Club</option>
+                <option value="technical_club">Technical Club</option>
+              </select>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Max Events per Month</label>
+                <input
+                  type="number"
+                  value={inviteForm.max_events_per_month}
+                  onChange={(e) => setInviteForm({...inviteForm, max_events_per_month: parseInt(e.target.value)})}
+                  className="w-full p-3 border rounded-lg"
+                  min="1"
+                  max="20"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Expires in Months</label>
+                <input
+                  type="number"
+                  value={inviteForm.expires_in_months}
+                  onChange={(e) => setInviteForm({...inviteForm, expires_in_months: parseInt(e.target.value)})}
+                  className="w-full p-3 border rounded-lg"
+                  min="1"
+                  max="24"
+                />
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-2">Permissions</label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={inviteForm.permissions.includes('create_events')}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setInviteForm({...inviteForm, permissions: [...inviteForm.permissions, 'create_events']});
+                      } else {
+                        setInviteForm({...inviteForm, permissions: inviteForm.permissions.filter(p => p !== 'create_events')});
+                      }
+                    }}
+                    className="mr-2"
+                  />
+                  Create Events
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={inviteForm.permissions.includes('manage_participants')}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setInviteForm({...inviteForm, permissions: [...inviteForm.permissions, 'manage_participants']});
+                      } else {
+                        setInviteForm({...inviteForm, permissions: inviteForm.permissions.filter(p => p !== 'manage_participants')});
+                      }
+                    }}
+                    className="mr-2"
+                  />
+                  Manage Participants
+                </label>
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowInviteModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={inviteClubAdmin}
+                className="bg-purple-600 hover:bg-purple-700"
+                disabled={!inviteForm.user_id || !inviteForm.club_name}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Send Invitation
               </Button>
             </div>
           </div>
