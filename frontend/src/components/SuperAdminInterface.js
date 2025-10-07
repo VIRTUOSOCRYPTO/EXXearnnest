@@ -132,7 +132,7 @@ const SuperAdminInterface = () => {
   const fetchCampusAdminRequests = async () => {
     try {
       setRequestsLoading(true);
-      const response = await axios.get(`${API}/system-admin/requests`);
+      const response = await axios.get(`${API}/super-admin/requests`);
       setAdminRequests(response.data.requests || []);
     } catch (error) {
       console.error('Error fetching admin requests:', error);
@@ -144,7 +144,7 @@ const SuperAdminInterface = () => {
   const fetchCampusAdminsOversight = async () => {
     try {
       setAdminsLoading(true);
-      const response = await axios.get(`${API}/system-admin/admins`);
+      const response = await axios.get(`${API}/super-admin/admins`);
       setCampusAdmins(response.data.admins || []);
     } catch (error) {
       console.error('Error fetching campus admins:', error);
@@ -173,7 +173,7 @@ const SuperAdminInterface = () => {
         if (value) params.append(key, value);
       });
       
-      const response = await axios.get(`${API}/system-admin/audit-logs?${params}`);
+      const response = await axios.get(`${API}/super-admin/audit-logs?${params}`);
       setAuditLogs(response.data.audit_logs || []);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
@@ -205,7 +205,7 @@ const SuperAdminInterface = () => {
         ...(decision === 'reject' && { rejection_reason: rejectionReason })
       };
 
-      await axios.post(`${API}/system-admin/requests/${requestId}/review`, payload);
+      await axios.post(`${API}/super-admin/requests/${requestId}/review`, payload);
       
       // Refresh requests
       fetchCampusAdminRequests();
