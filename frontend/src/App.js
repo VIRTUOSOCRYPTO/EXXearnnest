@@ -45,7 +45,7 @@ import CampusReputation from './components/CampusReputation';
 
 // Admin Verification System
 import CampusAdminRequest from './components/CampusAdminRequest';
-import SystemAdminInterface from './components/SystemAdminInterface';
+// Removed SystemAdminInterface - merged into SuperAdminInterface
 import CampusAdminDashboard from './components/CampusAdminDashboard';
 import SuperAdminInterface from './components/SuperAdminInterface';
 
@@ -308,10 +308,7 @@ function App() {
                 path="/campus-admin/dashboard" 
                 element={user ? <CampusAdminDashboard /> : <Navigate to="/login" />} 
               />
-              <Route 
-                path="/system-admin" 
-                element={user ? <SystemAdminInterface /> : <Navigate to="/login" />} 
-              />
+              {/* SystemAdminInterface removed - functionality merged into SuperAdminInterface */}
               <Route 
                 path="/super-admin" 
                 element={user ? <SuperAdminInterface /> : <Navigate to="/login" />} 
