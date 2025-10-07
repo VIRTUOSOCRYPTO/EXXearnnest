@@ -3,7 +3,6 @@ import axios from 'axios';
 import { useAuth } from '../App';
 import SocialSharing from './SocialSharing';
 import EnhancedCelebration from './EnhancedCelebration';
-import NotificationSettings from './NotificationSettings';
 import pushNotificationService from '../services/pushNotificationService';
 import {
   TrophyIcon,
@@ -16,7 +15,6 @@ import {
   SparklesIcon,
   CalendarIcon,
   ArrowUpIcon,
-  BellIcon,
   GiftIcon
 } from '@heroicons/react/24/outline';
 
@@ -164,9 +162,9 @@ const GamificationProfile = () => {
       ]);
 
       setLeaderboards({
-        savings: savingsRes.data?.leaderboard || [],
-        streak: streakRes.data?.leaderboard || [],
-        points: pointsRes.data?.leaderboard || []
+        savings: savingsRes.data?.rankings || [],
+        streak: streakRes.data?.rankings || [],
+        points: pointsRes.data?.rankings || []
       });
     } catch (error) {
       console.error('Error fetching leaderboards:', error);
@@ -311,8 +309,7 @@ const GamificationProfile = () => {
               { id: 'overview', label: 'Overview', icon: ChartBarIcon },
               { id: 'badges', label: 'Badges', icon: TrophyIcon },
               { id: 'leaderboards', label: 'Live Rankings', icon: UsersIcon },
-              { id: 'achievements', label: 'Achievements', icon: StarIcon },
-              { id: 'notifications', label: 'Notifications', icon: BellIcon }
+              { id: 'achievements', label: 'Achievements', icon: StarIcon }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -672,7 +669,7 @@ const GamificationProfile = () => {
                         </span>
                       </div>
                       <span className="font-bold text-emerald-600 text-sm sm:text-base">
-                        ₹{(user.total_saved || 0).toLocaleString()}
+                        ₹{(user.score || 0).toLocaleString()}
                       </span>
                     </div>
                   ))
@@ -718,7 +715,7 @@ const GamificationProfile = () => {
                       <div className="flex items-center gap-1">
                         <FireIcon className="w-4 h-4 text-orange-500" />
                         <span className="font-bold text-orange-600 text-sm sm:text-base">
-                          {user.current_streak || 0} days
+                          {user.score || 0} days
                         </span>
                       </div>
                     </div>
@@ -763,7 +760,7 @@ const GamificationProfile = () => {
                         </span>
                       </div>
                       <span className="font-bold text-purple-600 text-sm sm:text-base">
-                        {(user.experience_points || 0).toLocaleString()} XP
+                        {(user.score || 0).toLocaleString()} XP
                       </span>
                     </div>
                   ))
@@ -823,11 +820,6 @@ const GamificationProfile = () => {
               </div>
             )}
           </div>
-        )}
-
-        {/* Notifications Tab - Phase 1 */}
-        {activeTab === 'notifications' && (
-          <NotificationSettings />
         )}
       </div>
 
