@@ -162,11 +162,25 @@ async def get_current_user_dict(credentials: HTTPAuthorizationCredentials = Depe
     return user
 
 async def get_current_admin(user_id: str = Depends(get_current_user)) -> str:
-    """Get current authenticated admin user"""
+    """Get current authenticated admin user (backward compatibility)"""
     user = await get_user_by_id(user_id)
     if not user or not user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
+
+async def get_current_super_admin(user_id: str = Depends(get_current_user)) -> Dict[str, Any]:
+    """Get current authenticated super admin user"""
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    # Check both new super_admin flag and legacy is_admin flag
+    is_super = user.get("is_super_admin", False) or (user.get("admin_level") == "super_admin") or user.get("is_admin", False)
+    
+    if not is_super:
+        raise HTTPException(status_code=403, detail="Super admin privileges required")
+    
+    return user
 
 async def get_current_campus_admin(user_id: str = Depends(get_current_user)) -> Dict[str, Any]:
     """Get current authenticated campus admin with privileges"""
@@ -177,6 +191,107 @@ async def get_current_campus_admin(user_id: str = Depends(get_current_user)) -> 
         "user_id": user_id,
         "status": "active"
     })
+
+
+async def create_audit_log(
+    db: Any,
+    admin_user_id: str,
+    action_type: str,
+    action_description: str,
+    target_type: str,
+    target_id: Optional[str] = None,
+    affected_entities: List[Dict] = [],
+    before_state: Optional[Dict] = None,
+    after_state: Optional[Dict] = None,
+    severity: str = "info",
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    admin_level: Optional[str] = None,
+    college_name: Optional[str] = None,
+    success: bool = True,
+    error_message: Optional[str] = None,
+    alert_sent: bool = False
+):
+    """Helper function to create comprehensive audit logs"""
+    from models import AdminAuditLog
+    
+    audit_log = AdminAuditLog(
+        admin_user_id=admin_user_id,
+        action_type=action_type,
+        action_description=action_description,
+        target_type=target_type,
+        target_id=target_id,
+        affected_entities=affected_entities,
+        before_state=before_state,
+        after_state=after_state,
+        severity=severity,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        admin_level=admin_level,
+        college_name=college_name,
+        success=success,
+        error_message=error_message,
+        alert_sent=alert_sent
+    )
+    
+    await db.admin_audit_logs.insert_one(audit_log.dict())
+    
+    # Send real-time alert if severity is critical or warning
+    if severity in ["critical", "warning"] and not alert_sent:
+        await send_admin_alert(db, audit_log)
+
+async def send_admin_alert(db: Any, audit_log: Any):
+    """Send real-time alert to super admins"""
+    from models import AdminAlert
+    
+    alert = AdminAlert(
+        alert_type="high_priority_action" if audit_log.severity == "critical" else "suspicious_activity",
+        severity=audit_log.severity,
+        title=f"Admin Action: {audit_log.action_type}",
+        message=audit_log.action_description,
+        admin_user_id=audit_log.admin_user_id,
+        admin_level=audit_log.admin_level,
+        related_entity_type=audit_log.target_type,
+        related_entity_id=audit_log.target_id,
+        requires_action=audit_log.severity == "critical"
+    )
+    
+    await db.admin_alerts.insert_one(alert.dict())
+    
+    # Here you could also send WebSocket notification to connected super admins
+    # or send email notification for critical alerts
+
+async def track_admin_session(
+    db: Any,
+    admin_user_id: str,
+    admin_level: str,
+    session_id: str,
+    ip_address: str,
+    user_agent: str
+):
+    """Track admin login session for security monitoring"""
+    from models import AdminSessionTracker
+    
+    session = AdminSessionTracker(
+        admin_user_id=admin_user_id,
+        admin_level=admin_level,
+        session_id=session_id,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+    
+    await db.admin_sessions.insert_one(session.dict())
+
+async def update_admin_activity(db: Any, admin_id: str):
+    """Update last activity timestamp for admin"""
+    await db.campus_admins.update_one(
+        {"id": admin_id},
+        {
+            "$set": {"last_activity": datetime.now(timezone.utc)},
+            "$inc": {"days_active": 0}  # Will be calculated by background job
+        }
+    )
+
     
     if not campus_admin:
         raise HTTPException(status_code=403, detail="Campus admin privileges required")
@@ -4852,7 +4967,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://launch-this-3.preview.emergentagent.com"
+        base_url = "https://admin-oversight-2.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7535,7 +7650,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://launch-this-3.preview.emergentagent.com"
+        base_url = "https://admin-oversight-2.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -15058,6 +15173,600 @@ async def get_admin_audit_logs(
     except Exception as e:
         logger.error(f"Get audit logs error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get audit logs")
+
+
+
+# ===== SUPER ADMIN OVERSIGHT ENDPOINTS =====
+
+@api_router.get("/super-admin/dashboard")
+@limiter.limit("20/minute")
+async def get_super_admin_dashboard(
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get super admin dashboard with comprehensive oversight metrics"""
+    try:
+        db = await get_database()
+        
+        # Get counts for all admin levels
+        total_campus_admins = await db.campus_admins.count_documents({"admin_type": "campus_admin"})
+        active_campus_admins = await db.campus_admins.count_documents({
+            "admin_type": "campus_admin",
+            "status": "active"
+        })
+        total_club_admins = await db.campus_admins.count_documents({"admin_type": "club_admin"})
+        active_club_admins = await db.campus_admins.count_documents({
+            "admin_type": "club_admin",
+            "status": "active"
+        })
+        
+        # Get pending requests
+        pending_requests = await db.campus_admin_requests.count_documents({"status": "pending"})
+        
+        # Get recent admin activity (last 24 hours)
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        recent_activity = await db.admin_audit_logs.count_documents({
+            "timestamp": {"$gte": yesterday}
+        })
+        
+        # Get critical alerts
+        unread_alerts = await db.admin_alerts.count_documents({
+            "read_at": None,
+            "severity": {"$in": ["warning", "critical"]}
+        })
+        
+        # Get performance metrics
+        last_month = datetime.now(timezone.utc) - timedelta(days=30)
+        total_competitions = await db.inter_college_competitions.count_documents({
+            "created_at": {"$gte": last_month}
+        })
+        total_challenges = await db.prize_challenges.count_documents({
+            "created_at": {"$gte": last_month}
+        })
+        
+        # Get top performing admins
+        top_admins_cursor = db.campus_admins.find({
+            "status": "active"
+        }).sort("competitions_created", -1).limit(5)
+        top_admins = await top_admins_cursor.to_list(None)
+        
+        for admin in top_admins:
+            user = await get_user_by_id(admin["user_id"])
+            if user:
+                admin["full_name"] = user.get("full_name")
+                admin["email"] = user.get("email")
+        
+        return {
+            "summary": {
+                "total_campus_admins": total_campus_admins,
+                "active_campus_admins": active_campus_admins,
+                "total_club_admins": total_club_admins,
+                "active_club_admins": active_club_admins,
+                "pending_requests": pending_requests,
+                "unread_alerts": unread_alerts
+            },
+            "activity": {
+                "recent_actions_24h": recent_activity,
+                "competitions_last_30d": total_competitions,
+                "challenges_last_30d": total_challenges
+            },
+            "top_performers": clean_mongo_doc(top_admins)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get super admin dashboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get dashboard data")
+
+@api_router.get("/super-admin/campus-admins/activities")
+@limiter.limit("30/minute")
+async def get_campus_admin_activities(
+    request: Request,
+    admin_id: Optional[str] = None,
+    college_name: Optional[str] = None,
+    days: int = 30,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Monitor all campus admin activities across universities"""
+    try:
+        db = await get_database()
+        
+        # Build query
+        query = {"timestamp": {"$gte": datetime.now(timezone.utc) - timedelta(days=days)}}
+        if admin_id:
+            # Get admin user_id from admin_id
+            admin = await db.campus_admins.find_one({"id": admin_id})
+            if admin:
+                query["admin_user_id"] = admin["user_id"]
+        if college_name:
+            query["college_name"] = college_name
+        
+        # Get activities
+        activities_cursor = db.admin_audit_logs.find(query).sort("timestamp", -1).limit(100)
+        activities = await activities_cursor.to_list(None)
+        
+        # Enrich with admin details
+        for activity in activities:
+            if activity.get("admin_user_id"):
+                user = await get_user_by_id(activity["admin_user_id"])
+                if user:
+                    activity["admin_details"] = {
+                        "full_name": user.get("full_name"),
+                        "email": user.get("email"),
+                        "university": user.get("university")
+                    }
+                
+                # Get admin record
+                admin = await db.campus_admins.find_one({"user_id": activity["admin_user_id"]})
+                if admin:
+                    activity["admin_type"] = admin.get("admin_type")
+                    activity["college_name"] = admin.get("college_name")
+        
+        return {
+            "activities": clean_mongo_doc(activities),
+            "total_count": len(activities),
+            "date_range": f"Last {days} days"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get campus admin activities error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get activities")
+
+@api_router.get("/super-admin/campus-admins/{admin_id}/metrics")
+@limiter.limit("30/minute")
+async def get_campus_admin_metrics(
+    request: Request,
+    admin_id: str,
+    period_days: int = 30,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get detailed performance metrics for a specific campus admin"""
+    try:
+        db = await get_database()
+        
+        # Get admin record
+        admin = await db.campus_admins.find_one({"id": admin_id})
+        if not admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        
+        # Get user details
+        user = await get_user_by_id(admin["user_id"])
+        
+        # Calculate time-based metrics
+        appointed_date = admin.get("appointed_at", datetime.now(timezone.utc))
+        days_since_appointment = (datetime.now(timezone.utc) - appointed_date).days
+        
+        # Get activity metrics
+        period_start = datetime.now(timezone.utc) - timedelta(days=period_days)
+        
+        competitions_created = await db.inter_college_competitions.count_documents({
+            "created_by": admin["user_id"],
+            "created_at": {"$gte": period_start}
+        })
+        
+        challenges_created = await db.prize_challenges.count_documents({
+            "created_by": admin["user_id"],
+            "created_at": {"$gte": period_start}
+        })
+        
+        # Get audit logs for this admin
+        admin_actions = await db.admin_audit_logs.count_documents({
+            "admin_user_id": admin["user_id"],
+            "timestamp": {"$gte": period_start}
+        })
+        
+        # Calculate success rate
+        total_competitions = admin.get("competitions_created", 0)
+        completed_competitions = await db.inter_college_competitions.count_documents({
+            "created_by": admin["user_id"],
+            "status": "completed"
+        })
+        success_rate = (completed_competitions / total_competitions * 100) if total_competitions > 0 else 0
+        
+        # Get club admins managed (if campus admin)
+        club_admins_managed = 0
+        if admin.get("admin_type") == "campus_admin":
+            club_admins_managed = await db.campus_admins.count_documents({
+                "admin_type": "club_admin",
+                "college_name": admin.get("college_name"),
+                "appointed_by": admin["user_id"]
+            })
+        
+        return {
+            "admin_details": {
+                "id": admin["id"],
+                "user_id": admin["user_id"],
+                "full_name": user.get("full_name") if user else "Unknown",
+                "email": user.get("email") if user else "Unknown",
+                "admin_type": admin.get("admin_type"),
+                "college_name": admin.get("college_name"),
+                "club_name": admin.get("club_name"),
+                "status": admin.get("status"),
+                "appointed_at": admin.get("appointed_at")
+            },
+            "time_metrics": {
+                "days_since_appointment": days_since_appointment,
+                "days_active": admin.get("days_active", 0),
+                "last_activity": admin.get("last_activity")
+            },
+            "activity_metrics": {
+                "competitions_created_period": competitions_created,
+                "challenges_created_period": challenges_created,
+                "total_competitions": total_competitions,
+                "total_challenges": admin.get("challenges_created", 0),
+                "participants_managed": admin.get("participants_managed", 0),
+                "club_admins_managed": club_admins_managed,
+                "total_actions_period": admin_actions
+            },
+            "performance_metrics": {
+                "success_rate": round(success_rate, 2),
+                "completed_competitions": completed_competitions,
+                "reputation_points_awarded": admin.get("reputation_points_awarded", 0),
+                "warnings_count": admin.get("warnings_count", 0)
+            },
+            "period_info": {
+                "period_days": period_days,
+                "period_start": period_start,
+                "period_end": datetime.now(timezone.utc)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get admin metrics error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get admin metrics")
+
+@api_router.put("/super-admin/campus-admins/{admin_id}/suspend")
+@limiter.limit("10/minute")
+async def suspend_campus_admin(
+    request: Request,
+    admin_id: str,
+    suspension_reason: str,
+    duration_days: Optional[int] = None,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Suspend a campus admin temporarily"""
+    try:
+        db = await get_database()
+        
+        # Get admin record
+        admin = await db.campus_admins.find_one({"id": admin_id})
+        if not admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        
+        # Update admin status
+        update_data = {
+            "status": "suspended",
+            "suspension_reason": suspension_reason,
+            "suspended_at": datetime.now(timezone.utc),
+            "suspended_by": current_user["id"]
+        }
+        
+        # Add expiry if duration specified
+        if duration_days:
+            update_data["suspension_expires_at"] = datetime.now(timezone.utc) + timedelta(days=duration_days)
+        
+        await db.campus_admins.update_one(
+            {"id": admin_id},
+            {"$set": update_data}
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_user["id"],
+            action_type="suspend_admin",
+            action_description=f"Suspended {admin.get('admin_type')} admin: {suspension_reason}",
+            target_type="campus_admin",
+            target_id=admin_id,
+            affected_entities=[{
+                "type": "admin",
+                "id": admin_id,
+                "name": admin.get("user_id")
+            }],
+            before_state={"status": admin.get("status")},
+            after_state=update_data,
+            severity="warning",
+            ip_address=request.client.host,
+            admin_level="super_admin",
+            college_name=admin.get("college_name"),
+            success=True
+        )
+        
+        return {
+            "success": True,
+            "message": "Admin suspended successfully",
+            "admin_id": admin_id,
+            "suspension_expires_at": update_data.get("suspension_expires_at")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Suspend admin error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to suspend admin")
+
+@api_router.put("/super-admin/campus-admins/{admin_id}/revoke")
+@limiter.limit("10/minute")
+async def revoke_campus_admin(
+    request: Request,
+    admin_id: str,
+    revocation_reason: str,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Permanently revoke campus admin privileges"""
+    try:
+        db = await get_database()
+        
+        # Get admin record
+        admin = await db.campus_admins.find_one({"id": admin_id})
+        if not admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        
+        # Update admin status
+        update_data = {
+            "status": "revoked",
+            "revocation_reason": revocation_reason,
+            "revoked_at": datetime.now(timezone.utc),
+            "revoked_by": current_user["id"]
+        }
+        
+        await db.campus_admins.update_one(
+            {"id": admin_id},
+            {"$set": update_data}
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_user["id"],
+            action_type="revoke_admin",
+            action_description=f"Revoked {admin.get('admin_type')} admin privileges: {revocation_reason}",
+            target_type="campus_admin",
+            target_id=admin_id,
+            affected_entities=[{
+                "type": "admin",
+                "id": admin_id,
+                "name": admin.get("user_id")
+            }],
+            before_state={"status": admin.get("status")},
+            after_state=update_data,
+            severity="critical",
+            ip_address=request.client.host,
+            admin_level="super_admin",
+            college_name=admin.get("college_name"),
+            success=True,
+            alert_sent=True
+        )
+        
+        return {
+            "success": True,
+            "message": "Admin privileges revoked successfully",
+            "admin_id": admin_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Revoke admin error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to revoke admin")
+
+@api_router.put("/super-admin/campus-admins/{admin_id}/reactivate")
+@limiter.limit("10/minute")
+async def reactivate_campus_admin(
+    request: Request,
+    admin_id: str,
+    reactivation_notes: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Reactivate a suspended campus admin"""
+    try:
+        db = await get_database()
+        
+        # Get admin record
+        admin = await db.campus_admins.find_one({"id": admin_id})
+        if not admin:
+            raise HTTPException(status_code=404, detail="Admin not found")
+        
+        if admin.get("status") != "suspended":
+            raise HTTPException(status_code=400, detail="Admin is not suspended")
+        
+        # Update admin status
+        update_data = {
+            "status": "active",
+            "suspension_reason": None,
+            "suspended_at": None,
+            "suspended_by": None,
+            "suspension_expires_at": None,
+            "reactivated_at": datetime.now(timezone.utc),
+            "reactivated_by": current_user["id"],
+            "reactivation_notes": reactivation_notes
+        }
+        
+        await db.campus_admins.update_one(
+            {"id": admin_id},
+            {"$set": update_data, "$unset": {"suspension_expires_at": ""}}
+        )
+        
+        # Create audit log
+        await create_audit_log(
+            db=db,
+            admin_user_id=current_user["id"],
+            action_type="reactivate_admin",
+            action_description=f"Reactivated {admin.get('admin_type')} admin" + (f": {reactivation_notes}" if reactivation_notes else ""),
+            target_type="campus_admin",
+            target_id=admin_id,
+            affected_entities=[{
+                "type": "admin",
+                "id": admin_id,
+                "name": admin.get("user_id")
+            }],
+            before_state={"status": "suspended"},
+            after_state={"status": "active"},
+            severity="info",
+            ip_address=request.client.host,
+            admin_level="super_admin",
+            college_name=admin.get("college_name"),
+            success=True
+        )
+        
+        return {
+            "success": True,
+            "message": "Admin reactivated successfully",
+            "admin_id": admin_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reactivate admin error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to reactivate admin")
+
+@api_router.get("/super-admin/club-admins")
+@limiter.limit("30/minute")
+async def get_club_admins_overview(
+    request: Request,
+    college_name: Optional[str] = None,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get overview of all club admins with visibility into campus admin management"""
+    try:
+        db = await get_database()
+        
+        # Build query
+        query = {"admin_type": "club_admin"}
+        if college_name:
+            query["college_name"] = college_name
+        if status:
+            query["status"] = status
+        
+        # Get total count
+        total_count = await db.campus_admins.count_documents(query)
+        
+        # Get paginated club admins
+        skip = (page - 1) * limit
+        club_admins_cursor = db.campus_admins.find(query).sort("appointed_at", -1).skip(skip).limit(limit)
+        club_admins = await club_admins_cursor.to_list(None)
+        
+        # Enrich with details
+        for club_admin in club_admins:
+            # Get user details
+            user = await get_user_by_id(club_admin["user_id"])
+            if user:
+                club_admin["full_name"] = user.get("full_name")
+                club_admin["email"] = user.get("email")
+            
+            # Get campus admin who appointed them
+            if club_admin.get("appointed_by"):
+                campus_admin_user = await get_user_by_id(club_admin["appointed_by"])
+                if campus_admin_user:
+                    club_admin["appointed_by_name"] = campus_admin_user.get("full_name")
+        
+        return {
+            "club_admins": clean_mongo_doc(club_admins),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "summary": {
+                "total_club_admins": total_count,
+                "by_status": {
+                    "active": await db.campus_admins.count_documents({**query, "status": "active"}),
+                    "suspended": await db.campus_admins.count_documents({**query, "status": "suspended"}),
+                    "revoked": await db.campus_admins.count_documents({**query, "status": "revoked"})
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get club admins overview error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get club admins")
+
+@api_router.get("/super-admin/alerts")
+@limiter.limit("30/minute")
+async def get_super_admin_alerts(
+    request: Request,
+    severity: Optional[str] = None,
+    unread_only: bool = False,
+    page: int = 1,
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get real-time alerts for super admin"""
+    try:
+        db = await get_database()
+        
+        # Build query
+        query = {}
+        if severity:
+            query["severity"] = severity
+        if unread_only:
+            query["read_at"] = None
+        
+        # Get total count
+        total_count = await db.admin_alerts.count_documents(query)
+        
+        # Get paginated alerts
+        skip = (page - 1) * limit
+        alerts_cursor = db.admin_alerts.find(query).sort("created_at", -1).skip(skip).limit(limit)
+        alerts = await alerts_cursor.to_list(None)
+        
+        return {
+            "alerts": clean_mongo_doc(alerts),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "summary": {
+                "total_unread": await db.admin_alerts.count_documents({"read_at": None}),
+                "by_severity": {
+                    "info": await db.admin_alerts.count_documents({**query, "severity": "info"}),
+                    "warning": await db.admin_alerts.count_documents({**query, "severity": "warning"}),
+                    "critical": await db.admin_alerts.count_documents({**query, "severity": "critical"})
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get alerts error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get alerts")
+
+@api_router.put("/super-admin/alerts/{alert_id}/read")
+@limiter.limit("30/minute")
+async def mark_alert_as_read(
+    request: Request,
+    alert_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Mark an alert as read"""
+    try:
+        db = await get_database()
+        
+        await db.admin_alerts.update_one(
+            {"id": alert_id},
+            {"$set": {"read_at": datetime.now(timezone.utc)}}
+        )
+        
+        return {"success": True, "message": "Alert marked as read"}
+        
+    except Exception as e:
+        logger.error(f"Mark alert as read error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to mark alert as read")
 
 # ===== CAMPUS ADMIN DASHBOARD ENDPOINTS =====
 
