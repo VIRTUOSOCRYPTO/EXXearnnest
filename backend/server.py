@@ -890,7 +890,19 @@ async def register_user(request: Request, user_data: UserCreate):
                     # Update referrer stats
                     await db.referral_programs.update_one(
                         {"referrer_id": referrer["referrer_id"]},
-                        {"$inc": {"total_referrals": 1}}
+                        {"$inc": {"total_referrals": 1, "successful_referrals": 1}}
+                    )
+                    
+                    # **NEW: Update invitation stats for Friends & Referrals section**
+                    await db.user_invitation_stats.update_one(
+                        {"user_id": referrer["referrer_id"]},
+                        {
+                            "$inc": {
+                                "total_successful_invites": 1,
+                                "invitation_bonus_points": 50  # Referral signup bonus
+                            }
+                        },
+                        upsert=True
                     )
                     
                     # Add referral info to user document
@@ -4860,7 +4872,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://launch-buddy-9.preview.emergentagent.com"
+        base_url = "https://leaderboard-fix-3.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7543,7 +7555,7 @@ async def get_referral_link(request: Request, current_user: dict = Depends(get_c
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://launch-buddy-9.preview.emergentagent.com"
+        base_url = "https://leaderboard-fix-3.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
