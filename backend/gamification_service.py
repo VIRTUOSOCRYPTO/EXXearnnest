@@ -431,11 +431,15 @@ class GamificationService:
         # Get user details for each entry
         rankings = []
         for entry in entries:
-            user = await get_user_by_id(entry["user_id"])
+            # Try to get user by _id (ObjectId) first, then by id (UUID string)
+            user = await self.db.users.find_one({"_id": entry["user_id"]})
+            if not user and isinstance(entry["user_id"], str):
+                user = await get_user_by_id(entry["user_id"])
+            
             if user:
                 rankings.append({
                     "rank": entry["rank"],
-                    "user_id": entry["user_id"],
+                    "user_id": str(entry["user_id"]),
                     "full_name": user.get("full_name", "Unknown"),
                     "avatar": user.get("avatar", "boy"),
                     "university": user.get("university"),
