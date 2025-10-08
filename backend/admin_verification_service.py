@@ -137,8 +137,16 @@ class EmailDomainVerifier:
             
         except Exception as e:
             logger.error(f"Email domain verification error: {str(e)}")
+            # Try to extract domain even if there was an error
+            domain = None
+            try:
+                domain = self.extract_domain(email)
+            except:
+                pass
+            
             return {
                 "verified": False,
+                "domain": domain,
                 "reason": "verification_error",
                 "message": f"Error during verification: {str(e)}"
             }
@@ -272,7 +280,8 @@ class AdminWorkflowManager:
             
             # Add email domain info if available
             if result["email_verification"]:
-                admin_request["college_email_domain"] = result["email_verification"]["domain"]
+                # Safely get domain field - it might not exist if there was an error
+                admin_request["college_email_domain"] = result["email_verification"].get("domain", None)
                 admin_request["email_verified"] = result["email_verification"]["verified"]
                 if result["email_verification"]["verified"]:
                     admin_request["email_verified_at"] = datetime.now(timezone.utc)
