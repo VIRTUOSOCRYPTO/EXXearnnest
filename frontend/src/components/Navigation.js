@@ -23,7 +23,8 @@ import {
   RocketLaunchIcon,
   DocumentIcon,
   BuildingOffice2Icon,
-  SparklesIcon
+  SparklesIcon,
+  CalendarDaysIcon
 } from '@heroicons/react/24/outline';
 import { formatCurrency } from '../App';
 import RealTimeNotifications from './RealTimeNotifications';
@@ -68,6 +69,7 @@ const Navigation = () => {
   const campusItems = [
     { path: '/inter-college-competitions', label: 'Inter-College Competitions', icon: TrophyIcon },
     { path: '/prize-challenges', label: 'Prize Challenges', icon: SparklesIcon },
+    { path: '/events', label: 'College Events', icon: CalendarDaysIcon },
     { path: '/campus-reputation', label: 'Campus Reputation', icon: TrophyIcon },
   ];
 
@@ -77,6 +79,7 @@ const Navigation = () => {
     { path: '/campus-admin/dashboard', label: 'Campus Admin Dashboard', icon: ChartBarIcon, requiredLevel: 'campus_admin' },
     { path: '/club-admin/dashboard', label: 'Club Admin Dashboard', icon: ChartBarIcon, requiredLevel: 'club_admin' },
     { path: '/super-admin', label: 'Super Admin Dashboard', icon: UserCircleIcon, requiredLevel: 'super_admin' },
+    { path: '/my-events', label: 'My Events', icon: CalendarDaysIcon, requiredLevel: 'any_admin' },
   ];
 
   const viralItems = [
@@ -291,7 +294,8 @@ const Navigation = () => {
                       }
                       
                       // Show only matching dashboard for specific admin level
-                      if (userAdminLevel === item.requiredLevel) {
+                      if (userAdminLevel === item.requiredLevel || 
+                          (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user')) {
                         const Icon = item.icon;
                         const isActive = location.pathname === item.path;
                         return (
@@ -534,7 +538,8 @@ const Navigation = () => {
                     }
                     
                     // Show only matching dashboard for specific admin level
-                    if (userAdminLevel === item.requiredLevel) {
+                    if (userAdminLevel === item.requiredLevel || 
+                        (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user')) {
                       const Icon = item.icon;
                       const isActive = location.pathname === item.path;
                       return (
