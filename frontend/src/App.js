@@ -41,6 +41,8 @@ import ExpenseReceipts from './components/ExpenseReceipts';
 import GroupExpenses from './components/GroupExpenses';
 import InterCollegeCompetitions from './components/InterCollegeCompetitions';
 import PrizeChallenges from './components/PrizeChallenges';
+import CreateCompetition from './components/CreateCompetition';
+import CreateChallenge from './components/CreateChallenge';
 import CampusReputation from './components/CampusReputation';
 
 // Admin Verification System
@@ -294,6 +296,14 @@ function App() {
               <Route 
                 path="/prize-challenges" 
                 element={user ? <PrizeChallenges /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/create-competition" 
+                element={user ? <CreateCompetition /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/create-challenge" 
+                element={user ? <CreateChallenge /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/campus-reputation" 
