@@ -68,7 +68,6 @@ class LiveDataGenerator:
                     "role": random.choice(["Student", "Student", "Student", "Professional"]),
                     "location": f"{random.choice(['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Pune', 'Hyderabad'])}, India",
                     "skills": random.sample(["Coding", "Digital Marketing", "Graphic Design", "Content Writing", "Video Editing", "AI Tools & Automation"], 2),
-                    "avatar": random.choice(["boy", "girl", "man", "woman"]),
                     "total_earnings": total_earnings,
                     "total_expenses": total_expenses,
                     "net_savings": net_savings,
