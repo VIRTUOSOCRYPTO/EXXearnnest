@@ -15,27 +15,54 @@ const API = `${BACKEND_URL}/api`;
 const ClubAdminDashboard = () => {
   const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState(null);
-  const [events, setEvents] = useState([]);
+  const [competitions, setCompetitions] = useState([]);
+  const [challenges, setChallenges] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchCompetitions();
+    fetchChallenges();
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      // For now, show basic info since backend endpoints for club admin need to be created
-      setDashboardData({
-        club_name: user?.club_name || "Club Admin",
-        events_created: 0,
-        participants_managed: 0,
-        pending_approvals: 0
+      const response = await axios.get(`${API}/club-admin/dashboard`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-      setLoading(false);
+      setDashboardData(response.data);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      if (error.response?.status === 403) {
+        alert('You do not have club admin privileges. Please contact your campus admin for access.');
+      }
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCompetitions = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/club-admin/competitions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setCompetitions(response.data.competitions || []);
+    } catch (error) {
+      console.error('Error fetching competitions:', error);
+    }
+  };
+
+  const fetchChallenges = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/club-admin/challenges`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setChallenges(response.data.challenges || []);
+    } catch (error) {
+      console.error('Error fetching challenges:', error);
     }
   };
 
@@ -52,7 +79,20 @@ const ClubAdminDashboard = () => {
     );
   }
 
-  if (!user?.admin_level || user.admin_level !== 'club_admin') {
+  if (loading) {
+    return (
+      <Card className="w-full max-w-6xl mx-auto">
+        <CardContent className="p-8">
+          <div className="flex items-center justify-center space-x-4">
+            <Clock className="w-6 h-6 animate-spin" />
+            <span className="text-gray-600">Loading club admin dashboard...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!dashboardData) {
     return (
       <Card className="w-full max-w-4xl mx-auto">
         <CardContent className="p-8 text-center">
@@ -66,6 +106,8 @@ const ClubAdminDashboard = () => {
     );
   }
 
+  const { admin_details, statistics, capabilities } = dashboardData;
+
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -74,7 +116,7 @@ const ClubAdminDashboard = () => {
           <div>
             <h1 className="text-3xl font-bold mb-2">Club Admin Dashboard</h1>
             <p className="text-purple-100">
-              Welcome back! Manage your club events and activities.
+              {admin_details.club_name} - {admin_details.college_name}
             </p>
           </div>
           <Shield className="w-16 h-16 opacity-50" />
@@ -82,19 +124,49 @@ const ClubAdminDashboard = () => {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-gray-600">
-              Events Created
+              Total Events
             </CardTitle>
-            <Calendar className="w-5 h-5 text-purple-600" />
+            <Trophy className="w-5 h-5 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-gray-900">
-              {dashboardData?.events_created || 0}
+              {statistics.total_events}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Total club events</p>
+            <p className="text-xs text-gray-500 mt-1">Competitions + Challenges</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Competitions
+            </CardTitle>
+            <Calendar className="w-5 h-5 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-900">
+              {statistics.total_competitions}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Inter-college events</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Challenges
+            </CardTitle>
+            <Award className="w-5 h-5 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-900">
+              {statistics.total_challenges}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Prize challenges</p>
           </CardContent>
         </Card>
 
@@ -103,31 +175,44 @@ const ClubAdminDashboard = () => {
             <CardTitle className="text-sm font-medium text-gray-600">
               Participants
             </CardTitle>
-            <Users className="w-5 h-5 text-purple-600" />
+            <Users className="w-5 h-5 text-orange-600" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-gray-900">
-              {dashboardData?.participants_managed || 0}
+              {statistics.participants_managed}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Managed successfully</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">
-              Pending Approvals
-            </CardTitle>
-            <AlertCircle className="w-5 h-5 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-gray-900">
-              {dashboardData?.pending_approvals || 0}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">Awaiting action</p>
+            <p className="text-xs text-gray-500 mt-1">Total managed</p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Monthly Quota Progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Target className="w-5 h-5 mr-2" />
+            Monthly Event Creation Quota
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">
+                Used: {statistics.events_this_month} / {capabilities.max_events_per_month}
+              </span>
+              <span className="text-sm text-gray-600">
+                {statistics.remaining_monthly_quota} remaining
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-purple-600 h-2 rounded-full"
+                style={{ width: `${(statistics.events_this_month / capabilities.max_events_per_month) * 100}%` }}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card>
@@ -138,46 +223,116 @@ const ClubAdminDashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-gray-600 mb-4">
-            Manage your club events and activities from here.
-          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button className="bg-purple-600 hover:bg-purple-700">
-              <Calendar className="w-4 h-4 mr-2" />
-              Create Club Event
-            </Button>
-            <Button variant="outline" className="border-purple-600 text-purple-600 hover:bg-purple-50">
-              <Users className="w-4 h-4 mr-2" />
-              Manage Participants
-            </Button>
-            <Button variant="outline" className="border-purple-600 text-purple-600 hover:bg-purple-50">
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => window.location.href = '/inter-college-competitions'}
+              disabled={!capabilities.can_create_competitions || statistics.remaining_monthly_quota === 0}
+            >
               <Trophy className="w-4 h-4 mr-2" />
-              View Competitions
+              Create Inter-College Competition
             </Button>
-            <Button variant="outline" className="border-purple-600 text-purple-600 hover:bg-purple-50">
+            <Button 
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => window.location.href = '/prize-challenges'}
+              disabled={!capabilities.can_create_challenges || statistics.remaining_monthly_quota === 0}
+            >
+              <Award className="w-4 h-4 mr-2" />
+              Create Prize Challenge
+            </Button>
+            <Button 
+              variant="outline" 
+              className="border-purple-600 text-purple-600 hover:bg-purple-50"
+              onClick={() => window.location.href = '/campus-reputation'}
+            >
               <TrendingUp className="w-4 h-4 mr-2" />
-              Analytics
+              View Campus Reputation
+            </Button>
+            <Button 
+              variant="outline" 
+              className="border-purple-600 text-purple-600 hover:bg-purple-50"
+              onClick={() => window.location.href = '/group-challenges'}
+            >
+              <Users className="w-4 h-4 mr-2" />
+              View Group Challenges
             </Button>
           </div>
+          {statistics.remaining_monthly_quota === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
+              <p className="text-sm text-yellow-800">
+                <AlertCircle className="w-4 h-4 inline mr-2" />
+                You've reached your monthly event creation limit. Limit resets next month.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Recent Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-gray-500">
-            <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No recent activities to display</p>
-            <p className="text-sm mt-2">Start creating events to see activity here</p>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Recent Competitions */}
+      {competitions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Trophy className="w-5 h-5" />
+              Recent Competitions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {competitions.slice(0, 3).map((competition) => (
+                <div key={competition.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">{competition.title}</p>
+                    <p className="text-xs text-gray-600">
+                      {competition.current_participants || 0} participants • {new Date(competition.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Badge className={
+                    competition.status === 'active' ? 'bg-green-500' :
+                    competition.status === 'upcoming' ? 'bg-blue-500' :
+                    'bg-gray-500'
+                  }>
+                    {competition.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Challenges */}
+      {challenges.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5" />
+              Recent Challenges
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {challenges.slice(0, 3).map((challenge) => (
+                <div key={challenge.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm">{challenge.title}</p>
+                    <p className="text-xs text-gray-600">
+                      ₹{challenge.total_prize_value?.toLocaleString()} • {challenge.current_participants || 0} participants
+                    </p>
+                  </div>
+                  <Badge className={
+                    challenge.status === 'active' ? 'bg-green-500' :
+                    challenge.status === 'upcoming' ? 'bg-blue-500' :
+                    'bg-gray-500'
+                  }>
+                    {challenge.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Info Banner */}
       <Card className="bg-purple-50 border-purple-200">
@@ -190,7 +345,10 @@ const ClubAdminDashboard = () => {
               </h3>
               <p className="text-purple-700 text-sm">
                 You have been granted club admin privileges by your campus administrator. 
-                You can now create and manage club events, competitions, and activities within your college.
+                You can create and manage competitions and challenges for {admin_details.club_name}.
+              </p>
+              <p className="text-purple-600 text-xs mt-2">
+                Expires: {new Date(admin_details.expires_at).toLocaleDateString()}
               </p>
             </div>
           </div>
