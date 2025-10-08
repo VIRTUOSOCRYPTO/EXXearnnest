@@ -59,14 +59,10 @@ const CreateCompetition = () => {
   const [newUniversity, setNewUniversity] = useState('');
 
   const competitionTypes = [
-    'savings_challenge',
-    'expense_reduction',
-    'budgeting_mastery',
-    'financial_literacy',
-    'investment_simulation',
-    'emergency_fund_building',
-    'goal_achievement',
-    'habit_tracking'
+    'campus_savings',
+    'campus_streak',
+    'campus_referrals',
+    'campus_goals'
   ];
 
   const targetMetrics = [
