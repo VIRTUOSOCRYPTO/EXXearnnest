@@ -138,7 +138,7 @@ const RealTimeNotifications = () => {
 
         {/* Notifications Dropdown */}
         {showNotifications && (
-          <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
+          <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-[60] max-h-96 overflow-y-auto">
             <div className="p-4 border-b border-gray-200 flex justify-between items-center">
               <h3 className="font-semibold text-gray-800">Notifications</h3>
               <div className="flex items-center space-x-2">
@@ -254,7 +254,7 @@ const RealTimeNotifications = () => {
       {/* Click outside to close notifications */}
       {showNotifications && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-[55]"
           onClick={() => setShowNotifications(false)}
         />
       )}
