@@ -84,6 +84,8 @@ EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 
 # Rate limiting setup
 app.state.limiter = limiter
+api_router.state = {}
+api_router.state['limiter'] = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Middleware
@@ -5143,7 +5145,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://websocket-debug-5.preview.emergentagent.com"
+        base_url = "https://api-stability-1.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7070,7 +7072,7 @@ async def complete_inter_college_competition(
     request: Request,
     competition_id: str,
     completion_data: Dict[str, Any],  # Contains final rankings and results
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Complete an inter-college competition and award reputation points (Admin only)"""
     try:
@@ -7486,7 +7488,7 @@ async def join_prize_challenge(
 async def get_prize_challenge_leaderboard(
     request: Request,
     challenge_id: str,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Get prize challenge leaderboard"""
     try:
@@ -8290,7 +8292,7 @@ async def get_campus_reputation_leaderboard(
 async def get_campus_reputation_details(
     request: Request,
     campus_name: str,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Get detailed reputation information for a specific campus"""
     try:
@@ -9047,7 +9049,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://websocket-debug-5.preview.emergentagent.com"
+        base_url = "https://api-stability-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -9201,7 +9203,7 @@ async def get_active_challenges(request: Request, current_user: Dict[str, Any] =
 
 @api_router.post("/challenges")
 @limiter.limit("5/minute") 
-async def create_challenge_standard(request: Request, challenge_data: ChallengeCreate, current_user: str = Depends(get_current_user)):
+async def create_challenge_standard(request: Request, challenge_data: ChallengeCreate, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Create a new challenge (standard REST endpoint)"""
     try:
         db = await get_database()
@@ -15843,7 +15845,7 @@ async def shutdown_db_client():
 async def request_campus_admin_privileges(
     request: Request,
     admin_request_data: CampusAdminRequestCreate,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Request campus admin privileges with verification workflow - Routes to Super Admin"""
     try:
@@ -15966,7 +15968,7 @@ async def request_campus_admin_privileges(
 async def request_club_admin_privileges(
     request: Request,
     admin_request_data: CampusAdminRequestCreate,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Request club admin privileges - Routes to Campus Admin for approval"""
     try:
@@ -16121,7 +16123,7 @@ async def request_club_admin_privileges(
 async def verify_admin_email(
     request: Request,
     request_id: str,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Verify institutional email for admin request"""
     try:
@@ -16221,7 +16223,7 @@ async def upload_admin_document(
     request_id: str,
     document_type: str,
     file: UploadFile = File(...),
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Upload verification document for admin request"""
     try:
@@ -16296,7 +16298,7 @@ async def upload_admin_document(
 @limiter.limit("20/minute")
 async def get_admin_request_status(
     request: Request,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Get current user's admin request status"""
     try:
@@ -16360,7 +16362,7 @@ async def get_admin_request_status(
 @limiter.limit("20/minute")
 async def get_club_admin_request_status(
     request: Request,
-    current_user: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Get current user's club admin request status"""
     try:
@@ -18941,7 +18943,7 @@ async def get_media_ready_impact_stats():
 # ===== ADDITIONAL VIRAL FEATURE ENDPOINTS =====
 
 @api_router.get("/campus/battle-arena")
-async def get_campus_battle_arena(current_user: str = Depends(get_current_user)):
+async def get_campus_battle_arena(current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get campus battle arena data"""
     try:
         battles = await db.campus_battle_arena.find({"status": "active"}).to_list(None)
