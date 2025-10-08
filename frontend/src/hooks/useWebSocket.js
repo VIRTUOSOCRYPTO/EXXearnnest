@@ -36,9 +36,9 @@ const useWebSocket = (channel = 'default', options = {}) => {
         return;
       }
 
-      // Use correct WebSocket endpoint format matching backend
+      // Use correct WebSocket endpoint format matching backend (must include /api prefix for K8s ingress)
       const userId = JSON.parse(atob(token.split('.')[1])).user_id;
-      wsRef.current = new WebSocket(`${wsUrl}/ws/${channel}/${userId}?token=${token}`);
+      wsRef.current = new WebSocket(`${wsUrl}/api/ws/${channel}/${userId}?token=${token}`);
 
       wsRef.current.onopen = () => {
         setConnectionStatus('Connected');
