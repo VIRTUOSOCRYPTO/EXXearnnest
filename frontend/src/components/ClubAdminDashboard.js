@@ -226,7 +226,7 @@ const ClubAdminDashboard = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Button 
               className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => window.location.href = '/inter-college-competitions'}
+              onClick={() => window.location.href = '/create-competition'}
               disabled={!capabilities.can_create_competitions || statistics.remaining_monthly_quota === 0}
             >
               <Trophy className="w-4 h-4 mr-2" />
@@ -234,7 +234,7 @@ const ClubAdminDashboard = () => {
             </Button>
             <Button 
               className="bg-green-600 hover:bg-green-700"
-              onClick={() => window.location.href = '/prize-challenges'}
+              onClick={() => window.location.href = '/create-challenge'}
               disabled={!capabilities.can_create_challenges || statistics.remaining_monthly_quota === 0}
             >
               <Award className="w-4 h-4 mr-2" />
