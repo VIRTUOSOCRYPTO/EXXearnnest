@@ -1555,6 +1555,7 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
         
         # Budget validation logic for EXPENSES only
         if transaction_data.type == "expense":
+            # First try to find budget for current month, then fall back to any existing budget for this category
             current_month = datetime.now(timezone.utc).strftime("%Y-%m")
             
             # Find the budget for this category and month
@@ -1564,7 +1565,25 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 "month": current_month
             })
             
+            # If no budget found for current month, try to find any budget for this category
             if not budget:
+                budget = await db.budgets.find_one({
+                    "user_id": user_id,
+                    "category": transaction_dict["category"]
+                })
+            
+            # Debug logging for budget lookup
+            if not budget:
+                # Check if any budgets exist for this user and category
+                all_user_budgets = await db.budgets.find({"user_id": user_id}).to_list(None)
+                category_budgets = await db.budgets.find({"user_id": user_id, "category": transaction_dict["category"]}).to_list(None)
+                
+                logger.error(f"Budget lookup failed - user_id: {user_id}, category: '{transaction_dict['category']}', month: '{current_month}'")
+                logger.error(f"All user budgets: {len(all_user_budgets)}, Category budgets: {len(category_budgets)}")
+                
+                if category_budgets:
+                    logger.error(f"Category budget months: {[b.get('month') for b in category_budgets]}")
+                
                 raise HTTPException(
                     status_code=400, 
                     detail=f"No budget allocated for '{transaction_dict['category']}' category. Please allocate budget first."
@@ -2239,11 +2258,13 @@ async def update_financial_goal_endpoint(request: Request, goal_id: str, goal_up
         if "description" in update_data:
             update_data["description"] = sanitize_input(update_data["description"])
         
+        # Get database connection for all operations
+        db = await get_database()
+        
         # Check if goal is being marked as completed
         was_completed = False
         if "is_completed" in update_data and update_data["is_completed"]:
             # Get the goal before updating to check if it wasn't already completed
-            db = await get_database()
             existing_goal = await db.financial_goals.find_one({"id": goal_id, "user_id": user_id})
             if existing_goal and not existing_goal.get("is_completed", False):
                 was_completed = True
@@ -5195,7 +5216,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://realtime-fixes.preview.emergentagent.com"
+        base_url = "https://alert-repair.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -9099,7 +9120,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://realtime-fixes.preview.emergentagent.com"
+        base_url = "https://alert-repair.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
