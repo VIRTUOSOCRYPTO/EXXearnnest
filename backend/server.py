@@ -5024,7 +5024,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://route-correct.preview.emergentagent.com"
+        base_url = "https://elastic-elion.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6604,6 +6604,259 @@ async def register_for_inter_college_competition(
     except Exception as e:
         logger.error(f"Register for competition error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to register for competition")
+
+@api_router.post("/inter-college/competitions/{competition_id}/team-register")
+@limiter.limit("10/minute")
+async def register_team_for_inter_college_competition(
+    request: Request,
+    competition_id: str,
+    team_data: dict,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Register a team for inter-college competition"""
+    try:
+        db = await get_database()
+        user_id = current_user["id"]
+        user = current_user
+        
+        # Extract team information
+        team_name = team_data.get("team_name", "").strip()
+        team_members = team_data.get("team_members", [])  # List of member details
+        registration_type = team_data.get("registration_type", "team_leader")  # "team_leader" or "join_team"
+        
+        if not team_name:
+            raise HTTPException(status_code=400, detail="Team name is required")
+        
+        user_university = user.get("university")
+        if not user_university:
+            raise HTTPException(status_code=400, detail="University information required to participate")
+        
+        # Get competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Check if registration is open
+        now = datetime.now(timezone.utc)
+        reg_start = competition.get("registration_start", now)
+        reg_end = competition.get("registration_end", now)
+        
+        if now < reg_start:
+            raise HTTPException(status_code=400, detail="Registration has not started yet")
+        if now > reg_end:
+            raise HTTPException(status_code=400, detail="Registration period has ended")
+        
+        # Check eligibility
+        eligible_unis = competition.get("eligible_universities", [])
+        if eligible_unis and user_university not in eligible_unis:
+            raise HTTPException(status_code=400, detail="Your university is not eligible for this competition")
+        
+        # Check if already registered
+        existing_participation = await db.campus_competition_participations.find_one({
+            "competition_id": competition_id,
+            "user_id": user_id
+        })
+        
+        if existing_participation:
+            raise HTTPException(status_code=400, detail="Already registered for this competition")
+        
+        team_id = None
+        
+        if registration_type == "team_leader":
+            # User is creating a new team and registering as team leader
+            team_id = str(uuid.uuid4())
+            
+            # Validate team members
+            if len(team_members) < 1 or len(team_members) > 5:
+                raise HTTPException(status_code=400, detail="Team must have 1-5 members (including leader)")
+            
+            # Check if team name already exists for this competition
+            existing_team = await db.competition_teams.find_one({
+                "competition_id": competition_id,
+                "team_name": team_name,
+                "campus": user_university
+            })
+            
+            if existing_team:
+                raise HTTPException(status_code=400, detail="Team name already exists for your campus in this competition")
+            
+            # Create team record
+            team_record = {
+                "id": team_id,
+                "competition_id": competition_id,
+                "team_name": team_name,
+                "campus": user_university,
+                "team_leader_id": user_id,
+                "team_members": [
+                    {
+                        "user_id": user_id,
+                        "name": user.get("full_name", "Unknown"),
+                        "email": user.get("email", ""),
+                        "role": "team_leader",
+                        "joined_at": datetime.now(timezone.utc)
+                    }
+                ],
+                "member_details": team_members,  # Additional member info provided by leader
+                "created_at": datetime.now(timezone.utc),
+                "status": "active"
+            }
+            
+            await db.competition_teams.insert_one(team_record)
+            
+        elif registration_type == "join_team":
+            # User is joining an existing team by team name
+            existing_team = await db.competition_teams.find_one({
+                "competition_id": competition_id,
+                "team_name": team_name,
+                "campus": user_university
+            })
+            
+            if not existing_team:
+                raise HTTPException(status_code=404, detail=f"Team '{team_name}' not found for your campus in this competition")
+            
+            team_id = existing_team["id"]
+            
+            # Check if team is full (max 5 members)
+            current_members = len(existing_team.get("team_members", []))
+            if current_members >= 5:
+                raise HTTPException(status_code=400, detail="Team is full (maximum 5 members)")
+            
+            # Check if user is already in team
+            user_in_team = any(member.get("user_id") == user_id for member in existing_team.get("team_members", []))
+            if user_in_team:
+                raise HTTPException(status_code=400, detail="You are already a member of this team")
+            
+            # Add user to team
+            new_member = {
+                "user_id": user_id,
+                "name": user.get("full_name", "Unknown"),
+                "email": user.get("email", ""),
+                "role": "member",
+                "joined_at": datetime.now(timezone.utc)
+            }
+            
+            await db.competition_teams.update_one(
+                {"id": team_id},
+                {"$push": {"team_members": new_member}}
+            )
+        
+        # Create individual participation record
+        participation = {
+            "id": str(uuid.uuid4()),
+            "competition_id": competition_id,
+            "user_id": user_id,
+            "campus": user_university,
+            "team_id": team_id,
+            "team_name": team_name,
+            "registration_type": registration_type,
+            "individual_score": 0.0,
+            "campus_contribution": 0.0,
+            "registration_status": "active",
+            "registered_at": datetime.now(timezone.utc),
+            "last_updated": datetime.now(timezone.utc)
+        }
+        
+        await db.campus_competition_participations.insert_one(participation)
+        
+        # Update campus leaderboard
+        await db.campus_leaderboards.update_one(
+            {"competition_id": competition_id, "campus": user_university},
+            {
+                "$inc": {"total_participants": 1, "active_participants": 1},
+                "$set": {"last_updated": datetime.now(timezone.utc)}
+            },
+            upsert=True
+        )
+        
+        # Award registration points
+        await db.users.update_one(
+            {"id": user_id},
+            {"$inc": {"experience_points": 25}}  # Registration bonus
+        )
+        
+        return {
+            "message": f"Successfully registered for inter-college competition as {registration_type.replace('_', ' ')}",
+            "competition_id": competition_id,
+            "team_id": team_id,
+            "team_name": team_name,
+            "campus": user_university,
+            "registration_type": registration_type,
+            "points_earned": 25
+        }
+        
+    except Exception as e:
+        logger.error(f"Team register for competition error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to register team for competition")
+
+@api_router.get("/inter-college/competitions/{competition_id}/teams")
+@limiter.limit("20/minute")
+async def get_competition_teams(
+    request: Request,
+    competition_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Get all teams for a specific inter-college competition"""
+    try:
+        db = await get_database()
+        user_university = current_user.get("university")
+        
+        # Get competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Get teams (filter by user's university for privacy)
+        teams_query = {
+            "competition_id": competition_id,
+            "status": "active"
+        }
+        
+        # Only show teams from user's campus
+        if user_university:
+            teams_query["campus"] = user_university
+        
+        teams = await db.competition_teams.find(teams_query).sort("created_at", -1).to_list(None)
+        
+        # Enhance with member count and status
+        enhanced_teams = []
+        for team in teams:
+            member_count = len(team.get("team_members", []))
+            
+            # Check if current user can join
+            user_can_join = (
+                member_count < 5 and  # Team not full
+                not any(member.get("user_id") == current_user["id"] for member in team.get("team_members", []))  # User not already in team
+            )
+            
+            enhanced_team = {
+                "id": team["id"],
+                "team_name": team["team_name"],
+                "campus": team["campus"],
+                "team_leader_id": team["team_leader_id"],
+                "member_count": member_count,
+                "max_members": 5,
+                "created_at": team["created_at"],
+                "can_join": user_can_join,
+                "is_full": member_count >= 5,
+                "members": [
+                    {
+                        "name": member.get("name"),
+                        "role": member.get("role"),
+                        "joined_at": member.get("joined_at")
+                    } for member in team.get("team_members", [])
+                ]
+            }
+            enhanced_teams.append(enhanced_team)
+        
+        return {
+            "teams": enhanced_teams,
+            "user_campus": user_university,
+            "competition_title": competition.get("title", "Competition")
+        }
+        
+    except Exception as e:
+        logger.error(f"Get competition teams error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get competition teams")
 
 @api_router.get("/inter-college/competitions/{competition_id}/leaderboard")
 @limiter.limit("20/minute")
@@ -8675,7 +8928,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://route-correct.preview.emergentagent.com"
+        base_url = "https://elastic-elion.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -9572,6 +9825,7 @@ async def invite_friend(request: Request, invite_data: FriendInviteRequest, curr
     try:
         db = await get_database()
         user = current_user
+        user_id = current_user["id"]  # Fix: Extract user_id from current_user dict
         
         # Check invitation limits
         current_date = datetime.now(timezone.utc)
@@ -10232,7 +10486,7 @@ async def create_group_challenge(request: Request, challenge_data: GroupChalleng
 
 @api_router.get("/group-challenges")
 @limiter.limit("20/minute")
-async def get_group_challenges(request: Request, current_user: str = Depends(get_current_user)):
+async def get_group_challenges(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get available group challenges (campus-specific and open)"""
     try:
         db = await get_database()
@@ -10300,11 +10554,11 @@ async def get_group_challenges(request: Request, current_user: str = Depends(get
 
 @api_router.post("/group-challenges/{challenge_id}/join")
 @limiter.limit("10/minute")
-async def join_group_challenge(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+async def join_group_challenge(request: Request, challenge_id: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Join a group challenge"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Check if challenge exists and is active
         challenge = await db.group_challenges.find_one({
@@ -10386,7 +10640,7 @@ async def join_group_challenge(request: Request, challenge_id: str, current_user
 
 @api_router.get("/group-challenges/{challenge_id}")
 @limiter.limit("20/minute")
-async def get_group_challenge_details(request: Request, challenge_id: str, current_user: str = Depends(get_current_user)):
+async def get_group_challenge_details(request: Request, challenge_id: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get detailed information about a specific group challenge"""
     try:
         db = await get_database()
@@ -11503,10 +11757,13 @@ async def get_social_proof_notifications(
 async def create_individual_friend_challenge(
     request: Request,
     challenge_data: dict,
-    user_id: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Create a 1-on-1 challenge with a specific friend"""
     try:
+        db = await get_database()
+        user_id = current_user["id"]
+        
         friend_id = challenge_data.get("friend_id")
         challenge_type = challenge_data.get("challenge_type")  # "savings_race", "streak_battle", "expense_limit"
         target_amount = challenge_data.get("target_amount", 0)
@@ -11515,12 +11772,12 @@ async def create_individual_friend_challenge(
         description = challenge_data.get("description", "")
         
         # Validate friendship
-        friendship = await db.friends.find_one({
+        friendship = await db.friendships.find_one({
             "$or": [
-                {"user_id": user_id, "friend_id": friend_id},
-                {"user_id": friend_id, "friend_id": user_id}
+                {"user1_id": user_id, "user2_id": friend_id},
+                {"user1_id": friend_id, "user2_id": user_id}
             ],
-            "status": "accepted"
+            "status": "active"
         })
         
         if not friendship:
@@ -11583,10 +11840,12 @@ async def respond_to_individual_challenge(
     request: Request,
     challenge_id: str,
     response_data: dict,
-    user_id: str = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Accept or decline an individual challenge"""
     try:
+        db = await get_database()
+        user_id = current_user["id"]
         action = response_data.get("action")  # "accept" or "decline"
         
         # Find the challenge
