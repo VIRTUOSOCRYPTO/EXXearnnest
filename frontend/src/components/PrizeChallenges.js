@@ -7,7 +7,7 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
-import { Gift, Clock, Zap, Star, Target, Award, TrendingUp, Calendar, Users, DollarSign, Trophy, Crown } from 'lucide-react';
+import { Gift, Clock, Zap, Star, Target, Award, TrendingUp, Calendar, Users, DollarSign, Trophy, Crown, Edit, Trash2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -20,6 +20,8 @@ const PrizeChallenges = () => {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
+  const [editingChallenge, setEditingChallenge] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchChallenges();
@@ -65,6 +67,56 @@ const PrizeChallenges = () => {
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
     }
+  };
+
+  const updateChallenge = async (challengeId, updatedData) => {
+    try {
+      const response = await axios.put(`${API}/prize-challenges/${challengeId}`, updatedData);
+      
+      // Update the challenge in the local state
+      setChallenges(prev => prev.map(challenge => 
+        challenge.id === challengeId 
+          ? { ...challenge, ...response.data.challenge }
+          : challenge
+      ));
+      
+      alert('Challenge updated successfully!');
+      setEditingChallenge(null);
+    } catch (error) {
+      console.error('Update error:', error);
+      alert(error.response?.data?.detail || 'Failed to update challenge');
+    }
+  };
+
+  const deleteChallenge = async (challengeId) => {
+    if (!window.confirm('Are you sure you want to delete this challenge? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await axios.delete(`${API}/prize-challenges/${challengeId}`);
+      
+      // Remove the challenge from local state
+      setChallenges(prev => prev.filter(challenge => challenge.id !== challengeId));
+      
+      alert('Challenge deleted successfully!');
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert(error.response?.data?.detail || 'Failed to delete challenge');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Check if user can edit/delete challenge (creator or super admin)
+  const canManageChallenge = (challenge) => {
+    return user && (
+      challenge.creator_id === user.id || 
+      user.is_admin || 
+      user.is_super_admin ||
+      user.admin_level === 'super_admin'
+    );
   };
 
   const getChallengeIcon = (challengeType) => {
@@ -304,10 +356,161 @@ const PrizeChallenges = () => {
               <span className="break-words text-center w-full">Requirements Not Met</span>
             </Button>
           )}
+
+          {/* Edit/Delete buttons for creators and super admins */}
+          {canManageChallenge(challenge) && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setEditingChallenge(challenge)}
+                className="flex-shrink-0"
+                title="Edit Challenge"
+              >
+                <Edit className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => deleteChallenge(challenge.id)}
+                disabled={deleting}
+                className="flex-shrink-0 border-red-200 text-red-600 hover:bg-red-50"
+                title="Delete Challenge"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
   );
+
+  const EditChallengeDialog = ({ challenge, onSave, onCancel }) => {
+    const [formData, setFormData] = useState({
+      title: challenge.title || '',
+      description: challenge.description || '',
+      prize_amount: challenge.prize_amount || 0,
+      challenge_type: challenge.challenge_type || 'weekly',
+      difficulty: challenge.difficulty || 'medium',
+      target_amount: challenge.target_amount || 0,
+      duration_days: challenge.duration_days || 7
+    });
+
+    const handleSubmit = (e) => {
+      e.preventDefault();
+      onSave(challenge.id, formData);
+    };
+
+    return (
+      <Dialog open={true} onOpenChange={onCancel}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="w-5 h-5" />
+              Edit Challenge
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Challenge Title</label>
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Description</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Challenge Type</label>
+                <select
+                  value={formData.challenge_type}
+                  onChange={(e) => setFormData({ ...formData, challenge_type: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  <option value="flash">Flash Challenge</option>
+                  <option value="weekly">Weekly Challenge</option>
+                  <option value="monthly">Monthly Challenge</option>
+                  <option value="seasonal">Seasonal Challenge</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Difficulty</label>
+                <select
+                  value={formData.difficulty}
+                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                  <option value="extreme">Extreme</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Prize Amount (₹)</label>
+                <input
+                  type="number"
+                  value={formData.prize_amount}
+                  onChange={(e) => setFormData({ ...formData, prize_amount: parseInt(e.target.value) || 0 })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  min="0"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Target Amount (₹)</label>
+                <input
+                  type="number"
+                  value={formData.target_amount}
+                  onChange={(e) => setFormData({ ...formData, target_amount: parseInt(e.target.value) || 0 })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  min="0"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Duration (Days)</label>
+              <input
+                type="number"
+                value={formData.duration_days}
+                onChange={(e) => setFormData({ ...formData, duration_days: parseInt(e.target.value) || 7 })}
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                min="1"
+                max="365"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button type="submit" className="flex-1 bg-purple-600 hover:bg-purple-700">
+                Save Changes
+              </Button>
+              <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
+  };
 
   const LeaderboardContent = ({ leaderboard }) => (
     <div className="space-y-6">
@@ -434,6 +637,15 @@ const PrizeChallenges = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-6">
+      {/* Edit Challenge Dialog */}
+      {editingChallenge && (
+        <EditChallengeDialog 
+          challenge={editingChallenge}
+          onSave={updateChallenge}
+          onCancel={() => setEditingChallenge(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 flex-wrap">
