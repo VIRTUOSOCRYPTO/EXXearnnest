@@ -162,16 +162,27 @@ const Navigation = () => {
             
             {/* Campus Dropdown */}
             <div className="relative group">
-              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-emerald-600 hover:bg-gray-50 transition-all duration-200">
-                <BuildingOffice2Icon className="w-4 h-4" />
-                Campus
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+              {(() => {
+                const hasCampusActive = campusItems.some(item => location.pathname === item.path);
+                return (
+                  <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    hasCampusActive
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
+                  }`}>
+                    <BuildingOffice2Icon className="w-4 h-4" />
+                    Campus
+                    {hasCampusActive && <div className="w-2 h-2 bg-emerald-600 rounded-full ml-1" />}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                );
+              })()}
+            </div>
               
               {/* Campus Dropdown Menu */}
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
                 <div className="p-2 space-y-1">
                   {campusItems.map((item) => {
                     const Icon = item.icon;
@@ -198,16 +209,27 @@ const Navigation = () => {
 
             {/* Viral Features Dropdown */}
             <div className="relative group">
-              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-orange-600 hover:bg-gray-50 transition-all duration-200">
-                <FireIcon className="w-4 h-4" />
-                🔥 Viral
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+              {(() => {
+                const hasViralActive = viralItems.some(item => location.pathname === item.path);
+                return (
+                  <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    hasViralActive
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'text-gray-600 hover:text-orange-600 hover:bg-gray-50'
+                  }`}>
+                    <FireIcon className="w-4 h-4" />
+                    🔥 Viral
+                    {hasViralActive && <div className="w-2 h-2 bg-orange-600 rounded-full ml-1" />}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                );
+              })()}
+            </div>
               
               {/* Viral Features Dropdown Menu */}
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
                 <div className="p-2 space-y-1">
                   {viralItems.map((item) => {
                     const Icon = item.icon;
@@ -236,16 +258,27 @@ const Navigation = () => {
 
             {/* Admin Dropdown */}
             <div className="relative group">
-              <button className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-gray-50 transition-all duration-200">
-                <BuildingOffice2Icon className="w-4 h-4" />
-                Admin
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+              {(() => {
+                const hasAdminActive = adminItems.some(item => location.pathname === item.path);
+                return (
+                  <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    hasAdminActive
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+                  }`}>
+                    <BuildingOffice2Icon className="w-4 h-4" />
+                    Admin
+                    {hasAdminActive && <div className="w-2 h-2 bg-blue-600 rounded-full ml-1" />}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                );
+              })()}
+            </div>
               
               {/* Admin Dropdown Menu */}
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
                 <div className="p-2 space-y-1">
                   {adminItems.map((item) => {
                     // Show based on user admin_level
@@ -362,9 +395,9 @@ const Navigation = () => {
               )}
             </div>
 
-            {/* Desktop Profile - Show full info on desktop */}
-            <div className="hidden lg:flex items-center space-x-3">
-              <Link to="/profile" className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg p-2 transition-colors max-w-48">
+            {/* Desktop Profile Dropdown - Show full info on desktop */}
+            <div className="hidden lg:block relative group">
+              <button className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg p-2 transition-colors max-w-56 w-full">
                 {user?.profile_photo ? (
                   <img 
                     src={`${process.env.REACT_APP_BACKEND_URL}${user.profile_photo}`}
@@ -374,21 +407,74 @@ const Navigation = () => {
                 ) : (
                   <UserCircleIcon className="w-8 h-8 text-gray-400 flex-shrink-0" />
                 )}
-                <div className="text-sm min-w-0 flex-1">
+                <div className="text-sm min-w-0 flex-1 text-left">
                   <p className="font-semibold text-gray-900 truncate">{user?.full_name}</p>
                   <p className="text-gray-500 truncate">{formatCurrency(user?.total_earnings || 0)} earned</p>
                 </div>
-              </Link>
+                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {/* Profile Dropdown Menu */}
+              <div className="absolute top-full right-0 mt-1 w-56 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
+                <div className="p-2 space-y-1">
+                  {/* Profile Header */}
+                  <div className="px-3 py-2 border-b border-gray-100">
+                    <p className="font-medium text-gray-900 truncate">{user?.full_name}</p>
+                    <p className="text-sm text-gray-500 truncate">{user?.email}</p>
+                    <p className="text-xs text-emerald-600 font-medium mt-1">{formatCurrency(user?.total_earnings || 0)} total earned</p>
+                  </div>
+                  
+                  {/* Profile Actions */}
+                  <Link
+                    to="/profile"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200"
+                  >
+                    <UserCircleIcon className="w-4 h-4" />
+                    View Profile
+                  </Link>
+                  
+                  <Link
+                    to="/gamification"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-all duration-200"
+                  >
+                    <TrophyIcon className="w-4 h-4" />
+                    Achievements
+                  </Link>
+                  
+                  <Link
+                    to="/notifications"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-yellow-600 hover:bg-yellow-50 transition-all duration-200"
+                  >
+                    <BellIcon className="w-4 h-4" />
+                    Notification Settings
+                  </Link>
+                  
+                  <div className="border-t border-gray-100 mt-2 pt-2">
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 transition-all duration-200 w-full text-left"
+                    >
+                      <ArrowRightOnRectangleIcon className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
             
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-2 sm:px-3 py-2 text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
-              title="Logout"
-            >
-              <ArrowRightOnRectangleIcon className="w-5 h-5" />
-              <span className="hidden lg:inline">Logout</span>
-            </button>
+            {/* Mobile/Tablet Logout Button - Only show on smaller screens */}
+            <div className="lg:hidden">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-2 sm:px-3 py-2 text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
+                title="Logout"
+              >
+                <ArrowRightOnRectangleIcon className="w-5 h-5" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
           </div>
         </div>
 
