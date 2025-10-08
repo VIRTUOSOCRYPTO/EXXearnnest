@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { useAuth, formatCurrency } from '../App';
 import DailyTips from './DailyTips';
 import LimitedOffers from './LimitedOffers';
+import useWebSocket from '../hooks/useWebSocket';
+import { toast } from 'sonner';
 import { 
   BanknotesIcon, 
   ArrowTrendingUpIcon, 
@@ -42,6 +44,39 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(Date.now());
+
+  // 🔥 REAL-TIME: WebSocket connection for live updates
+  const { isConnected, lastMessage } = useWebSocket('notifications', {
+    onMessage: (message) => {
+      console.log('Dashboard received WebSocket message:', message);
+      
+      // Handle different notification types
+      if (message.type === 'transaction_income' || message.type === 'transaction_expense') {
+        // Refresh summary and transactions
+        fetchData(true);
+        toast.success(message.message, { icon: message.type === 'transaction_income' ? '💰' : '💸' });
+      } else if (message.type === 'goal_completed' || message.type === 'goal_progress') {
+        toast.success(message.message, { icon: '🎉' });
+        fetchData(true);
+      } else if (message.type === 'leaderboard_update') {
+        toast.success(message.message, { icon: '🏆' });
+        // Refresh leaderboard
+        const token = localStorage.getItem('token');
+        axios.get(`${API}/analytics/leaderboard`, { 
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(res => setLeaderboard(res.data)).catch(console.error);
+      } else if (message.type === 'budget_alert') {
+        toast.error(message.message, { icon: '⚠️', duration: 5000 });
+      } else if (message.type === 'group_challenge_completed' || message.type === 'group_challenge_progress') {
+        toast.success(message.message, { icon: '🎯' });
+      } else if (message.type === 'streak_milestone') {
+        toast.success(message.message, { icon: '🔥', duration: 6000 });
+      }
+    },
+    onConnect: () => {
+      console.log('Dashboard: Real-time connection established');
+    }
+  });
 
   // Enhanced data fetching with live updates
   const fetchData = useCallback(async (isRefresh = false) => {
