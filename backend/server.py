@@ -5024,7 +5024,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://prize-compete-1.preview.emergentagent.com"
+        base_url = "https://campus-challenges.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -8007,7 +8007,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://prize-compete-1.preview.emergentagent.com"
+        base_url = "https://campus-challenges.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -16701,6 +16701,188 @@ async def moderate_competition_participant(
     except Exception as e:
         logger.error(f"Moderate competition participant error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to moderate participant")
+
+# ===== CLUB ADMIN DASHBOARD ENDPOINTS =====
+
+@api_router.get("/club-admin/dashboard")
+@limiter.limit("20/minute")
+async def get_club_admin_dashboard(
+    request: Request,
+    current_club_admin: Dict[str, Any] = Depends(get_current_club_admin)
+):
+    """Get club admin dashboard with statistics and recent activities"""
+    try:
+        db = await get_database()
+        
+        # Get admin statistics
+        competitions_count = await db.inter_college_competitions.count_documents({
+            "created_by": current_club_admin["user_id"]
+        })
+        
+        challenges_count = await db.prize_challenges.count_documents({
+            "created_by": current_club_admin["user_id"]
+        })
+        
+        # Get recent competitions and challenges
+        recent_competitions = await db.inter_college_competitions.find({
+            "created_by": current_club_admin["user_id"]
+        }).sort("created_at", -1).limit(5).to_list(None)
+        
+        recent_challenges = await db.prize_challenges.find({
+            "created_by": current_club_admin["user_id"]
+        }).sort("created_at", -1).limit(5).to_list(None)
+        
+        # Calculate remaining monthly quota
+        current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        competitions_this_month = await db.inter_college_competitions.count_documents({
+            "created_by": current_club_admin["user_id"],
+            "created_at": {"$gte": current_month}
+        })
+        challenges_this_month = await db.prize_challenges.count_documents({
+            "created_by": current_club_admin["user_id"],
+            "created_at": {"$gte": current_month}
+        })
+        
+        # Count total participants across all competitions/challenges
+        total_participants = 0
+        for comp in recent_competitions:
+            total_participants += comp.get("current_participants", 0)
+        for chal in recent_challenges:
+            total_participants += chal.get("current_participants", 0)
+        
+        total_this_month = competitions_this_month + challenges_this_month
+        max_per_month = current_club_admin.get("max_events_per_month", current_club_admin.get("max_competitions_per_month", 5))
+        remaining_quota = max(0, max_per_month - total_this_month)
+        
+        return {
+            "admin_details": {
+                "admin_type": current_club_admin["admin_type"],
+                "college_name": current_club_admin["college_name"],
+                "club_name": current_club_admin.get("club_name"),
+                "permissions": current_club_admin["permissions"],
+                "appointed_at": current_club_admin["appointed_at"].isoformat(),
+                "expires_at": current_club_admin.get("expires_at").isoformat() if current_club_admin.get("expires_at") else None
+            },
+            "statistics": {
+                "total_competitions": competitions_count,
+                "total_challenges": challenges_count,
+                "total_events": competitions_count + challenges_count,
+                "competitions_this_month": competitions_this_month,
+                "challenges_this_month": challenges_this_month,
+                "events_this_month": total_this_month,
+                "remaining_monthly_quota": remaining_quota,
+                "participants_managed": total_participants,
+                "max_events_per_month": max_per_month
+            },
+            "recent_competitions": clean_mongo_doc(recent_competitions),
+            "recent_challenges": clean_mongo_doc(recent_challenges),
+            "capabilities": {
+                "can_create_competitions": "create_competitions" in current_club_admin.get("permissions", []) or "create_events" in current_club_admin.get("permissions", []),
+                "can_create_challenges": "create_challenges" in current_club_admin.get("permissions", []) or "create_events" in current_club_admin.get("permissions", []),
+                "can_manage_participants": "manage_participants" in current_club_admin.get("permissions", []),
+                "max_events_per_month": max_per_month
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Club admin dashboard error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get club admin dashboard")
+
+@api_router.get("/club-admin/competitions")
+@limiter.limit("20/minute")
+async def get_club_admin_competitions(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_club_admin: Dict[str, Any] = Depends(get_current_club_admin)
+):
+    """Get competitions created by this club admin"""
+    try:
+        db = await get_database()
+        
+        # Build query - only show competitions created by this club admin
+        query = {"created_by": current_club_admin["user_id"]}
+        
+        if status:
+            query["status"] = status
+        
+        # Get total count
+        total_count = await db.inter_college_competitions.count_documents(query)
+        
+        # Get paginated competitions
+        skip = (page - 1) * limit
+        competitions = await db.inter_college_competitions.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(None)
+        
+        # Enhance each competition with participant counts
+        for competition in competitions:
+            participant_count = await db.inter_college_participants.count_documents({
+                "competition_id": competition["id"]
+            })
+            competition["current_participants"] = participant_count
+            
+            # Count participating campuses
+            campuses = await db.inter_college_participants.distinct("campus", {
+                "competition_id": competition["id"]
+            })
+            competition["participating_campuses"] = len(campuses)
+        
+        return {
+            "competitions": clean_mongo_doc(competitions),
+            "total_count": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total_count + limit - 1) // limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Get club admin competitions error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get competitions")
+
+@api_router.get("/club-admin/challenges")
+@limiter.limit("20/minute")
+async def get_club_admin_challenges(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_club_admin: Dict[str, Any] = Depends(get_current_club_admin)
+):
+    """Get challenges created by this club admin"""
+    try:
+        db = await get_database()
+        
+        # Build query - only show challenges created by this club admin
+        query = {"created_by": current_club_admin["user_id"]}
+        
+        if status:
+            query["status"] = status
+        
+        # Get total count
+        total_count = await db.prize_challenges.count_documents(query)
+        
+        # Get paginated challenges
+        skip = (page - 1) * limit
+        challenges = await db.prize_challenges.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(None)
+        
+        # Enhance each challenge with participant counts
+        for challenge in challenges:
+            participant_count = await db.challenge_participants.count_documents({
+                "challenge_id": challenge["id"]
+            })
+            challenge["current_participants"] = participant_count
+        
+        return {
+            "challenges": clean_mongo_doc(challenges),
+            "total_count": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total_count + limit - 1) // limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Get club admin challenges error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenges")
 
 # ===== CAMPUS ADMIN CLUB ADMIN MANAGEMENT ENDPOINTS =====
 
