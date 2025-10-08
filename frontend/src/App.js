@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
 import pushNotificationService from './services/pushNotificationService';
+import { Toaster } from 'sonner';
 
 // Components
 import Dashboard from './components/Dashboard';
@@ -172,6 +173,7 @@ function App() {
     <AuthContext.Provider value={authValue}>
       <BrowserRouter>
         <div className="App min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50 flex flex-col">
+          <Toaster position="top-right" richColors closeButton />
           {user && <Navigation />}
           <main className="flex-grow">
             <Routes>
