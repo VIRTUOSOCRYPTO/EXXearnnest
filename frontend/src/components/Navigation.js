@@ -34,6 +34,10 @@ const Navigation = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isCampusOpen, setIsCampusOpen] = useState(false);
+  const [isViralOpen, setIsViralOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const navRef = useRef(null);
 
   const navItems = [
@@ -103,26 +107,61 @@ const Navigation = () => {
     setIsMobileMenuOpen(false);
   };
 
-  // Close mobile menu when clicking outside
+  const closeAllDropdowns = () => {
+    setIsProfileOpen(false);
+    setIsCampusOpen(false);
+    setIsViralOpen(false);
+    setIsAdminOpen(false);
+  };
+
+  const toggleProfileDropdown = () => {
+    setIsProfileOpen(!isProfileOpen);
+    setIsCampusOpen(false);
+    setIsViralOpen(false);
+    setIsAdminOpen(false);
+  };
+
+  const toggleCampusDropdown = () => {
+    setIsCampusOpen(!isCampusOpen);
+    setIsProfileOpen(false);
+    setIsViralOpen(false);
+    setIsAdminOpen(false);
+  };
+
+  const toggleViralDropdown = () => {
+    setIsViralOpen(!isViralOpen);
+    setIsProfileOpen(false);
+    setIsCampusOpen(false);
+    setIsAdminOpen(false);
+  };
+
+  const toggleAdminDropdown = () => {
+    setIsAdminOpen(!isAdminOpen);
+    setIsProfileOpen(false);
+    setIsCampusOpen(false);
+    setIsViralOpen(false);
+  };
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (navRef.current && !navRef.current.contains(event.target)) {
         setIsMobileMenuOpen(false);
+        closeAllDropdowns();
       }
     };
 
-    if (isMobileMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isMobileMenuOpen]);
+  }, []);
 
-  // Close mobile menu on route change
+  // Close mobile menu and dropdowns on route change
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    closeAllDropdowns();
   }, [location.pathname]);
 
   return (
@@ -161,28 +200,31 @@ const Navigation = () => {
             })}
             
             {/* Campus Dropdown */}
-            <div className="relative group">
+            <div className="relative">
               {(() => {
                 const hasCampusActive = campusItems.some(item => location.pathname === item.path);
                 return (
-                  <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    hasCampusActive
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
-                  }`}>
+                  <button 
+                    onClick={toggleCampusDropdown}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      hasCampusActive || isCampusOpen
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'text-gray-600 hover:text-emerald-600 hover:bg-gray-50'
+                    }`}>
                     <BuildingOffice2Icon className="w-4 h-4" />
                     Campus
                     {hasCampusActive && <div className="w-2 h-2 bg-emerald-600 rounded-full ml-1" />}
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-4 h-4 transition-transform duration-200 ${isCampusOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
                 );
               })()}
-            </div>
               
               {/* Campus Dropdown Menu */}
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
+              <div className={`absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 transition-all duration-200 z-50 ${
+                isCampusOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+              }`}>
                 <div className="p-2 space-y-1">
                   {campusItems.map((item) => {
                     const Icon = item.icon;
@@ -192,6 +234,7 @@ const Navigation = () => {
                       <Link
                         key={item.path}
                         to={item.path}
+                        onClick={closeAllDropdowns}
                         className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                           isActive
                             ? 'bg-purple-100 text-purple-700'
@@ -208,28 +251,31 @@ const Navigation = () => {
             </div>
 
             {/* Viral Features Dropdown */}
-            <div className="relative group">
+            <div className="relative">
               {(() => {
                 const hasViralActive = viralItems.some(item => location.pathname === item.path);
                 return (
-                  <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    hasViralActive
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'text-gray-600 hover:text-orange-600 hover:bg-gray-50'
-                  }`}>
+                  <button 
+                    onClick={toggleViralDropdown}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      hasViralActive || isViralOpen
+                        ? 'bg-orange-100 text-orange-700'
+                        : 'text-gray-600 hover:text-orange-600 hover:bg-gray-50'
+                    }`}>
                     <FireIcon className="w-4 h-4" />
                     🔥 Viral
                     {hasViralActive && <div className="w-2 h-2 bg-orange-600 rounded-full ml-1" />}
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-4 h-4 transition-transform duration-200 ${isViralOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
                 );
               })()}
-            </div>
               
               {/* Viral Features Dropdown Menu */}
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
+              <div className={`absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 transition-all duration-200 z-50 ${
+                isViralOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+              }`}>
                 <div className="p-2 space-y-1">
                   {viralItems.map((item) => {
                     const Icon = item.icon;
@@ -239,6 +285,7 @@ const Navigation = () => {
                       <Link
                         key={item.path}
                         to={item.path}
+                        onClick={closeAllDropdowns}
                         className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                           isActive
                             ? 'bg-orange-100 text-orange-700'
@@ -257,28 +304,31 @@ const Navigation = () => {
             </div>
 
             {/* Admin Dropdown */}
-            <div className="relative group">
+            <div className="relative">
               {(() => {
                 const hasAdminActive = adminItems.some(item => location.pathname === item.path);
                 return (
-                  <button className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    hasAdminActive
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
-                  }`}>
+                  <button 
+                    onClick={toggleAdminDropdown}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      hasAdminActive || isAdminOpen
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:text-blue-600 hover:bg-gray-50'
+                    }`}>
                     <BuildingOffice2Icon className="w-4 h-4" />
                     Admin
                     {hasAdminActive && <div className="w-2 h-2 bg-blue-600 rounded-full ml-1" />}
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-4 h-4 transition-transform duration-200 ${isAdminOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
                 );
               })()}
-            </div>
               
               {/* Admin Dropdown Menu */}
-              <div className="absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
+              <div className={`absolute top-full left-0 mt-1 w-64 bg-white shadow-lg rounded-lg border border-gray-200 transition-all duration-200 z-50 ${
+                isAdminOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+              }`}>
                 <div className="p-2 space-y-1">
                   {adminItems.map((item) => {
                     // Show based on user admin_level
@@ -292,6 +342,7 @@ const Navigation = () => {
                         <Link
                           key={item.path}
                           to={item.path}
+                          onClick={closeAllDropdowns}
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                             isActive
                               ? 'bg-blue-100 text-blue-700'
@@ -314,6 +365,7 @@ const Navigation = () => {
                           <Link
                             key={item.path}
                             to={item.path}
+                            onClick={closeAllDropdowns}
                             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                               isActive
                                 ? 'bg-blue-100 text-blue-700'
@@ -335,6 +387,7 @@ const Navigation = () => {
                           <Link
                             key={item.path}
                             to={item.path}
+                            onClick={closeAllDropdowns}
                             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                               isActive
                                 ? 'bg-blue-100 text-blue-700'
@@ -396,8 +449,12 @@ const Navigation = () => {
             </div>
 
             {/* Desktop Profile Dropdown - Show full info on desktop */}
-            <div className="hidden lg:block relative group">
-              <button className="flex items-center space-x-3 hover:bg-gray-50 rounded-lg p-2 transition-colors max-w-56 w-full">
+            <div className="hidden lg:block relative">
+              <button 
+                onClick={toggleProfileDropdown}
+                className={`flex items-center space-x-3 rounded-lg p-2 transition-colors max-w-56 w-full ${
+                  isProfileOpen ? 'bg-gray-100' : 'hover:bg-gray-50'
+                }`}>
                 {user?.profile_photo ? (
                   <img 
                     src={`${process.env.REACT_APP_BACKEND_URL}${user.profile_photo}`}
@@ -411,13 +468,15 @@ const Navigation = () => {
                   <p className="font-semibold text-gray-900 truncate">{user?.full_name}</p>
                   <p className="text-gray-500 truncate">{formatCurrency(user?.total_earnings || 0)} earned</p>
                 </div>
-                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${isProfileOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
               
               {/* Profile Dropdown Menu */}
-              <div className="absolute top-full right-0 mt-1 w-56 bg-white shadow-lg rounded-lg border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-40">
+              <div className={`absolute top-full right-0 mt-1 w-56 bg-white shadow-lg rounded-lg border border-gray-200 transition-all duration-200 z-50 ${
+                isProfileOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+              }`}>
                 <div className="p-2 space-y-1">
                   {/* Profile Header */}
                   <div className="px-3 py-2 border-b border-gray-100">
@@ -429,6 +488,7 @@ const Navigation = () => {
                   {/* Profile Actions */}
                   <Link
                     to="/profile"
+                    onClick={closeAllDropdowns}
                     className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-all duration-200"
                   >
                     <UserCircleIcon className="w-4 h-4" />
@@ -437,6 +497,7 @@ const Navigation = () => {
                   
                   <Link
                     to="/gamification"
+                    onClick={closeAllDropdowns}
                     className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-all duration-200"
                   >
                     <TrophyIcon className="w-4 h-4" />
@@ -445,6 +506,7 @@ const Navigation = () => {
                   
                   <Link
                     to="/notifications"
+                    onClick={closeAllDropdowns}
                     className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-yellow-600 hover:bg-yellow-50 transition-all duration-200"
                   >
                     <BellIcon className="w-4 h-4" />
