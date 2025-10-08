@@ -5216,7 +5216,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://websocket-fix-5.preview.emergentagent.com"
+        base_url = "https://ws-connection-test.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6659,7 +6659,7 @@ async def get_inter_college_competitions(
             # Check if user is registered
             user_participation = await db.campus_competition_participations.find_one({
                 "competition_id": competition["id"],
-                "user_id": current_user
+                "user_id": current_user["id"]
             })
             
             # Get campus leaderboard stats
@@ -6736,7 +6736,7 @@ async def register_for_inter_college_competition(
         # Check if already registered
         existing_participation = await db.campus_competition_participations.find_one({
             "competition_id": competition_id,
-            "user_id": current_user
+            "user_id": current_user["id"]
         })
         
         if existing_participation:
@@ -7089,7 +7089,7 @@ async def get_inter_college_leaderboard(
         if user_campus:
             user_participation = await db.campus_competition_participations.find_one({
                 "competition_id": competition_id,
-                "user_id": current_user
+                "user_id": current_user["id"]
             })
             
             user_campus_stats = next((c for c in campus_leaderboards if c["campus"] == user_campus), None)
@@ -7159,7 +7159,7 @@ async def complete_inter_college_competition(
         campus_admin = None
         if not is_system_admin:
             campus_admin = await db.campus_admins.find_one({
-                "user_id": current_user,
+                "user_id": current_user["id"],
                 "status": "active"
             })
             
@@ -7393,7 +7393,7 @@ async def get_prize_challenges(
             # Check if user is participating
             user_participation = await db.prize_challenge_participations.find_one({
                 "challenge_id": challenge["id"],
-                "user_id": current_user
+                "user_id": current_user["id"]
             })
             
             # Check entry requirements
@@ -7506,7 +7506,7 @@ async def join_prize_challenge(
         # Check if already participating
         existing_participation = await db.prize_challenge_participations.find_one({
             "challenge_id": challenge_id,
-            "user_id": current_user
+            "user_id": current_user["id"]
         })
         
         if existing_participation:
@@ -9120,7 +9120,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://websocket-fix-5.preview.emergentagent.com"
+        base_url = "https://ws-connection-test.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -9384,7 +9384,7 @@ async def join_challenge(request: Request, challenge_id: str, current_user: Dict
         # Check if user already joined
         existing = await db.challenge_participants.find_one({
             "challenge_id": challenge_id,
-            "user_id": current_user
+            "user_id": current_user["id"]
         })
         
         if existing:
@@ -10097,7 +10097,7 @@ async def get_friends(request: Request, current_user: Dict[str, Any] = Depends(g
     """Get user's friends list"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Get all friendships where user is involved
         friendships = await db.friendships.find({
@@ -10178,7 +10178,7 @@ async def accept_friend_invitation(request: Request, referral_code: str, current
     """Accept friend invitation using referral code"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # First try to find formal invitation
         invitation = await db.friend_invitations.find_one({
@@ -10404,7 +10404,7 @@ async def get_recent_friend_activity(request: Request, current_user: Dict[str, A
     """Get recent activity from friends for real-time updates"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Get user's friends
         friendships = await db.friendships.find({
@@ -10527,7 +10527,7 @@ async def get_live_friend_stats(request: Request, current_user: Dict[str, Any] =
     """Get live friend statistics for real-time dashboard updates"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Get friends count
         friends_count = await db.friendships.count_documents({
@@ -15991,7 +15991,7 @@ async def request_campus_admin_privileges(
         
         # Check if user already has pending or approved request
         existing_request = await db.campus_admin_requests.find_one({
-            "user_id": current_user,
+            "user_id": current_user["id"],
             "status": {"$in": ["pending", "under_review", "approved"]}
         })
         
@@ -16003,7 +16003,7 @@ async def request_campus_admin_privileges(
                 raise HTTPException(status_code=400, detail=f"You already have a {status} admin request")
         
         # Get user details
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -16118,7 +16118,7 @@ async def request_club_admin_privileges(
         
         # Check if user already has pending or approved club admin request
         existing_request = await db.club_admin_requests.find_one({
-            "user_id": current_user,
+            "user_id": current_user["id"],
             "status": {"$in": ["pending", "approved"]}
         })
         
@@ -16263,7 +16263,7 @@ async def verify_admin_email(
         # Get admin request
         admin_request = await db.campus_admin_requests.find_one({
             "id": request_id,
-            "user_id": current_user,
+            "user_id": current_user["id"],
             "status": {"$in": ["pending", "under_review"]}
         })
         
@@ -16303,7 +16303,7 @@ async def verify_admin_email(
                 
                 campus_admin = {
                     "id": str(uuid.uuid4()),
-                    "user_id": current_user,
+                    "user_id": current_user["id"],
                     "request_id": request_id,
                     "admin_type": admin_request["requested_admin_type"],
                     "college_name": admin_request["college_name"],
@@ -16367,7 +16367,7 @@ async def upload_admin_document(
         # Get admin request
         admin_request = await db.campus_admin_requests.find_one({
             "id": request_id,
-            "user_id": current_user,
+            "user_id": current_user["id"],
             "status": {"$in": ["pending", "under_review"]}
         })
         
@@ -16437,7 +16437,7 @@ async def get_admin_request_status(
         
         # Get user's latest admin request
         admin_request = await db.campus_admin_requests.find_one(
-            {"user_id": current_user},
+            {"user_id": current_user["id"]},
             sort=[("submission_date", -1)]
         )
         
@@ -16449,7 +16449,7 @@ async def get_admin_request_status(
         
         # Check if user is already an approved admin
         campus_admin = await db.campus_admins.find_one({
-            "user_id": current_user,
+            "user_id": current_user["id"],
             "status": "active"
         })
         
@@ -16500,7 +16500,7 @@ async def get_club_admin_request_status(
         db = await get_database()
         
         # Get user's club admin request
-        club_admin_request = await db.club_admin_requests.find_one({"user_id": current_user})
+        club_admin_request = await db.club_admin_requests.find_one({"user_id": current_user["id"]})
         
         if not club_admin_request:
             return {
@@ -16511,7 +16511,7 @@ async def get_club_admin_request_status(
         
         # Check if user is already a club admin
         club_admin_record = await db.campus_admins.find_one({
-            "user_id": current_user,
+            "user_id": current_user["id"],
             "admin_type": "club_admin",
             "status": "active"
         })
@@ -18848,7 +18848,7 @@ async def check_viral_milestones():
 async def get_friend_comparison_insights(current_user = Depends(get_current_user_dict)):
     """Get anonymous friend spending comparisons"""
     try:
-        user_id = current_user
+        user_id = current_user["id"]
         
         # Get user's friends from friendships collection
         db = await get_database()
