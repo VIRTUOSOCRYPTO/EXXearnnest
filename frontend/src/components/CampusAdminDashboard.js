@@ -499,7 +499,7 @@ const CampusAdminDashboard = () => {
         <div className="flex flex-wrap gap-4">
           <Button 
             className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => window.location.href = '/inter-college-competitions'}
+            onClick={() => window.location.href = '/create-competition'}
             disabled={!capabilities.can_create_inter_college || statistics.remaining_monthly_quota === 0}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -507,7 +507,7 @@ const CampusAdminDashboard = () => {
           </Button>
           <Button 
             className="bg-green-600 hover:bg-green-700"
-            onClick={() => window.location.href = '/prize-challenges'}
+            onClick={() => window.location.href = '/create-challenge'}
             disabled={statistics.remaining_monthly_quota === 0}
           >
             <Award className="w-4 h-4 mr-2" />
@@ -533,7 +533,7 @@ const CampusAdminDashboard = () => {
         <h3 className="text-xl font-bold">My Competitions</h3>
         <Button 
           className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => window.location.href = '/inter-college-competitions'}
+          onClick={() => window.location.href = '/create-competition'}
           disabled={!dashboardData?.capabilities?.can_create_inter_college}
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -604,7 +604,7 @@ const CampusAdminDashboard = () => {
             <p className="text-gray-500 mb-4">Create your first inter-college competition to get started</p>
             <Button 
               className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => window.location.href = '/inter-college-competitions'}
+              onClick={() => window.location.href = '/create-competition'}
             >
               <Plus className="w-4 h-4 mr-2" />
               Create Competition
@@ -621,7 +621,7 @@ const CampusAdminDashboard = () => {
         <h3 className="text-xl font-bold">My Challenges</h3>
         <Button 
           className="bg-green-600 hover:bg-green-700"
-          onClick={() => window.location.href = '/prize-challenges'}
+          onClick={() => window.location.href = '/create-challenge'}
         >
           <Plus className="w-4 h-4 mr-2" />
           Create New
@@ -677,7 +677,7 @@ const CampusAdminDashboard = () => {
             <p className="text-gray-500 mb-4">Create your first prize challenge to engage students</p>
             <Button 
               className="bg-green-600 hover:bg-green-700"
-              onClick={() => window.location.href = '/prize-challenges'}
+              onClick={() => window.location.href = '/create-challenge'}
             >
               <Plus className="w-4 h-4 mr-2" />
               Create Challenge
