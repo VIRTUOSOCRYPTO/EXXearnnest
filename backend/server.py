@@ -5143,7 +5143,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://websocket-repair-4.preview.emergentagent.com"
+        base_url = "https://websocket-debug-5.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -9047,7 +9047,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://websocket-repair-4.preview.emergentagent.com"
+        base_url = "https://websocket-debug-5.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -10067,11 +10067,11 @@ async def get_friends(request: Request, current_user: Dict[str, Any] = Depends(g
 
 @api_router.get("/friends/invitations")
 @limiter.limit("20/minute")
-async def get_invitations(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def get_invitations(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Get sent and received invitations"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user.get("id")
         
         # Get sent invitations
         sent_invitations = await db.friend_invitations.find({
@@ -10831,11 +10831,11 @@ async def get_group_challenge_details(request: Request, challenge_id: str, curre
 
 @api_router.get("/notifications")
 @limiter.limit("30/minute")
-async def get_notifications(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin), limit: int = 20):
+async def get_notifications(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict), limit: int = 20):
     """Get user's notifications"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user.get("id")
         
         # Get recent notifications
         notifications = await db.notifications.find({
@@ -10860,11 +10860,11 @@ async def get_notifications(request: Request, current_user: Dict[str, Any] = Dep
 
 @api_router.put("/notifications/{notification_id}/read")
 @limiter.limit("30/minute")
-async def mark_notification_read(request: Request, notification_id: str, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def mark_notification_read(request: Request, notification_id: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Mark notification as read"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user.get("id")
         
         # Update notification
         result = await db.notifications.update_one(
@@ -10892,11 +10892,11 @@ async def mark_notification_read(request: Request, notification_id: str, current
 
 @api_router.put("/notifications/mark-all-read")
 @limiter.limit("10/minute")
-async def mark_all_notifications_read(request: Request, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
+async def mark_all_notifications_read(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
     """Mark all notifications as read"""
     try:
         db = await get_database()
-        user_id = current_user
+        user_id = current_user.get("id")
         
         # Update all unread notifications
         result = await db.notifications.update_many(
