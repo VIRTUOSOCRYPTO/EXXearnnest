@@ -26,7 +26,9 @@ const useWebSocket = (channel = 'default', options = {}) => {
     }
 
     try {
-      const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8001';
+      // Get the backend URL and convert to WebSocket URL
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      const wsUrl = backendUrl.replace('https://', 'wss://').replace('http://', 'ws://');
       const token = localStorage.getItem('token');
       
       if (!token) {
@@ -34,7 +36,9 @@ const useWebSocket = (channel = 'default', options = {}) => {
         return;
       }
 
-      wsRef.current = new WebSocket(`${wsUrl}/ws/${channel}?token=${token}`);
+      // Use correct WebSocket endpoint format matching backend
+      const userId = JSON.parse(atob(token.split('.')[1])).user_id;
+      wsRef.current = new WebSocket(`${wsUrl}/ws/${channel}/${userId}?token=${token}`);
 
       wsRef.current.onopen = () => {
         setConnectionStatus('Connected');
