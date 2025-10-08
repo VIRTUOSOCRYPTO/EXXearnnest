@@ -2282,6 +2282,56 @@ async def update_financial_goal_endpoint(request: Request, goal_id: str, goal_up
             
             await gamification.update_leaderboards(user_id)
         
+        # 🔥 REAL-TIME NOTIFICATIONS: Send WebSocket notifications for goal updates
+        try:
+            notification_service = await get_notification_service()
+            goal = await db.financial_goals.find_one({"id": goal_id, "user_id": user_id})
+            
+            if goal:
+                if was_completed:
+                    # Goal completion notification
+                    await notification_service.create_and_notify_in_app_notification(user_id, {
+                        "type": "goal_completed",
+                        "title": f"🎉 Goal Completed!",
+                        "message": f"Congratulations! You've completed your {goal['name']} goal of ₹{goal['target_amount']:,.0f}!",
+                        "priority": "high",
+                        "action_url": "/goals",
+                        "data": {
+                            "goal_id": goal_id,
+                            "goal_name": goal["name"],
+                            "goal_category": goal.get("category", "custom"),
+                            "target_amount": goal["target_amount"],
+                            "achievement_unlocked": True
+                        }
+                    })
+                else:
+                    # Goal progress update notification
+                    current_amount = goal.get("current_amount", 0)
+                    target_amount = goal.get("target_amount", 0)
+                    progress_percentage = (current_amount / target_amount * 100) if target_amount > 0 else 0
+                    
+                    # Send notification if significant progress (every 25%)
+                    milestones = [25, 50, 75, 90]
+                    for milestone in milestones:
+                        if abs(progress_percentage - milestone) < 5:  # Within 5% of milestone
+                            await notification_service.create_and_notify_in_app_notification(user_id, {
+                                "type": "goal_progress",
+                                "title": f"📊 Goal Progress: {progress_percentage:.0f}%",
+                                "message": f"You're {progress_percentage:.0f}% towards your {goal['name']} goal! Keep going!",
+                                "priority": "medium",
+                                "action_url": "/goals",
+                                "data": {
+                                    "goal_id": goal_id,
+                                    "goal_name": goal["name"],
+                                    "current_amount": current_amount,
+                                    "target_amount": target_amount,
+                                    "progress_percentage": progress_percentage
+                                }
+                            })
+                            break
+        except Exception as e:
+            logger.error(f"Failed to send goal update notification: {str(e)}")
+        
         return {"message": "Financial goal updated successfully"}
         
     except Exception as e:
@@ -5145,7 +5195,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://api-stability-1.preview.emergentagent.com"
+        base_url = "https://realtime-fixes.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -9049,7 +9099,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://api-stability-1.preview.emergentagent.com"
+        base_url = "https://realtime-fixes.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -11046,6 +11096,55 @@ async def update_group_challenge_progress(user_id: str):
                 
                 # Notify group members
                 await notify_group_members_of_completion(challenge["id"], user_id, participation["individual_target"])
+                
+                # 🔥 REAL-TIME NOTIFICATION: Send personal completion notification
+                try:
+                    notification_service = await get_notification_service()
+                    await notification_service.create_and_notify_in_app_notification(user_id, {
+                        "type": "group_challenge_completed",
+                        "title": "🎉 Challenge Target Reached!",
+                        "message": f"Congratulations! You completed your target of ₹{participation['individual_target']:,.0f} in '{challenge['title']}'! Earned {challenge['reward_points_per_person']} points!",
+                        "priority": "high",
+                        "action_url": f"/group-challenges/{challenge['id']}",
+                        "data": {
+                            "challenge_id": challenge["id"],
+                            "challenge_title": challenge["title"],
+                            "target_amount": participation["individual_target"],
+                            "points_earned": challenge["reward_points_per_person"]
+                        }
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to send group challenge completion notification: {str(e)}")
+            
+            # 🔥 REAL-TIME NOTIFICATION: Send progress update for significant milestones
+            elif not is_completed:
+                try:
+                    progress_percentage = (new_progress / participation["individual_target"] * 100) if participation["individual_target"] > 0 else 0
+                    previous_progress = participation.get("current_progress", 0)
+                    previous_percentage = (previous_progress / participation["individual_target"] * 100) if participation["individual_target"] > 0 else 0
+                    
+                    # Send notification for 25%, 50%, 75% milestones
+                    milestones = [25, 50, 75]
+                    for milestone in milestones:
+                        if previous_percentage < milestone <= progress_percentage:
+                            notification_service = await get_notification_service()
+                            await notification_service.create_and_notify_in_app_notification(user_id, {
+                                "type": "group_challenge_progress",
+                                "title": f"📊 Challenge Progress: {milestone}%",
+                                "message": f"You're {milestone}% towards your target in '{challenge['title']}'! Keep it up!",
+                                "priority": "medium",
+                                "action_url": f"/group-challenges/{challenge['id']}",
+                                "data": {
+                                    "challenge_id": challenge["id"],
+                                    "challenge_title": challenge["title"],
+                                    "current_progress": new_progress,
+                                    "target_amount": participation["individual_target"],
+                                    "progress_percentage": progress_percentage
+                                }
+                            })
+                            break
+                except Exception as e:
+                    logger.error(f"Failed to send group challenge progress notification: {str(e)}")
         
     except Exception as e:
         logger.error(f"Update group challenge progress error: {str(e)}")
@@ -11116,16 +11215,27 @@ async def notify_group_members_of_completion(group_challenge_id: str, completed_
             "user_id": {"$ne": completed_user_id}
         }).to_list(None)
         
-        # Notify each participant
+        # Notify each participant with WebSocket notification
+        notification_service = await get_notification_service()
         for participant in participants:
-            await create_notification(
-                participant["user_id"],
-                "group_progress",
-                f"🎉 {completed_user['full_name']} completed their target!",
-                f"{completed_user['full_name']} reached ₹{target_amount:,.0f} in '{challenge['title']}'. Keep going!",
-                action_url=f"/group-challenges/{group_challenge_id}",
-                related_id=group_challenge_id
-            )
+            try:
+                await notification_service.create_and_notify_in_app_notification(
+                    participant["user_id"], {
+                        "type": "group_member_completed",
+                        "title": f"🎉 Team Member Success!",
+                        "message": f"{completed_user['full_name']} reached ₹{target_amount:,.0f} in '{challenge['title']}'! Keep going!",
+                        "priority": "medium",
+                        "action_url": f"/group-challenges/{group_challenge_id}",
+                        "data": {
+                            "challenge_id": group_challenge_id,
+                            "challenge_title": challenge["title"],
+                            "completed_user_name": completed_user["full_name"],
+                            "target_amount": target_amount
+                        }
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Failed to send group member completion notification: {str(e)}")
         
     except Exception as e:
         logger.error(f"Notify group members error: {str(e)}")
@@ -19032,32 +19142,61 @@ async def get_live_viral_milestones():
 app.include_router(api_router)
 
 # ===== REAL-TIME WEBSOCKET ENDPOINTS =====
+# WebSocket endpoints must use /api prefix for Kubernetes ingress routing
 
-@app.websocket("/ws/notifications/{user_id}")
+@app.websocket("/api/ws/notifications/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for real-time notifications"""
     try:
-        # Verify user authentication via query params or headers
+        # Verify user authentication via query params or headers BEFORE accepting
         token = websocket.query_params.get("token")
         if not token:
-            await websocket.close(code=4001, reason="Authentication required")
+            await websocket.close(code=1008, reason="Authentication required")
             return
         
         # Verify JWT token
         try:
-            payload = verify_jwt_token(token)
+            import jwt
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             authenticated_user_id = payload.get("user_id")
+            token_type = payload.get("type")
+            
+            if not authenticated_user_id or token_type != "access":
+                await websocket.close(code=1008, reason="Invalid token type")
+                return
             
             if authenticated_user_id != user_id:
-                await websocket.close(code=4003, reason="User ID mismatch")
+                await websocket.close(code=1008, reason="User ID mismatch")
                 return
                 
+        except jwt.ExpiredSignatureError:
+            logger.error("WebSocket auth error: Token expired")
+            await websocket.close(code=1008, reason="Token expired")
+            return
+        except jwt.InvalidTokenError as e:
+            logger.error(f"WebSocket auth error: Invalid token - {str(e)}")
+            await websocket.close(code=1008, reason="Invalid token")
+            return
         except Exception as e:
-            await websocket.close(code=4001, reason="Invalid token")
+            logger.error(f"WebSocket auth error: {str(e)}")
+            await websocket.close(code=1008, reason=f"Authentication failed")
             return
         
-        # Connect user
-        await connection_manager.connect_user(websocket, user_id)
+        # Accept connection AFTER validation
+        await websocket.accept()
+        logger.info(f"WebSocket connection accepted for user {user_id}")
+        
+        # Send connection established message
+        await websocket.send_text(json.dumps({
+            "type": "connection_established",
+            "message": "Connected to real-time notifications",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }))
+        
+        # Add to connection manager
+        if user_id not in connection_manager.user_connections:
+            connection_manager.user_connections[user_id] = set()
+        connection_manager.user_connections[user_id].add(websocket)
         
         try:
             while True:
@@ -19082,10 +19221,17 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                         )
                 
         except WebSocketDisconnect:
-            await connection_manager.disconnect_user(websocket, user_id)
+            logger.info(f"WebSocket disconnected for user {user_id}")
+            if user_id in connection_manager.user_connections:
+                connection_manager.user_connections[user_id].discard(websocket)
+                if not connection_manager.user_connections[user_id]:
+                    del connection_manager.user_connections[user_id]
         except Exception as e:
             logger.error(f"WebSocket error for user {user_id}: {str(e)}")
-            await connection_manager.disconnect_user(websocket, user_id)
+            if user_id in connection_manager.user_connections:
+                connection_manager.user_connections[user_id].discard(websocket)
+                if not connection_manager.user_connections[user_id]:
+                    del connection_manager.user_connections[user_id]
             
     except Exception as e:
         logger.error(f"WebSocket connection error: {str(e)}")
@@ -19094,26 +19240,41 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         except:
             pass
 
-@app.websocket("/ws/admin/{user_id}")
+@app.websocket("/api/ws/admin/{user_id}")
 async def admin_websocket_endpoint(websocket: WebSocket, user_id: str):
     """WebSocket endpoint for admin real-time notifications"""
     try:
-        # Verify admin authentication
+        # Verify admin authentication BEFORE accepting
         token = websocket.query_params.get("token")
         if not token:
-            await websocket.close(code=4001, reason="Authentication required")
+            await websocket.close(code=1008, reason="Authentication required")
             return
         
         try:
-            payload = verify_jwt_token(token)
+            import jwt
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             authenticated_user_id = payload.get("user_id")
+            token_type = payload.get("type")
+            
+            if not authenticated_user_id or token_type != "access":
+                await websocket.close(code=1008, reason="Invalid token type")
+                return
             
             if authenticated_user_id != user_id:
-                await websocket.close(code=4003, reason="User ID mismatch")
+                await websocket.close(code=1008, reason="User ID mismatch")
                 return
                 
+        except jwt.ExpiredSignatureError:
+            logger.error("Admin WebSocket auth error: Token expired")
+            await websocket.close(code=1008, reason="Token expired")
+            return
+        except jwt.InvalidTokenError as e:
+            logger.error(f"Admin WebSocket auth error: Invalid token - {str(e)}")
+            await websocket.close(code=1008, reason="Invalid token")
+            return
         except Exception as e:
-            await websocket.close(code=4001, reason="Invalid token")
+            logger.error(f"Admin WebSocket auth error: {str(e)}")
+            await websocket.close(code=1008, reason="Authentication failed")
             return
         
         # Check if user is admin
@@ -19121,7 +19282,7 @@ async def admin_websocket_endpoint(websocket: WebSocket, user_id: str):
         user_doc = await db.users.find_one({"id": user_id})
         
         if not user_doc:
-            await websocket.close(code=4004, reason="User not found")
+            await websocket.close(code=1008, reason="User not found")
             return
         
         # Check admin privileges
@@ -19140,11 +19301,28 @@ async def admin_websocket_endpoint(websocket: WebSocket, user_id: str):
                 admin_type = "campus_admin"
         
         if admin_type == "user":
-            await websocket.close(code=4003, reason="Admin privileges required")
+            await websocket.close(code=1008, reason="Admin privileges required")
             return
         
-        # Connect admin
-        await connection_manager.connect_admin(websocket, user_id, admin_type)
+        # Accept connection AFTER validation
+        await websocket.accept()
+        logger.info(f"Admin WebSocket connection accepted for user {user_id} ({admin_type})")
+        
+        # Send connection established message
+        await websocket.send_text(json.dumps({
+            "type": "admin_connection_established",
+            "admin_type": admin_type,
+            "message": f"Connected to admin real-time system ({admin_type})",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }))
+        
+        # Add to connection manager
+        if user_id not in connection_manager.admin_connections:
+            connection_manager.admin_connections[user_id] = set()
+        connection_manager.admin_connections[user_id].add(websocket)
+        
+        if admin_type == "system_admin":
+            connection_manager.system_admin_connections.add(websocket)
         
         try:
             while True:
