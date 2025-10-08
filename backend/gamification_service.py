@@ -360,6 +360,17 @@ class GamificationService:
         """Update a specific leaderboard entry for a user"""
         score = await self._calculate_leaderboard_score(user, leaderboard_type, period)
         
+        # Get previous entry to compare rank changes
+        previous_entry = await self.db.leaderboards.find_one({
+            "user_id": user["_id"],
+            "leaderboard_type": leaderboard_type,
+            "period": period,
+            "university": university
+        })
+        
+        previous_rank = previous_entry.get("rank") if previous_entry else None
+        previous_score = previous_entry.get("score", 0) if previous_entry else 0
+        
         # Update or create leaderboard entry
         await self.db.leaderboards.update_one(
             {
@@ -379,6 +390,65 @@ class GamificationService:
         
         # Recalculate ranks for this leaderboard
         await self._recalculate_leaderboard_ranks(leaderboard_type, period, university)
+        
+        # 🔥 REAL-TIME NOTIFICATIONS: Send leaderboard update notifications
+        try:
+            # Get new rank after recalculation
+            updated_entry = await self.db.leaderboards.find_one({
+                "user_id": user["_id"],
+                "leaderboard_type": leaderboard_type,
+                "period": period,
+                "university": university
+            })
+            
+            if updated_entry and (score != previous_score or updated_entry.get("rank") != previous_rank):
+                from websocket_service import get_notification_service
+                notification_service = await get_notification_service()
+                
+                new_rank = updated_entry.get("rank", 0)
+                leaderboard_name = f"{leaderboard_type.title()} ({period.replace('_', ' ').title()})"
+                if university:
+                    leaderboard_name += f" - {university}"
+                
+                # Send rank update notification
+                await notification_service.create_and_notify_in_app_notification(
+                    str(user["_id"]), {
+                        "type": "leaderboard_update",
+                        "title": f"🏆 Leaderboard Updated!",
+                        "message": f"You're now #{new_rank} in {leaderboard_name} with {score:.0f} points!",
+                        "priority": "medium" if new_rank > 10 else "high",
+                        "data": {
+                            "leaderboard_type": leaderboard_type,
+                            "period": period,
+                            "university": university,
+                            "new_rank": new_rank,
+                            "previous_rank": previous_rank,
+                            "score": score,
+                            "score_change": score - previous_score
+                        }
+                    }
+                )
+                
+                # Special notification for top 3 positions
+                if new_rank <= 3 and (not previous_rank or previous_rank > 3):
+                    position_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}
+                    await notification_service.create_and_notify_in_app_notification(
+                        str(user["_id"]), {
+                            "type": "top_rank_achieved",
+                            "title": f"🎉 {position_emoji.get(new_rank, '🏆')} Top {new_rank} Achievement!",
+                            "message": f"Congratulations! You've reached #{new_rank} in {leaderboard_name}!",
+                            "priority": "high",
+                            "data": {
+                                "achievement_type": "top_rank",
+                                "leaderboard_type": leaderboard_type,
+                                "period": period,
+                                "rank": new_rank,
+                                "score": score
+                            }
+                        }
+                    )
+        except Exception as e:
+            logger.error(f"Failed to send leaderboard notification: {str(e)}")
 
     async def _calculate_leaderboard_score(self, user: Dict, leaderboard_type: str, period: str) -> float:
         """Calculate score for a user in a specific leaderboard"""
