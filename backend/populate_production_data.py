@@ -316,8 +316,7 @@ class ProductionDataPopulator:
                     "category": category,
                     "allocated_amount": allocated_amount,
                     "spent_amount": min(spent_amount, allocated_amount * 1.2),  # Cap at 120% of budget
-                    "month": datetime.now(timezone.utc).month,
-                    "year": datetime.now(timezone.utc).year,
+                    "month": datetime.now(timezone.utc).strftime("%Y-%m"),  # Use YYYY-MM format
                     "created_at": datetime.now(timezone.utc)
                 }
                 
