@@ -52,6 +52,12 @@ import CampusAdminDashboard from './components/CampusAdminDashboard';
 import ClubAdminDashboard from './components/ClubAdminDashboard';
 import SuperAdminInterface from './components/SuperAdminInterface';
 
+// College Events System
+import CreateEvent from './components/CreateEvent';
+import EventsList from './components/EventsList';
+import EventDetails from './components/EventDetails';
+import MyEvents from './components/MyEvents';
+
 // Viral Impact Features
 import PublicCampusBattle from './components/PublicCampusBattle';
 import SpendingInsights from './components/SpendingInsights';
@@ -335,6 +341,24 @@ function App() {
               <Route 
                 path="/super-admin" 
                 element={user ? <SuperAdminInterface /> : <Navigate to="/login" />} 
+              />
+              
+              {/* College Events System */}
+              <Route 
+                path="/events" 
+                element={user ? <EventsList /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/events/create" 
+                element={user ? <CreateEvent /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/events/:id" 
+                element={user ? <EventDetails /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/my-events" 
+                element={user ? <MyEvents /> : <Navigate to="/login" />} 
               />
               
               {/* Viral Impact Features */}
