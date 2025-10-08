@@ -5216,7 +5216,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://alert-repair.preview.emergentagent.com"
+        base_url = "https://websocket-fix-5.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -9120,7 +9120,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://alert-repair.preview.emergentagent.com"
+        base_url = "https://websocket-fix-5.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -19164,6 +19164,27 @@ app.include_router(api_router)
 
 # ===== REAL-TIME WEBSOCKET ENDPOINTS =====
 # WebSocket endpoints must use /api prefix for Kubernetes ingress routing
+
+@app.websocket("/api/ws/test")
+async def test_websocket_endpoint(websocket: WebSocket):
+    """Simple WebSocket test endpoint"""
+    await websocket.accept()
+    await websocket.send_text(json.dumps({
+        "type": "connection_established",
+        "message": "Test WebSocket connection successful!",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }))
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await websocket.send_text(json.dumps({
+                "type": "echo",
+                "message": f"Echo: {data}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }))
+    except WebSocketDisconnect:
+        logger.info("Test WebSocket disconnected")
 
 @app.websocket("/api/ws/notifications/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
