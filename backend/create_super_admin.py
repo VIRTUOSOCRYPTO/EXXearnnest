@@ -18,8 +18,8 @@ async def create_super_admin():
     db = client[db_name]  # Use the configured database
     
     # Super admin details
-    super_admin_email = "superadmin@earnnest.com"
-    super_admin_password = "SuperAdmin@123"  # Change this in production
+    super_admin_email = "yash@earnaura.com"
+    super_admin_password = "YaSh@4517"  # Change this in production
     
     # Check if super admin already exists
     existing_admin = await db.users.find_one({"email": super_admin_email})
