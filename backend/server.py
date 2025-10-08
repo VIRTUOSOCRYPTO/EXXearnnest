@@ -5024,7 +5024,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://campus-challenges.preview.emergentagent.com"
+        base_url = "https://route-correct.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -6407,9 +6407,9 @@ async def create_inter_college_competition(
             await db.campus_leaderboards.insert_one(leaderboard.dict())
         
         # Create audit log
-        creator_type = "campus_admin" if campus_admin else "system_admin"
+        creator_type = "system_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
         audit_log = await admin_workflow_manager.create_audit_log(
-            admin_user_id=current_user["id"],
+            admin_user_id=current_user,
             action_type="create_inter_college_competition",
             action_description=f"Created inter-college competition: {competition_data.title}",
             target_type="competition",
@@ -6892,7 +6892,7 @@ async def create_prize_challenge(
             )
         
         # Create audit log
-        creator_type = "campus_admin" if campus_admin else "system_admin"
+        creator_type = "system_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
         audit_log = await admin_workflow_manager.create_audit_log(
             admin_user_id=current_user,
             action_type="create_prize_challenge",
@@ -7196,6 +7196,674 @@ async def get_prize_challenge_leaderboard(
     except Exception as e:
         logger.error(f"Get prize challenge leaderboard error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+
+
+# ===== CRUD OPERATIONS FOR COMPETITIONS =====
+
+@api_router.put("/inter-college/competitions/{competition_id}")
+@limiter.limit("10/minute")
+async def update_inter_college_competition(
+    request: Request,
+    competition_id: str,
+    update_data: InterCollegeCompetitionUpdate,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Update an inter-college competition (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get existing competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions: creator or super admin can edit
+        if competition["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can edit this competition")
+        
+        # Build update dict from provided fields
+        update_dict = {k: v for k, v in update_data.dict(exclude_unset=True).items() if v is not None}
+        
+        if not update_dict:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        update_dict["updated_at"] = datetime.now(timezone.utc)
+        
+        # Update competition
+        await db.inter_college_competitions.update_one(
+            {"id": competition_id},
+            {"$set": update_dict}
+        )
+        
+        # Create audit log
+        creator_type = "system_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user_id,
+            action_type="update_inter_college_competition",
+            action_description=f"Updated inter-college competition: {competition['title']}",
+            target_type="competition",
+            target_id=competition_id,
+            affected_entities=[{"type": "competition", "id": competition_id}],
+            severity="info",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Competition updated successfully",
+            "competition_id": competition_id,
+            "updated_fields": list(update_dict.keys())
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update competition error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update competition")
+
+@api_router.delete("/inter-college/competitions/{competition_id}")
+@limiter.limit("10/minute")
+async def delete_inter_college_competition(
+    request: Request,
+    competition_id: str,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Delete an inter-college competition (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get existing competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions
+        if competition["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can delete this competition")
+        
+        # Don't allow deletion if competition is active
+        if competition.get("status") == "active":
+            raise HTTPException(status_code=400, detail="Cannot delete an active competition. Cancel it first.")
+        
+        # Delete competition and related data
+        await db.inter_college_competitions.delete_one({"id": competition_id})
+        await db.campus_leaderboards.delete_many({"competition_id": competition_id})
+        await db.competition_registrations.delete_many({"competition_id": competition_id})
+        
+        # Create audit log
+        creator_type = "system_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user_id,
+            action_type="delete_inter_college_competition",
+            action_description=f"Deleted inter-college competition: {competition['title']}",
+            target_type="competition",
+            target_id=competition_id,
+            severity="warning",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Competition deleted successfully",
+            "competition_id": competition_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete competition error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete competition")
+
+# ===== CRUD OPERATIONS FOR PRIZE CHALLENGES =====
+
+@api_router.put("/prize-challenges/{challenge_id}")
+@limiter.limit("10/minute")
+async def update_prize_challenge(
+    request: Request,
+    challenge_id: str,
+    update_data: PrizeChallengeUpdate,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Update a prize challenge (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get existing challenge
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions
+        if challenge["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can edit this challenge")
+        
+        # Build update dict
+        update_dict = {k: v for k, v in update_data.dict(exclude_unset=True).items() if v is not None}
+        
+        if not update_dict:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        update_dict["updated_at"] = datetime.now(timezone.utc)
+        
+        # Update challenge
+        await db.prize_challenges.update_one(
+            {"id": challenge_id},
+            {"$set": update_dict}
+        )
+        
+        # Create audit log
+        creator_type = "system_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user_id,
+            action_type="update_prize_challenge",
+            action_description=f"Updated prize challenge: {challenge['title']}",
+            target_type="challenge",
+            target_id=challenge_id,
+            severity="info",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Challenge updated successfully",
+            "challenge_id": challenge_id,
+            "updated_fields": list(update_dict.keys())
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update challenge")
+
+@api_router.delete("/prize-challenges/{challenge_id}")
+@limiter.limit("10/minute")
+async def delete_prize_challenge(
+    request: Request,
+    challenge_id: str,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Delete a prize challenge (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get existing challenge
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions
+        if challenge["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can delete this challenge")
+        
+        # Don't allow deletion if challenge is active
+        if challenge.get("status") == "active":
+            raise HTTPException(status_code=400, detail="Cannot delete an active challenge. Cancel it first.")
+        
+        # Delete challenge and related data
+        await db.prize_challenges.delete_one({"id": challenge_id})
+        await db.prize_challenge_participations.delete_many({"challenge_id": challenge_id})
+        
+        # Create audit log
+        creator_type = "system_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
+        audit_log = await admin_workflow_manager.create_audit_log(
+            admin_user_id=current_user_id,
+            action_type="delete_prize_challenge",
+            action_description=f"Deleted prize challenge: {challenge['title']}",
+            target_type="challenge",
+            target_id=challenge_id,
+            severity="warning",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log)
+        
+        return {
+            "message": "Challenge deleted successfully",
+            "challenge_id": challenge_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete challenge error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete challenge")
+
+# ===== COLLEGE EVENTS SYSTEM =====
+
+@api_router.post("/college-events")
+@limiter.limit("10/day")
+async def create_college_event(
+    request: Request,
+    event_data: CollegeEventCreate,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Create a new college event (Club Admin, Campus Admin, or Super Admin)"""
+    try:
+        db = await get_database()
+        
+        current_user = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        admin_type = "super_admin" if is_system_admin else current_admin.get("admin_type", "campus_admin")
+        
+        # Get user's college
+        user_doc = await get_user_by_id(current_user)
+        college_name = user_doc.get("university", "Unknown College")
+        
+        # Create event
+        event_dict = event_data.dict()
+        event_dict.update({
+            "id": str(uuid.uuid4()),
+            "college_name": college_name,
+            "created_by": current_user,
+            "created_by_admin_type": admin_type,
+            "admin_id": current_admin.get("id") if not is_system_admin else None,
+            "category": "technical",  # Fixed as per requirements
+            "current_participants": 0,
+            "status": "upcoming",
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc)
+        })
+        
+        event = CollegeEvent(**event_dict)
+        await db.college_events.insert_one(event.dict())
+        
+        # Update admin statistics
+        if not is_system_admin and current_admin.get("id"):
+            await db.campus_admins.update_one(
+                {"id": current_admin["id"]},
+                {
+                    "$inc": {"events_created": 1},
+                    "$set": {"last_activity": datetime.now(timezone.utc)}
+                }
+            )
+        
+        return {
+            "message": "College event created successfully",
+            "event_id": event.id,
+            "event_type": event.event_type,
+            "visibility": event.visibility,
+            "college_name": college_name
+        }
+        
+    except Exception as e:
+        logger.error(f"Create college event error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create event: {str(e)}")
+
+@api_router.get("/college-events")
+@limiter.limit("30/minute")
+async def get_college_events(
+    request: Request,
+    status: Optional[str] = None,
+    event_type: Optional[str] = None,
+    visibility: Optional[str] = None,
+    club_name: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Get college events with filters"""
+    try:
+        db = await get_database()
+        user_college = current_user.get("university", "")
+        
+        # Build filter
+        filter_dict = {}
+        
+        if status:
+            filter_dict["status"] = status
+        if event_type:
+            filter_dict["event_type"] = event_type
+        if club_name:
+            filter_dict["club_name"] = club_name
+        
+        # Visibility filter
+        if visibility:
+            filter_dict["visibility"] = visibility
+        else:
+            # Show events based on visibility rules
+            filter_dict["$or"] = [
+                {"visibility": "all_colleges"},
+                {"visibility": "college_only", "college_name": user_college},
+                {"visibility": "selected_colleges", "eligible_colleges": user_college}
+            ]
+        
+        events = await db.college_events.find(filter_dict).sort("start_date", 1).to_list(None)
+        
+        # Enhance with creator details
+        enhanced_events = []
+        for event in events:
+            # Remove MongoDB _id field
+            if "_id" in event:
+                del event["_id"]
+            
+            creator = await get_user_by_id(event["created_by"])
+            event_info = {
+                **event,
+                "creator_name": creator.get("full_name", "Unknown") if creator else "Unknown",
+                "creator_email": creator.get("email") if creator else None
+            }
+            enhanced_events.append(event_info)
+        
+        return {
+            "events": enhanced_events,
+            "total": len(enhanced_events),
+            "user_college": user_college
+        }
+        
+    except Exception as e:
+        logger.error(f"Get college events error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get events")
+
+@api_router.get("/college-events/{event_id}")
+@limiter.limit("30/minute")
+async def get_college_event_details(
+    request: Request,
+    event_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Get detailed information about a specific event"""
+    try:
+        db = await get_database()
+        
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Remove MongoDB _id field
+        if "_id" in event:
+            del event["_id"]
+        
+        # Check if user has access based on visibility
+        user_college = current_user.get("university", "")
+        if event["visibility"] == "college_only" and event["college_name"] != user_college:
+            raise HTTPException(status_code=403, detail="This event is only visible to students from the host college")
+        elif event["visibility"] == "selected_colleges" and user_college not in event.get("eligible_colleges", []):
+            raise HTTPException(status_code=403, detail="This event is not available for your college")
+        
+        # Get creator details
+        creator = await get_user_by_id(event["created_by"])
+        
+        # Check if user is registered
+        user_registration = await db.event_registrations.find_one({
+            "event_id": event_id,
+            "user_id": current_user["id"]
+        })
+        
+        # Get registration count
+        registration_count = await db.event_registrations.count_documents({"event_id": event_id})
+        
+        return {
+            **event,
+            "creator_name": creator.get("full_name", "Unknown") if creator else "Unknown",
+            "is_registered": bool(user_registration),
+            "registration_status": user_registration.get("status") if user_registration else None,
+            "current_registrations": registration_count,
+            "can_register": (
+                event.get("registration_required", True) and
+                not user_registration and
+                event["status"] in ["upcoming", "registration_open"] and
+                (not event.get("max_participants") or registration_count < event.get("max_participants", 0))
+            )
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get event details error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get event details")
+
+@api_router.put("/college-events/{event_id}")
+@limiter.limit("10/minute")
+async def update_college_event(
+    request: Request,
+    event_id: str,
+    update_data: CollegeEventUpdate,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Update a college event (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get existing event
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions
+        if event["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can edit this event")
+        
+        # Build update dict
+        update_dict = {k: v for k, v in update_data.dict(exclude_unset=True).items() if v is not None}
+        
+        if not update_dict:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        update_dict["updated_at"] = datetime.now(timezone.utc)
+        
+        # Update event
+        await db.college_events.update_one(
+            {"id": event_id},
+            {"$set": update_dict}
+        )
+        
+        return {
+            "message": "Event updated successfully",
+            "event_id": event_id,
+            "updated_fields": list(update_dict.keys())
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update event error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update event")
+
+@api_router.delete("/college-events/{event_id}")
+@limiter.limit("10/minute")
+async def delete_college_event(
+    request: Request,
+    event_id: str,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Delete a college event (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get existing event
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions
+        if event["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can delete this event")
+        
+        # Don't allow deletion if event is ongoing
+        if event.get("status") == "ongoing":
+            raise HTTPException(status_code=400, detail="Cannot delete an ongoing event. Mark it as completed or cancelled first.")
+        
+        # Delete event and registrations
+        await db.college_events.delete_one({"id": event_id})
+        await db.event_registrations.delete_many({"event_id": event_id})
+        
+        return {
+            "message": "Event deleted successfully",
+            "event_id": event_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete event error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete event")
+
+@api_router.post("/college-events/{event_id}/register")
+@limiter.limit("10/minute")
+async def register_for_event(
+    request: Request,
+    event_id: str,
+    team_name: Optional[str] = None,
+    team_members: List[Dict[str, str]] = [],
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Register for a college event"""
+    try:
+        db = await get_database()
+        
+        # Get event
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Check if registration is required
+        if not event.get("registration_required", True):
+            raise HTTPException(status_code=400, detail="This event does not require registration")
+        
+        # Check event status
+        if event["status"] not in ["upcoming", "registration_open"]:
+            raise HTTPException(status_code=400, detail="Registration is not open for this event")
+        
+        # Check if already registered
+        existing_registration = await db.event_registrations.find_one({
+            "event_id": event_id,
+            "user_id": current_user["id"]
+        })
+        
+        if existing_registration:
+            raise HTTPException(status_code=400, detail="You are already registered for this event")
+        
+        # Check participant limit
+        if event.get("max_participants"):
+            registration_count = await db.event_registrations.count_documents({"event_id": event_id})
+            if registration_count >= event["max_participants"]:
+                raise HTTPException(status_code=400, detail="Event is full")
+        
+        # Create registration
+        registration = EventRegistration(
+            event_id=event_id,
+            user_id=current_user["id"],
+            user_name=current_user.get("full_name", "Unknown"),
+            user_email=current_user.get("email", ""),
+            user_college=current_user.get("university", ""),
+            team_name=team_name,
+            team_members=team_members
+        )
+        
+        await db.event_registrations.insert_one(registration.dict())
+        
+        # Update event participant count
+        await db.college_events.update_one(
+            {"id": event_id},
+            {"$inc": {"current_participants": 1}}
+        )
+        
+        return {
+            "message": "Successfully registered for event",
+            "registration_id": registration.id,
+            "event_title": event["title"],
+            "event_date": event["start_date"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Event registration error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to register for event")
+
+@api_router.get("/college-events/{event_id}/participants")
+@limiter.limit("20/minute")
+async def get_event_participants(
+    request: Request,
+    event_id: str,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Get list of event participants (creator or super admin only)"""
+    try:
+        db = await get_database()
+        
+        # Get event
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        current_user_id = current_admin["user_id"]
+        is_system_admin = current_admin.get("is_system_admin", False)
+        
+        # Check permissions
+        if event["created_by"] != current_user_id and not is_system_admin:
+            raise HTTPException(status_code=403, detail="Only the creator or super admin can view participants")
+        
+        # Get all registrations
+        registrations = await db.event_registrations.find({"event_id": event_id}).to_list(None)
+        
+        return {
+            "event_id": event_id,
+            "event_title": event["title"],
+            "total_participants": len(registrations),
+            "max_participants": event.get("max_participants"),
+            "participants": registrations
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get event participants error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get participants")
+
+@api_router.get("/my-events")
+@limiter.limit("20/minute")
+async def get_my_created_events(
+    request: Request,
+    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+):
+    """Get all events created by the current admin"""
+    try:
+        db = await get_database()
+        
+        current_user_id = current_admin["user_id"]
+        
+        # Get all events created by user
+        events = await db.college_events.find({"created_by": current_user_id}).sort("created_at", -1).to_list(None)
+        
+        # Enhance with registration counts
+        enhanced_events = []
+        for event in events:
+            # Remove MongoDB _id field
+            if "_id" in event:
+                del event["_id"]
+            
+            registration_count = await db.event_registrations.count_documents({"event_id": event["id"]})
+            event_info = {
+                **event,
+                "current_registrations": registration_count
+            }
+            enhanced_events.append(event_info)
+        
+        return {
+            "events": enhanced_events,
+            "total": len(enhanced_events)
+        }
+        
+    except Exception as e:
+        logger.error(f"Get my events error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get events")
 
 # ===== CAMPUS REPUTATION SYSTEM =====
 
@@ -8007,7 +8675,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://campus-challenges.preview.emergentagent.com"
+        base_url = "https://route-correct.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
