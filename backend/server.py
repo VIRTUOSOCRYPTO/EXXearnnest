@@ -701,16 +701,59 @@ async def update_monthly_income_goal_progress(user_id: str):
         monthly_income = sum(transaction["amount"] for transaction in income_transactions)
         
         # Update the goal's current amount
+        is_completed = monthly_income >= monthly_goal["target_amount"]
+        previous_amount = monthly_goal.get("current_amount", 0)
+        
         await db.financial_goals.update_one(
             {"_id": monthly_goal["_id"]},
             {
                 "$set": {
                     "current_amount": monthly_income,
                     "updated_at": datetime.now(timezone.utc),
-                    "is_completed": monthly_income >= monthly_goal["target_amount"]
+                    "is_completed": is_completed
                 }
             }
         )
+        
+        # 🔥 REAL-TIME NOTIFICATIONS: Send goal progress updates
+        try:
+            notification_service = await get_notification_service()
+            progress_percentage = (monthly_income / monthly_goal["target_amount"] * 100) if monthly_goal["target_amount"] > 0 else 0
+            
+            # Send progress update notification
+            if monthly_income != previous_amount:
+                await notification_service.create_and_notify_in_app_notification(user_id, {
+                    "type": "goal_progress",
+                    "title": f"📈 Goal Progress Updated!",
+                    "message": f"Monthly income goal: ₹{monthly_income:.0f}/₹{monthly_goal['target_amount']:.0f} ({progress_percentage:.1f}% complete)",
+                    "priority": "medium",
+                    "data": {
+                        "goal_id": str(monthly_goal["_id"]),
+                        "goal_category": "monthly_income",
+                        "current_amount": monthly_income,
+                        "target_amount": monthly_goal["target_amount"],
+                        "progress_percentage": progress_percentage,
+                        "is_completed": is_completed
+                    }
+                })
+            
+            # Send goal completion notification
+            if is_completed and not monthly_goal.get("is_completed", False):
+                await notification_service.create_and_notify_in_app_notification(user_id, {
+                    "type": "goal_completed",
+                    "title": f"🎉 Goal Completed!",
+                    "message": f"Congratulations! You've reached your monthly income goal of ₹{monthly_goal['target_amount']:.0f}!",
+                    "priority": "high",
+                    "data": {
+                        "goal_id": str(monthly_goal["_id"]),
+                        "goal_category": "monthly_income",
+                        "completed_amount": monthly_income,
+                        "target_amount": monthly_goal["target_amount"],
+                        "achievement_type": "goal_completion"
+                    }
+                })
+        except Exception as e:
+            logger.error(f"Failed to send goal progress notification: {str(e)}")
         
         logger.info(f"Updated monthly income goal for user {user_id}: ₹{monthly_income}/₹{monthly_goal['target_amount']}")
         
@@ -1666,6 +1709,82 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                     "type": "income",
                     "amount": transaction.amount
                 })
+        
+        # 🔥 REAL-TIME NOTIFICATIONS: Send WebSocket notifications for all transactions
+        try:
+            notification_service = await get_notification_service()
+            
+            if transaction_data.type == "expense":
+                # Send expense notification with budget info
+                budget = await db.budgets.find_one({
+                    "user_id": user_id,
+                    "category": transaction_dict["category"],
+                    "month": datetime.now(timezone.utc).strftime("%Y-%m")
+                })
+                remaining_budget = budget["allocated_amount"] - budget["spent_amount"] if budget else 0
+                
+                await notification_service.create_and_notify_in_app_notification(user_id, {
+                    "type": "transaction_expense",
+                    "title": f"💸 Expense Added: ₹{transaction.amount}",
+                    "message": f"Spent ₹{transaction.amount} on {transaction.category}. Remaining budget: ₹{remaining_budget:.2f}",
+                    "priority": "high" if remaining_budget < (budget["allocated_amount"] * 0.1) else "medium",
+                    "data": {
+                        "transaction_id": transaction.id,
+                        "category": transaction.category,
+                        "amount": transaction.amount,
+                        "remaining_budget": remaining_budget,
+                        "budget_alert": remaining_budget < (budget["allocated_amount"] * 0.2) if budget else False
+                    }
+                })
+                
+                # Send budget alert if low budget
+                if budget and remaining_budget < (budget["allocated_amount"] * 0.2):
+                    await notification_service.create_and_notify_in_app_notification(user_id, {
+                        "type": "budget_alert",
+                        "title": "⚠️ Budget Alert!",
+                        "message": f"Only ₹{remaining_budget:.2f} left in {transaction.category} budget this month",
+                        "priority": "high",
+                        "data": {
+                            "category": transaction.category,
+                            "remaining_budget": remaining_budget,
+                            "allocated_amount": budget["allocated_amount"]
+                        }
+                    })
+            
+            else:  # Income transaction
+                # Get updated user stats
+                user_doc = await get_user_by_id(user_id)
+                total_earnings = user_doc.get("total_earnings", 0)
+                
+                await notification_service.create_and_notify_in_app_notification(user_id, {
+                    "type": "transaction_income",
+                    "title": f"💰 Income Added: ₹{transaction.amount}",
+                    "message": f"Great! You've earned ₹{transaction.amount}. Total earnings: ₹{total_earnings:.2f}",
+                    "priority": "medium",
+                    "data": {
+                        "transaction_id": transaction.id,
+                        "amount": transaction.amount,
+                        "total_earnings": total_earnings,
+                        "income_streak": user_doc.get("current_streak", 0)
+                    }
+                })
+                
+                # Send streak milestone notification if applicable
+                current_streak = user_doc.get("current_streak", 0)
+                if current_streak > 0 and current_streak % 5 == 0:  # Every 5 days
+                    await notification_service.create_and_notify_in_app_notification(user_id, {
+                        "type": "streak_milestone",
+                        "title": f"🔥 {current_streak}-Day Income Streak!",
+                        "message": f"Amazing! You're on a {current_streak}-day income streak. Keep it up!",
+                        "priority": "high",
+                        "data": {
+                            "streak_days": current_streak,
+                            "milestone_type": "income_streak"
+                        }
+                    })
+            
+        except Exception as e:
+            logger.error(f"Failed to send transaction notification: {str(e)}")
         
         return transaction
         
@@ -5024,7 +5143,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://elastic-elion.preview.emergentagent.com"
+        base_url = "https://websocket-repair-4.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -8928,7 +9047,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://elastic-elion.preview.emergentagent.com"
+        base_url = "https://websocket-repair-4.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
