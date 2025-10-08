@@ -745,7 +745,7 @@ const CampusAdminRequest = () => {
             </p>
             <Button 
               className="bg-green-600 hover:bg-green-700"
-              onClick={() => window.location.href = '/campus-admin-dashboard'}
+              onClick={() => window.location.href = '/campus-admin/dashboard'}
             >
               <Shield className="w-4 h-4 mr-2" />
               Go to Admin Dashboard
