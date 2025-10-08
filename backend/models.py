@@ -2591,6 +2591,35 @@ class PrizeChallengeCreate(BaseModel):
     scholarship_details: Optional[Dict[str, Any]] = None
     campus_reputation_rewards: Dict[str, int] = {}
 
+class InterCollegeCompetitionUpdate(BaseModel):
+    """Update model for inter-college competitions"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    registration_start: Optional[datetime] = None
+    registration_end: Optional[datetime] = None
+    min_participants_per_campus: Optional[int] = None
+    max_participants_per_campus: Optional[int] = None
+    eligible_universities: Optional[List[str]] = None
+    target_value: Optional[float] = None
+    prize_pool: Optional[float] = None
+    prize_distribution: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+
+class PrizeChallengeUpdate(BaseModel):
+    """Update model for prize challenges"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    difficulty_level: Optional[str] = None
+    target_value: Optional[float] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    max_participants: Optional[int] = None
+    total_prize_value: Optional[float] = None
+    prize_structure: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+
 
 # ===== SUPER ADMIN OVERSIGHT MODELS =====
 
@@ -2738,4 +2767,154 @@ class AdminPerformanceReport(BaseModel):
     # Issues and alerts
     critical_issues: List[Dict[str, Any]] = []
     pending_actions: List[Dict[str, Any]] = []
+
+
+# ===== COLLEGE EVENTS SYSTEM =====
+
+class CollegeEvent(BaseModel):
+    """Model for college events (technical, club activities, hackathons, etc.)"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    
+    # Basic Information
+    title: str
+    description: str
+    event_type: str  # "hackathon", "workshop", "competition", "seminar", "tech_talk", "club_meeting"
+    category: str = "technical"  # Always "technical" for now
+    
+    # Schedule
+    start_date: datetime
+    end_date: datetime
+    registration_deadline: Optional[datetime] = None
+    
+    # Location
+    venue: str  # Physical location or "Virtual"
+    is_virtual: bool = False
+    meeting_link: Optional[str] = None
+    college_name: str  # Host college
+    
+    # Visibility and Access
+    visibility: str = "college_only"  # "college_only", "all_colleges", "selected_colleges"
+    eligible_colleges: List[str] = []  # For "selected_colleges" visibility
+    
+    # Organizer Information
+    club_name: Optional[str] = None  # e.g., "IEEE", "Photonics Club", "Robotics Club"
+    organizer_name: str
+    organizer_email: Optional[str] = None
+    organizer_phone: Optional[str] = None
+    
+    # Registration
+    registration_required: bool = True
+    max_participants: Optional[int] = None
+    current_participants: int = 0
+    registration_fee: float = 0.0
+    
+    # Media and Resources
+    banner_image: Optional[str] = None
+    attachments: List[str] = []  # Links to documents, guidelines, etc.
+    tags: List[str] = []  # e.g., ["AI", "Machine Learning", "24-hour", "Team Event"]
+    
+    # Event Details
+    rules: Optional[str] = None
+    prizes: Optional[Dict[str, Any]] = None  # {"1st": "10000", "2nd": "5000"}
+    requirements: Optional[str] = None
+    
+    # Admin and Status
+    created_by: str  # User ID of creator
+    created_by_admin_type: str  # "club_admin", "campus_admin", "super_admin"
+    admin_id: Optional[str] = None  # Campus/Club Admin ID
+    status: str = "upcoming"  # "upcoming", "registration_open", "ongoing", "completed", "cancelled"
+    is_featured: bool = False
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @validator('event_type')
+    def validate_event_type(cls, v):
+        allowed_types = ["hackathon", "workshop", "coding_competition", "tech_talk", 
+                        "seminar", "conference", "club_meeting", "project_showcase"]
+        if v not in allowed_types:
+            raise ValueError(f'Event type must be one of: {", ".join(allowed_types)}')
+        return v
+    
+    @validator('visibility')
+    def validate_visibility(cls, v):
+        allowed_visibility = ["college_only", "all_colleges", "selected_colleges"]
+        if v not in allowed_visibility:
+            raise ValueError(f'Visibility must be one of: {", ".join(allowed_visibility)}')
+        return v
+    
+    @validator('status')
+    def validate_status(cls, v):
+        allowed_statuses = ["upcoming", "registration_open", "ongoing", "completed", "cancelled"]
+        if v not in allowed_statuses:
+            raise ValueError(f'Status must be one of: {", ".join(allowed_statuses)}')
+        return v
+
+class CollegeEventCreate(BaseModel):
+    """Create model for college events"""
+    title: str
+    description: str
+    event_type: str
+    start_date: datetime
+    end_date: datetime
+    registration_deadline: Optional[datetime] = None
+    venue: str
+    is_virtual: bool = False
+    meeting_link: Optional[str] = None
+    visibility: str = "college_only"
+    eligible_colleges: List[str] = []
+    club_name: Optional[str] = None
+    organizer_name: str
+    organizer_email: Optional[str] = None
+    organizer_phone: Optional[str] = None
+    registration_required: bool = True
+    max_participants: Optional[int] = None
+    registration_fee: float = 0.0
+    banner_image: Optional[str] = None
+    tags: List[str] = []
+    rules: Optional[str] = None
+    prizes: Optional[Dict[str, Any]] = None
+    requirements: Optional[str] = None
+
+class CollegeEventUpdate(BaseModel):
+    """Update model for college events"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    event_type: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    registration_deadline: Optional[datetime] = None
+    venue: Optional[str] = None
+    is_virtual: Optional[bool] = None
+    meeting_link: Optional[str] = None
+    visibility: Optional[str] = None
+    eligible_colleges: Optional[List[str]] = None
+    club_name: Optional[str] = None
+    organizer_name: Optional[str] = None
+    organizer_email: Optional[str] = None
+    organizer_phone: Optional[str] = None
+    registration_required: Optional[bool] = None
+    max_participants: Optional[int] = None
+    registration_fee: Optional[float] = None
+    banner_image: Optional[str] = None
+    tags: Optional[List[str]] = None
+    rules: Optional[str] = None
+    prizes: Optional[Dict[str, Any]] = None
+    requirements: Optional[str] = None
+    status: Optional[str] = None
+
+class EventRegistration(BaseModel):
+    """Model for event registrations"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_id: str
+    user_id: str
+    user_name: str
+    user_email: str
+    user_college: str
+    registration_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    status: str = "registered"  # "registered", "attended", "cancelled"
+    team_name: Optional[str] = None
+    team_members: List[Dict[str, str]] = []  # [{"name": "...", "email": "..."}]
+    additional_info: Optional[Dict[str, Any]] = None
 
