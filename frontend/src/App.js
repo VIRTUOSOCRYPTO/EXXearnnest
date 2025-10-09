@@ -52,6 +52,7 @@ import CampusAdminRequest from './components/CampusAdminRequest';
 import CampusAdminDashboard from './components/CampusAdminDashboard';
 import ClubAdminDashboard from './components/ClubAdminDashboard';
 import SuperAdminInterface from './components/SuperAdminInterface';
+import MyRegistrations from './components/MyRegistrations';
 
 // College Events System
 import CreateEvent from './components/CreateEvent';
@@ -216,6 +217,10 @@ function App() {
               <Route 
                 path="/profile" 
                 element={user ? <Profile /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/my-registrations" 
+                element={user ? <MyRegistrations /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/gamification" 
