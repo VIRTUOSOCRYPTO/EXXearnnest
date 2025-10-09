@@ -57,6 +57,9 @@ except ImportError as e:
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# Get frontend URL from environment (for referral links, etc.)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
 # Ensure uploads directory exists
 UPLOADS_DIR = ROOT_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -5216,7 +5219,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://app-initializer-1.preview.emergentagent.com"
+        base_url = FRONTEND_URL
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -7370,7 +7373,7 @@ async def get_prize_challenges(
     request: Request,
     challenge_type: Optional[str] = None,
     status: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Get all prize-based challenges"""
     try:
@@ -7386,7 +7389,7 @@ async def get_prize_challenges(
         challenges = await db.prize_challenges.find(filter_query).sort("created_at", -1).to_list(None)
         
         # Enhance with user's participation status
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         
         enhanced_challenges = []
         for challenge in challenges:
@@ -7464,12 +7467,12 @@ async def get_prize_challenges(
 async def join_prize_challenge(
     request: Request,
     challenge_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Join a prize-based challenge"""
     try:
         db = await get_database()
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -7521,7 +7524,7 @@ async def join_prize_challenge(
         # Create participation record
         participation = PrizeChallengeParticipation(
             challenge_id=challenge_id,
-            user_id=current_user,
+            user_id=current_user["id"],
             target_progress=challenge["target_value"]
         )
         
@@ -7536,7 +7539,7 @@ async def join_prize_challenge(
         # Award joining points
         join_points = 10
         await db.users.update_one(
-            {"id": current_user},
+            {"id": current_user["id"]},
             {"$inc": {"experience_points": join_points}}
         )
         
@@ -9120,7 +9123,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://app-initializer-1.preview.emergentagent.com"
+        base_url = FRONTEND_URL
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -16130,7 +16133,7 @@ async def request_club_admin_privileges(
                 raise HTTPException(status_code=400, detail=f"You already have a {status} club admin request")
         
         # Get user details
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -16164,7 +16167,7 @@ async def request_club_admin_privileges(
         
         # Create club admin request
         club_admin_request = ClubAdminRequest(
-            user_id=current_user,
+            user_id=current_user["id"],
             campus_admin_id=campus_admin["user_id"],
             college_name=college_name,
             club_name=admin_request_data.club_name,
@@ -16188,9 +16191,9 @@ async def request_club_admin_privileges(
             "notification_type": "club_admin_request",
             "priority": "normal",
             "source_type": "user",
-            "source_id": current_user,
+            "source_id": current_user["id"],
             "related_request_id": club_admin_request.id,
-            "related_user_id": current_user,
+            "related_user_id": current_user["id"],
             "action_buttons": [
                 {"label": "Review Request", "action": "review_club_admin_request"},
                 {"label": "View Profile", "action": "view_user_profile"}
@@ -16218,7 +16221,7 @@ async def request_club_admin_privileges(
             "action_description": f"Club admin request submitted by {user.get('email')} for {admin_request_data.club_name}",
             "target_type": "club_admin_request",
             "target_id": club_admin_request.id,
-            "affected_entities": [{"type": "user", "id": current_user, "name": user.get("full_name", "Unknown")}],
+            "affected_entities": [{"type": "user", "id": current_user["id"], "name": user.get("full_name", "Unknown")}],
             "ip_address": request.client.host,
             "severity": "info",
             "admin_level": "campus_admin",
