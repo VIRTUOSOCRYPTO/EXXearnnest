@@ -133,7 +133,9 @@ const CreateEvent = () => {
     try {
       setCreating(true);
       
-      const response = await axios.post(`${API}/college-events`, formData);
+      const response = await axios.post(`${API}/college-events`, formData, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
       
       alert('Event created successfully! 🎉');
       navigate('/events');
