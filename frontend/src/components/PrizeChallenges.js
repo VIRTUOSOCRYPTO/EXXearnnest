@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
 import { Gift, Clock, Zap, Star, Target, Award, TrendingUp, Calendar, Users, DollarSign, Trophy, Crown, Edit, Trash2 } from 'lucide-react';
-import RegistrationModal from './RegistrationModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -23,9 +22,6 @@ const PrizeChallenges = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [editingChallenge, setEditingChallenge] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
-  const [selectedChallengeForRegistration, setSelectedChallengeForRegistration] = useState(null);
-
   useEffect(() => {
     fetchChallenges();
   }, []);
@@ -54,10 +50,10 @@ const PrizeChallenges = () => {
           : challenge
       ));
 
-      alert(`Successfully joined challenge! ${response.data.message}`);
+      alert(`Successfully registered! ${response.data.message || 'You have been registered for this challenge.'}`);
     } catch (error) {
       console.error('Join challenge error:', error);
-      alert(error.response?.data?.detail || 'Failed to join challenge');
+      alert(error.response?.data?.detail || 'Failed to register for challenge');
     } finally {
       setJoining(false);
     }
@@ -341,14 +337,12 @@ const PrizeChallenges = () => {
 
           {challenge.can_join && !challenge.is_participating && (
             <Button
-              onClick={() => {
-                setSelectedChallengeForRegistration(challenge);
-                setRegistrationModalOpen(true);
-              }}
+              onClick={() => joinChallenge(challenge.id)}
+              disabled={joining}
               className="w-full sm:flex-1 bg-purple-600 hover:bg-purple-700"
             >
               <Gift className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="whitespace-nowrap">Register Now</span>
+              <span className="whitespace-nowrap">{joining ? 'Registering...' : 'Register Now'}</span>
             </Button>
           )}
 
@@ -358,7 +352,7 @@ const PrizeChallenges = () => {
               className="w-full sm:flex-1 bg-emerald-500 cursor-not-allowed opacity-75"
             >
               <Users className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="whitespace-nowrap">Registered</span>
+              <span className="whitespace-nowrap">Already Registered</span>
             </Button>
           )}
 
@@ -772,20 +766,6 @@ const PrizeChallenges = () => {
           )}
         </TabsContent>
       </Tabs>
-      
-      {/* Registration Modal */}
-      {selectedChallengeForRegistration && (
-        <RegistrationModal
-          open={registrationModalOpen}
-          onClose={() => {
-            setRegistrationModalOpen(false);
-            setSelectedChallengeForRegistration(null);
-          }}
-          eventId={selectedChallengeForRegistration.id}
-          eventType="prize_challenge"
-          eventTitle={selectedChallengeForRegistration.title}
-        />
-      )}
     </div>
   );
 };
