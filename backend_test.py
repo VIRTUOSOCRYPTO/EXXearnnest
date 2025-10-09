@@ -6,8 +6,8 @@ import time
 import random
 import string
 
-class EarnNestProductionTester:
-    def __init__(self, base_url="http://localhost:8001/api"):
+class CampusEventRegistrationTester:
+    def __init__(self, base_url="https://event-reg-hub-1.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.token = None
         self.user_id = None
@@ -79,6 +79,8 @@ class EarnNestProductionTester:
             "email": self.test_user_email,
             "password": self.test_password,
             "full_name": "Priya Sharma",
+            "role": "Student",
+            "avatar": "girl",
             "student_level": "undergraduate",
             "skills": ["Python", "Content Writing", "Mathematics", "Hindi"],
             "availability_hours": 15,
@@ -94,10 +96,14 @@ class EarnNestProductionTester:
             data=user_data
         )
         
-        if success and response.get('verification_required'):
-            print(f"   ✅ Email verification required as expected")
-            # In production, we'd get the code from email, but for testing we'll simulate
-            self.verification_code = "123456"  # This would come from email in real scenario
+        if success:
+            # Extract token for subsequent requests
+            if response.get('token'):
+                self.token = response.get('token')
+                print(f"   ✅ Registration successful, token obtained")
+            if response.get('verification_required'):
+                print(f"   ✅ Email verification required as expected")
+                self.verification_code = "123456"  # This would come from email in real scenario
             return True
         return False
 
@@ -674,7 +680,7 @@ class EarnNestProductionTester:
         return True
 
 def main():
-    tester = EarnNestProductionTester()
+    tester = CampusEventRegistrationTester()
     
     try:
         tester.run_comprehensive_tests()
