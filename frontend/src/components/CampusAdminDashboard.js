@@ -394,42 +394,20 @@ const CampusAdminDashboard = () => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center space-x-2">
-                {capabilities.can_create_inter_college ? (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-gray-400" />
-                )}
-                <span className={capabilities.can_create_inter_college ? "text-green-700" : "text-gray-500"}>
-                  Create Inter-College Competitions
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-2">
                 {capabilities.can_create_intra_college ? (
                   <CheckCircle className="w-5 h-5 text-green-600" />
                 ) : (
                   <AlertCircle className="w-5 h-5 text-gray-400" />
                 )}
                 <span className={capabilities.can_create_intra_college ? "text-green-700" : "text-gray-500"}>
-                  Create Intra-College Events
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                {capabilities.can_manage_reputation ? (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-gray-400" />
-                )}
-                <span className={capabilities.can_manage_reputation ? "text-green-700" : "text-gray-500"}>
-                  Manage Campus Reputation
+                  Manage College Events
                 </span>
               </div>
 
               <div className="flex items-center space-x-2">
                 <Target className="w-5 h-5 text-blue-600" />
                 <span className="text-blue-700">
-                  Monthly Limit: {capabilities.max_competitions_per_month}
+                  Monthly Event Limit: {capabilities.max_competitions_per_month || 10}
                 </span>
               </div>
             </div>
@@ -499,29 +477,11 @@ const CampusAdminDashboard = () => {
         <div className="flex flex-wrap gap-4">
           <Button 
             className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => window.location.href = '/create-competition'}
-            disabled={!capabilities.can_create_inter_college || statistics.remaining_monthly_quota === 0}
+            onClick={() => window.location.href = '/create-college-event'}
           >
             <Plus className="w-4 h-4 mr-2" />
-            Create Competition
+            Create College Event
           </Button>
-          <Button 
-            className="bg-green-600 hover:bg-green-700"
-            onClick={() => window.location.href = '/create-challenge'}
-            disabled={statistics.remaining_monthly_quota === 0}
-          >
-            <Award className="w-4 h-4 mr-2" />
-            Create Challenge
-          </Button>
-          {capabilities.can_manage_reputation && (
-            <Button 
-              className="bg-purple-600 hover:bg-purple-700"
-              onClick={() => window.location.href = '/campus-reputation'}
-            >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Manage Reputation
-            </Button>
-          )}
         </div>
       </div>
     );
@@ -685,6 +645,34 @@ const CampusAdminDashboard = () => {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+
+  const renderCollegeEvents = () => (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold">College Events Management</h3>
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700"
+          onClick={() => window.location.href = '/create-college-event'}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Create Event
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Your College Events</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-600 text-center py-8">
+            College events management interface will be displayed here.
+            <br />
+            You can create and manage events specific to your college.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -906,10 +894,9 @@ const CampusAdminDashboard = () => {
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="competitions">Competitions</TabsTrigger>
-          <TabsTrigger value="challenges">Challenges</TabsTrigger>
+          <TabsTrigger value="college-events">College Events</TabsTrigger>
           <TabsTrigger value="club-admins">Club Admins</TabsTrigger>
         </TabsList>
 
@@ -917,12 +904,8 @@ const CampusAdminDashboard = () => {
           {renderOverview()}
         </TabsContent>
 
-        <TabsContent value="competitions" className="space-y-6">
-          {renderCompetitions()}
-        </TabsContent>
-
-        <TabsContent value="challenges" className="space-y-6">
-          {renderChallenges()}
+        <TabsContent value="college-events" className="space-y-6">
+          {renderCollegeEvents()}
         </TabsContent>
 
         <TabsContent value="club-admins" className="space-y-6">
