@@ -274,6 +274,16 @@ const InterCollegeCompetitions = () => {
             </Button>
           )}
 
+          {competition.is_registered && (
+            <Button
+              disabled
+              className="w-full sm:flex-1 bg-emerald-500 cursor-not-allowed opacity-75"
+            >
+              <Users className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="whitespace-nowrap">Registered</span>
+            </Button>
+          )}
+
           {/* Edit/Delete buttons for creators and super admins */}
           {canManageCompetition(competition) && (
             <>
