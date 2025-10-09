@@ -48,6 +48,19 @@ const CampusAdminDashboard = () => {
     expires_in_months: 6
   });
 
+  // College Events Management State
+  const [collegeEvents, setCollegeEvents] = useState([]);
+  const [collegeEventsData, setCollegeEventsData] = useState({ total: 0 });
+  const [collegeEventsLoading, setCollegeEventsLoading] = useState(false);
+  const [collegeEventFilters, setCollegeEventFilters] = useState({
+    status: '',
+    event_type: ''
+  });
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [eventRegistrations, setEventRegistrations] = useState([]);
+  const [registrationsLoading, setRegistrationsLoading] = useState(false);
+  const [showRegistrationsModal, setShowRegistrationsModal] = useState(false);
+
   useEffect(() => {
     fetchDashboardData();
     fetchCompetitions();
@@ -58,8 +71,14 @@ const CampusAdminDashboard = () => {
     if (activeTab === "club-admins") {
       fetchClubAdminRequests();
       fetchMyClubAdmins();
+    } else if (activeTab === "college-events") {
+      fetchCollegeEvents();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    fetchCollegeEvents();
+  }, [collegeEventFilters]);
 
   const fetchDashboardData = async () => {
     try {
@@ -99,6 +118,96 @@ const CampusAdminDashboard = () => {
       console.error('Error fetching challenges:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCollegeEvents = async () => {
+    try {
+      setCollegeEventsLoading(true);
+      const token = localStorage.getItem('token');
+      
+      const params = new URLSearchParams();
+      if (collegeEventFilters.status) params.append('status', collegeEventFilters.status);
+      if (collegeEventFilters.event_type) params.append('event_type', collegeEventFilters.event_type);
+      
+      const response = await axios.get(`${API}/campus-admin/college-events?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      setCollegeEvents(response.data.events || []);
+      setCollegeEventsData({ 
+        total: response.data.total || 0,
+        college_name: response.data.college_name
+      });
+    } catch (error) {
+      console.error('Error fetching college events:', error);
+      if (error.response?.status === 403) {
+        alert('You do not have campus admin privileges for college events.');
+      }
+    } finally {
+      setCollegeEventsLoading(false);
+    }
+  };
+
+  const fetchEventRegistrations = async (eventId, statusFilter = '') => {
+    try {
+      setRegistrationsLoading(true);
+      const token = localStorage.getItem('token');
+      
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+      
+      const response = await axios.get(
+        `${API}/campus-admin/college-events/${eventId}/registrations?${params}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      
+      setEventRegistrations(response.data.registrations || []);
+    } catch (error) {
+      console.error('Error fetching event registrations:', error);
+    } finally {
+      setRegistrationsLoading(false);
+    }
+  };
+
+  const handleViewEventRegistrations = async (event, statusFilter = '') => {
+    setSelectedEvent(event);
+    setShowRegistrationsModal(true);
+    await fetchEventRegistrations(event.id, statusFilter);
+  };
+
+  const handleRegistrationAction = async (registration, action, reason = '') => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${API}/campus-admin/college-events/${selectedEvent.id}/registrations/manage`,
+        {
+          registration_id: registration.id,
+          action: action,
+          reason: reason
+        },
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      
+      // Refresh registrations and events
+      await fetchEventRegistrations(selectedEvent.id);
+      await fetchCollegeEvents();
+      
+      alert(`Registration ${action}d successfully!`);
+    } catch (error) {
+      console.error(`Error ${action}ing registration:`, error);
+      alert(`Failed to ${action} registration. Please try again.`);
+    }
+  };
+
+  const getEventStatusColor = (status) => {
+    switch (status) {
+      case 'upcoming': return 'bg-blue-100 text-blue-800';
+      case 'ongoing': return 'bg-green-100 text-green-800';
+      case 'registration_open': return 'bg-purple-100 text-purple-800';
+      case 'completed': return 'bg-gray-100 text-gray-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -652,25 +761,200 @@ const CampusAdminDashboard = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-bold">College Events Management</h3>
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700"
-          onClick={() => window.location.href = '/create-college-event'}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Event
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={fetchCollegeEvents}
+            disabled={collegeEventsLoading}
+          >
+            {collegeEventsLoading ? "Loading..." : "Refresh"}
+          </Button>
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700"
+            onClick={() => window.location.href = '/create-event'}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Event
+          </Button>
+        </div>
       </div>
 
+      {/* Events Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Events</p>
+                <p className="text-2xl font-bold text-gray-900">{collegeEventsData.total || 0}</p>
+              </div>
+              <Calendar className="h-8 w-8 text-blue-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Active Events</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {collegeEvents.filter(e => ['upcoming', 'ongoing', 'registration_open'].includes(e.status)).length}
+                </p>
+              </div>
+              <Activity className="h-8 w-8 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Registrations</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {collegeEvents.reduce((sum, e) => sum + (e.current_registrations || 0), 0)}
+                </p>
+              </div>
+              <Users className="h-8 w-8 text-purple-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Pending Approvals</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {collegeEvents.reduce((sum, e) => sum + (e.pending_registrations || 0), 0)}
+                </p>
+              </div>
+              <Clock className="h-8 w-8 text-orange-500" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Events List */}
       <Card>
         <CardHeader>
-          <CardTitle>Your College Events</CardTitle>
+          <CardTitle className="flex items-center justify-between">
+            <span>College Events ({collegeEvents.length})</span>
+            <div className="flex gap-2">
+              <select 
+                className="px-3 py-1 border rounded text-sm"
+                value={collegeEventFilters.status}
+                onChange={(e) => setCollegeEventFilters({...collegeEventFilters, status: e.target.value})}
+              >
+                <option value="">All Status</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="ongoing">Ongoing</option>
+                <option value="registration_open">Registration Open</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <select 
+                className="px-3 py-1 border rounded text-sm"
+                value={collegeEventFilters.event_type}
+                onChange={(e) => setCollegeEventFilters({...collegeEventFilters, event_type: e.target.value})}
+              >
+                <option value="">All Types</option>
+                <option value="workshop">Workshop</option>
+                <option value="hackathon">Hackathon</option>
+                <option value="seminar">Seminar</option>
+                <option value="competition">Competition</option>
+                <option value="cultural">Cultural</option>
+                <option value="sports">Sports</option>
+              </select>
+            </div>
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-gray-600 text-center py-8">
-            College events management interface will be displayed here.
-            <br />
-            You can create and manage events specific to your college.
-          </p>
+          {collegeEventsLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-600 mt-2">Loading college events...</p>
+            </div>
+          ) : collegeEvents.length > 0 ? (
+            <div className="space-y-4">
+              {collegeEvents.map((event) => (
+                <div key={event.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="font-semibold text-lg">{event.title}</h4>
+                        <Badge className={getEventStatusColor(event.status)}>
+                          {event.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                        <Badge variant="outline">{event.event_type}</Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>{new Date(event.start_date).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-4 w-4" />
+                          <span>{event.current_registrations || 0} registrations</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          <span>{event.pending_registrations || 0} pending</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Building className="h-4 w-4" />
+                          <span>{event.venue || 'TBA'}</span>
+                        </div>
+                      </div>
+                      
+                      {event.description && (
+                        <p className="text-sm text-gray-700 mb-2 line-clamp-2">{event.description}</p>
+                      )}
+                      
+                      <div className="text-xs text-gray-500">
+                        Created by: {event.creator_name} • {event.can_manage ? 'You can manage this event' : 'External event'}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2 ml-4">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleViewEventRegistrations(event)}
+                        disabled={!event.can_manage}
+                        title={event.can_manage ? "View registrations" : "Cannot manage external events"}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Registrations ({event.current_registrations || 0})
+                      </Button>
+                      
+                      {event.pending_registrations > 0 && event.can_manage && (
+                        <Button
+                          size="sm"
+                          className="bg-orange-600 hover:bg-orange-700"
+                          onClick={() => handleViewEventRegistrations(event, 'pending')}
+                        >
+                          <AlertCircle className="h-4 w-4 mr-1" />
+                          Pending ({event.pending_registrations})
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-4">No college events found</p>
+              <Button 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={() => window.location.href = '/create-event'}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Your First Event
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1173,6 +1457,159 @@ const CampusAdminDashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Event Registrations Modal */}
+      {selectedEvent && (
+        <Dialog open={showRegistrationsModal} onOpenChange={setShowRegistrationsModal}>
+          <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                Registrations for "{selectedEvent.title}"
+              </DialogTitle>
+              <p className="text-sm text-gray-600">
+                Manage registrations for this college event
+              </p>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Registration Stats */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-blue-50 p-3 rounded">
+                  <div className="text-sm text-blue-600">Total Registrations</div>
+                  <div className="text-xl font-bold text-blue-800">{eventRegistrations.length}</div>
+                </div>
+                <div className="bg-green-50 p-3 rounded">
+                  <div className="text-sm text-green-600">Approved</div>
+                  <div className="text-xl font-bold text-green-800">
+                    {eventRegistrations.filter(r => r.status === 'approved').length}
+                  </div>
+                </div>
+                <div className="bg-orange-50 p-3 rounded">
+                  <div className="text-sm text-orange-600">Pending</div>
+                  <div className="text-xl font-bold text-orange-800">
+                    {eventRegistrations.filter(r => r.status === 'pending').length}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Registrations List */}
+              {registrationsLoading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="text-gray-600 mt-2">Loading registrations...</p>
+                </div>
+              ) : eventRegistrations.length > 0 ? (
+                <div className="space-y-4">
+                  {eventRegistrations.map((registration) => (
+                    <div key={registration.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold">{registration.user_name}</h4>
+                            <Badge className={
+                              registration.status === 'approved' ? 'bg-green-100 text-green-800' :
+                              registration.status === 'pending' ? 'bg-orange-100 text-orange-800' :
+                              'bg-red-100 text-red-800'
+                            }>
+                              {registration.status.toUpperCase()}
+                            </Badge>
+                            <Badge variant="outline">{registration.registration_type}</Badge>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-gray-600 mb-2">
+                            <div><strong>Email:</strong> {registration.user_email}</div>
+                            <div><strong>College:</strong> {registration.user_college}</div>
+                            <div><strong>USN:</strong> {registration.usn || 'N/A'}</div>
+                            <div><strong>Phone:</strong> {registration.phone_number || 'N/A'}</div>
+                            <div><strong>Year:</strong> {registration.year || 'N/A'}</div>
+                            <div><strong>Branch:</strong> {registration.branch || 'N/A'}</div>
+                          </div>
+                          
+                          {registration.registration_type === 'group' && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded">
+                              <div className="text-sm">
+                                <strong>Team:</strong> {registration.team_name} 
+                                ({registration.team_size} members)
+                              </div>
+                              <div className="text-sm">
+                                <strong>Leader:</strong> {registration.team_leader_name}
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="text-xs text-gray-500 mt-2">
+                            Registered: {new Date(registration.registration_date).toLocaleString()}
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-2 ml-4">
+                          {registration.status === 'pending' && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700"
+                                onClick={() => handleRegistrationAction(registration, 'approve')}
+                              >
+                                <Check className="h-4 w-4 mr-1" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-300 text-red-600 hover:bg-red-50"
+                                onClick={() => {
+                                  const reason = prompt('Please provide a reason for rejection:');
+                                  if (reason) {
+                                    handleRegistrationAction(registration, 'reject', reason);
+                                  }
+                                }}
+                              >
+                                <X className="h-4 w-4 mr-1" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                          
+                          {registration.status === 'approved' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-300 text-red-600 hover:bg-red-50"
+                              onClick={() => {
+                                const reason = prompt('Please provide a reason for rejection:');
+                                if (reason) {
+                                  handleRegistrationAction(registration, 'reject', reason);
+                                }
+                              }}
+                            >
+                              <Ban className="h-4 w-4 mr-1" />
+                              Revoke
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600">No registrations found for this event</p>
+                </div>
+              )}
+              
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRegistrationsModal(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
