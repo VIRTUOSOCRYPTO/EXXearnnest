@@ -6513,36 +6513,15 @@ async def request_beta_feature_access_endpoint(
 async def create_inter_college_competition(
     request: Request,
     competition_data: InterCollegeCompetitionCreate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+    current_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Create a new inter-college competition (System Admin, Campus Admin, or Club Admin with privileges)"""
+    """Create a new inter-college competition (Super Admin ONLY)"""
     try:
         db = await get_database()
         
         current_user = current_admin["user_id"]
-        is_system_admin = current_admin.get("is_system_admin", False)
         
-        # Check monthly limit for non-system admins
-        if not is_system_admin:
-            # Check if campus admin has inter-college privileges OR if it's a club admin
-            if current_admin["admin_type"] == "campus_admin" and not current_admin.get("can_create_inter_college", False):
-                raise HTTPException(
-                    status_code=403,
-                    detail="Campus admin requires inter-college creation privileges"
-                )
-            
-            current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            competitions_this_month = await db.inter_college_competitions.count_documents({
-                "created_by": current_user,
-                "created_at": {"$gte": current_month}
-            })
-            
-            max_limit = current_admin.get("max_competitions_per_month", current_admin.get("max_challenges_per_month", 5))
-            if competitions_this_month >= max_limit:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Monthly competition limit reached ({max_limit})"
-                )
+        # Super admin only - no permission checks needed
         
         # Calculate duration
         duration_days = (competition_data.end_date - competition_data.start_date).days
@@ -7270,30 +7249,15 @@ async def complete_inter_college_competition(
 async def create_prize_challenge(
     request: Request,
     challenge_data: PrizeChallengeCreate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+    current_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Create a new prize-based challenge (System Admin, Campus Admin, or Club Admin with privileges)"""
+    """Create a new prize-based challenge (Super Admin ONLY)"""
     try:
         db = await get_database()
         
         current_user = current_admin["user_id"]
-        is_system_admin = current_admin.get("is_system_admin", False)
         
-        # Check monthly limit for non-system admins
-        if not is_system_admin:
-            # Check monthly limit for campus and club admins
-            current_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            challenges_this_month = await db.prize_challenges.count_documents({
-                "created_by": current_user,
-                "created_at": {"$gte": current_month}
-            })
-            
-            max_limit = current_admin.get("max_competitions_per_month", current_admin.get("max_challenges_per_month", 5))
-            if challenges_this_month >= max_limit:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Monthly challenge limit reached ({max_limit})"
-                )
+        # Super admin only - no permission checks needed
         
         # Calculate duration hours if not provided
         if not challenge_data.duration_hours:
@@ -7654,9 +7618,9 @@ async def update_inter_college_competition(
     request: Request,
     competition_id: str,
     update_data: InterCollegeCompetitionUpdate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+    current_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Update an inter-college competition (creator or super admin only)"""
+    """Update an inter-college competition (Super Admin ONLY)"""
     try:
         db = await get_database()
         
@@ -7717,9 +7681,9 @@ async def update_inter_college_competition(
 async def delete_inter_college_competition(
     request: Request,
     competition_id: str,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+    current_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Delete an inter-college competition (creator or super admin only)"""
+    """Delete an inter-college competition (Super Admin ONLY)"""
     try:
         db = await get_database()
         
@@ -7776,9 +7740,9 @@ async def update_prize_challenge(
     request: Request,
     challenge_id: str,
     update_data: PrizeChallengeUpdate,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+    current_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Update a prize challenge (creator or super admin only)"""
+    """Update a prize challenge (Super Admin ONLY)"""
     try:
         db = await get_database()
         
@@ -7838,9 +7802,9 @@ async def update_prize_challenge(
 async def delete_prize_challenge(
     request: Request,
     challenge_id: str,
-    current_admin: Dict[str, Any] = Depends(get_current_admin_with_challenge_permissions)
+    current_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Delete a prize challenge (creator or super admin only)"""
+    """Delete a prize challenge (Super Admin ONLY)"""
     try:
         db = await get_database()
         
@@ -8366,9 +8330,9 @@ async def get_campus_reputation_leaderboard(
 async def get_campus_reputation_details(
     request: Request,
     campus_name: str,
-    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Get detailed reputation information for a specific campus"""
+    """Get detailed reputation information for a specific campus (Super Admin ONLY)"""
     try:
         db = await get_database()
         
@@ -8431,9 +8395,9 @@ async def get_campus_reputation_details(
 async def update_campus_reputation(
     request: Request,
     reputation_data: Dict[str, Any],
-    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+    current_campus_admin: Dict[str, Any] = Depends(get_current_super_admin)
 ):
-    """Update campus reputation points for managed events (Campus Admin only)"""
+    """Update campus reputation points for managed events (Super Admin ONLY)"""
     try:
         db = await get_database()
         
@@ -19767,12 +19731,16 @@ async def approve_reject_registration(
             event_title = event_details.get("title", "Event") if event_details else "Event"
             
             if approval_data.action == "approve":
+                # Build event ID key based on event type
+                event_id_key = 'event_id' if event_type == 'college_event' else f"{event_type.replace('_', '')}_id"
+                event_id_value = registration.get(event_id_key)
+                
                 await notification_service.create_and_notify_in_app_notification(registration["user_id"], {
                     "type": "registration_approved",
                     "title": "🎉 Registration Approved!",
                     "message": f"Your registration for '{event_title}' has been approved. You're all set to participate!",
                     "priority": "high",
-                    "action_url": f"/{event_type.replace('_', '-')}s/{registration.get(f'{event_type.replace('_', '')}_id' if event_type != 'college_event' else 'event_id')}",
+                    "action_url": f"/{event_type.replace('_', '-')}s/{event_id_value}",
                     "metadata": {
                         "event_type": event_type,
                         "event_title": event_title,
