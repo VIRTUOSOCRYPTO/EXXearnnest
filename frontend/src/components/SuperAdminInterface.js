@@ -89,7 +89,7 @@ const SuperAdminInterface = () => {
   const [competitionForm, setCompetitionForm] = useState({
     title: '',
     description: '',
-    competition_type: 'hackathon',
+    competition_type: 'savings_challenge',
     start_date: '',
     end_date: '',
     registration_start: '',
@@ -99,7 +99,7 @@ const SuperAdminInterface = () => {
     eligible_universities: [],
     min_user_level: 1,
     scoring_method: 'total',
-    target_metric: 'projects_submitted',
+    target_metric: 'total_savings',
     target_value: null,
     prize_pool: 0,
     prize_distribution: {
@@ -121,10 +121,10 @@ const SuperAdminInterface = () => {
   const [challengeForm, setChallengeForm] = useState({
     title: '',
     description: '',
-    challenge_type: 'skill_based',
+    challenge_type: 'savings_based',
     challenge_category: 'individual',
     difficulty_level: 'medium',
-    target_metric: 'completion_score',
+    target_metric: 'savings_amount',
     target_value: 100,
     start_date: '',
     end_date: '',
@@ -336,7 +336,17 @@ const SuperAdminInterface = () => {
     setCreatingCompetition(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post(`${API}/inter-college/competitions`, competitionForm, {
+      
+      // Convert datetime-local strings to ISO format with timezone
+      const payload = {
+        ...competitionForm,
+        start_date: new Date(competitionForm.start_date).toISOString(),
+        end_date: new Date(competitionForm.end_date).toISOString(),
+        registration_start: new Date(competitionForm.registration_start).toISOString(),
+        registration_end: new Date(competitionForm.registration_end).toISOString()
+      };
+      
+      const response = await axios.post(`${API}/inter-college/competitions`, payload, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -346,7 +356,7 @@ const SuperAdminInterface = () => {
         setCompetitionForm({
           title: '',
           description: '',
-          competition_type: 'hackathon',
+          competition_type: 'savings_challenge',
           start_date: '',
           end_date: '',
           registration_start: '',
@@ -356,7 +366,7 @@ const SuperAdminInterface = () => {
           eligible_universities: [],
           min_user_level: 1,
           scoring_method: 'total',
-          target_metric: 'projects_submitted',
+          target_metric: 'total_savings',
           target_value: null,
           prize_pool: 0,
           prize_distribution: { first: 50, second: 30, third: 20 },
@@ -376,7 +386,15 @@ const SuperAdminInterface = () => {
     setCreatingChallenge(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post(`${API}/prize-challenges`, challengeForm, {
+      
+      // Convert datetime-local strings to ISO format with timezone
+      const payload = {
+        ...challengeForm,
+        start_date: new Date(challengeForm.start_date).toISOString(),
+        end_date: new Date(challengeForm.end_date).toISOString()
+      };
+      
+      const response = await axios.post(`${API}/prize-challenges`, payload, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -386,10 +404,10 @@ const SuperAdminInterface = () => {
         setChallengeForm({
           title: '',
           description: '',
-          challenge_type: 'skill_based',
+          challenge_type: 'savings_based',
           challenge_category: 'individual',
           difficulty_level: 'medium',
-          target_metric: 'completion_score',
+          target_metric: 'savings_amount',
           target_value: 100,
           start_date: '',
           end_date: '',
@@ -986,7 +1004,7 @@ const SuperAdminInterface = () => {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <span>Create Inter-College Competition</span>
+                    <span>Create Financial Competition</span>
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -1005,7 +1023,7 @@ const SuperAdminInterface = () => {
                         value={competitionForm.title}
                         onChange={(e) => setCompetitionForm({...competitionForm, title: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="Competition title"
+                        placeholder="e.g., 30-Day Savings Sprint"
                       />
                     </div>
                     <div>
@@ -1015,11 +1033,11 @@ const SuperAdminInterface = () => {
                         onChange={(e) => setCompetitionForm({...competitionForm, competition_type: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
-                        <option value="hackathon">Hackathon</option>
-                        <option value="coding_contest">Coding Contest</option>
-                        <option value="project_showcase">Project Showcase</option>
-                        <option value="business_plan">Business Plan</option>
-                        <option value="case_study">Case Study</option>
+                        <option value="savings_challenge">💰 Savings Challenge</option>
+                        <option value="budget_mastery">📊 Budget Mastery</option>
+                        <option value="investment_simulation">📈 Investment Simulation</option>
+                        <option value="financial_literacy">🎓 Financial Literacy Quiz</option>
+                        <option value="goal_achievement">🎯 Goal Achievement Race</option>
                       </select>
                     </div>
                   </div>
@@ -1031,13 +1049,13 @@ const SuperAdminInterface = () => {
                       onChange={(e) => setCompetitionForm({...competitionForm, description: e.target.value})}
                       className="w-full p-2 border border-gray-300 rounded-md"
                       rows={3}
-                      placeholder="Competition description"
+                      placeholder="Describe the competition goals and rules..."
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
                       <input
                         type="datetime-local"
                         value={competitionForm.start_date}
@@ -1046,7 +1064,7 @@ const SuperAdminInterface = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <label className="block text-sm font-medium mb-1">End Date & Time *</label>
                       <input
                         type="datetime-local"
                         value={competitionForm.end_date}
@@ -1058,7 +1076,7 @@ const SuperAdminInterface = () => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Registration Start *</label>
+                      <label className="block text-sm font-medium mb-1">Registration Opens *</label>
                       <input
                         type="datetime-local"
                         value={competitionForm.registration_start}
@@ -1067,7 +1085,7 @@ const SuperAdminInterface = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Registration End *</label>
+                      <label className="block text-sm font-medium mb-1">Registration Closes *</label>
                       <input
                         type="datetime-local"
                         value={competitionForm.registration_end}
@@ -1077,54 +1095,50 @@ const SuperAdminInterface = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Target Metric *</label>
+                      <label className="block text-sm font-medium mb-1">Success Metric *</label>
                       <select
                         value={competitionForm.target_metric}
                         onChange={(e) => setCompetitionForm({...competitionForm, target_metric: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
-                        <option value="projects_submitted">Projects Submitted</option>
-                        <option value="completion_rate">Completion Rate</option>
-                        <option value="innovation_score">Innovation Score</option>
-                        <option value="technical_score">Technical Score</option>
+                        <option value="total_savings">💵 Total Savings Amount</option>
+                        <option value="savings_rate">📊 Savings Rate (%)</option>
+                        <option value="budget_adherence">✅ Budget Adherence Score</option>
+                        <option value="goal_completion">🎯 Goals Completed</option>
+                        <option value="financial_score">⭐ Financial Health Score</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Prize Pool (₹) *</label>
+                      <label className="block text-sm font-medium mb-1">Total Prize Pool (₹) *</label>
                       <input
                         type="number"
                         value={competitionForm.prize_pool}
                         onChange={(e) => setCompetitionForm({...competitionForm, prize_pool: parseInt(e.target.value) || 0})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                         min="0"
-                        placeholder="Total prize money"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Max Participants per Campus</label>
-                      <input
-                        type="number"
-                        value={competitionForm.max_participants_per_campus}
-                        onChange={(e) => setCompetitionForm({...competitionForm, max_participants_per_campus: parseInt(e.target.value)})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        min="1"
+                        placeholder="e.g., 50000"
                       />
                     </div>
                   </div>
 
-                  {/* Prize distribution is handled automatically based on prize_pool */}
-
-                  {/* Additional competition details can be added later */}
+                  <div className="bg-blue-50 p-3 rounded-md text-sm">
+                    <div className="font-medium mb-1">📋 Competition Details:</div>
+                    <div className="text-gray-600 space-y-1">
+                      <div>• Open to all colleges/campuses</div>
+                      <div>• Prize distribution: 1st (50%), 2nd (30%), 3rd (20%)</div>
+                      <div>• Winners based on {competitionForm.target_metric.replace('_', ' ')}</div>
+                    </div>
+                  </div>
 
                   <div className="flex space-x-4 pt-4">
                     <Button 
                       className="flex-1 bg-yellow-600 hover:bg-yellow-700"
                       onClick={handleCreateCompetition}
-                      disabled={creatingCompetition || !competitionForm.title || !competitionForm.description || !competitionForm.target_metric || competitionForm.prize_pool <= 0}
+                      disabled={creatingCompetition || !competitionForm.title || !competitionForm.description || !competitionForm.start_date || !competitionForm.end_date || competitionForm.prize_pool <= 0}
                     >
-                      {creatingCompetition ? 'Creating...' : 'Create Competition'}
+                      {creatingCompetition ? '⏳ Creating...' : '🚀 Create Competition'}
                     </Button>
                     <Button 
                       variant="outline"
@@ -1190,21 +1204,21 @@ const SuperAdminInterface = () => {
                         value={challengeForm.title}
                         onChange={(e) => setChallengeForm({...challengeForm, title: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="Challenge title"
+                        placeholder="e.g., 7-Day Budget Challenge"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Type *</label>
+                      <label className="block text-sm font-medium mb-1">Challenge Type *</label>
                       <select
-                        value={challengeForm.type}
-                        onChange={(e) => setChallengeForm({...challengeForm, type: e.target.value})}
+                        value={challengeForm.challenge_type}
+                        onChange={(e) => setChallengeForm({...challengeForm, challenge_type: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
-                        <option value="skill_based">Skill Based</option>
-                        <option value="creative">Creative</option>
-                        <option value="technical">Technical</option>
-                        <option value="problem_solving">Problem Solving</option>
-                        <option value="research">Research</option>
+                        <option value="savings_based">💰 Savings Challenge</option>
+                        <option value="budgeting">📊 Budgeting Challenge</option>
+                        <option value="investment_learning">📈 Investment Learning</option>
+                        <option value="expense_tracking">📝 Expense Tracking</option>
+                        <option value="financial_goals">🎯 Financial Goals</option>
                       </select>
                     </div>
                   </div>
@@ -1216,40 +1230,51 @@ const SuperAdminInterface = () => {
                       onChange={(e) => setChallengeForm({...challengeForm, description: e.target.value})}
                       className="w-full p-2 border border-gray-300 rounded-md"
                       rows={3}
-                      placeholder="Challenge description"
+                      placeholder="Describe what participants need to achieve..."
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Difficulty Level *</label>
+                      <label className="block text-sm font-medium mb-1">Difficulty *</label>
                       <select
                         value={challengeForm.difficulty_level}
                         onChange={(e) => setChallengeForm({...challengeForm, difficulty_level: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
-                        <option value="beginner">Beginner</option>
-                        <option value="intermediate">Intermediate</option>
-                        <option value="advanced">Advanced</option>
-                        <option value="expert">Expert</option>
+                        <option value="beginner">🟢 Beginner</option>
+                        <option value="intermediate">🟡 Intermediate</option>
+                        <option value="advanced">🟠 Advanced</option>
+                        <option value="expert">🔴 Expert</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Prize Amount (₹)</label>
+                      <label className="block text-sm font-medium mb-1">Max Participants</label>
                       <input
                         type="number"
-                        value={challengeForm.prize_amount}
-                        onChange={(e) => setChallengeForm({...challengeForm, prize_amount: parseInt(e.target.value) || 0})}
+                        value={challengeForm.max_participants}
+                        onChange={(e) => setChallengeForm({...challengeForm, max_participants: parseInt(e.target.value)})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        min="1"
+                        placeholder="e.g., 100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Total Prize (₹) *</label>
+                      <input
+                        type="number"
+                        value={challengeForm.total_prize_value}
+                        onChange={(e) => setChallengeForm({...challengeForm, total_prize_value: parseInt(e.target.value) || 0})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                         min="0"
-                        placeholder="Prize money"
+                        placeholder="e.g., 10000"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
                       <input
                         type="datetime-local"
                         value={challengeForm.start_date}
@@ -1258,7 +1283,7 @@ const SuperAdminInterface = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <label className="block text-sm font-medium mb-1">End Date & Time *</label>
                       <input
                         type="datetime-local"
                         value={challengeForm.end_date}
@@ -1266,71 +1291,63 @@ const SuperAdminInterface = () => {
                         className="w-full p-2 border border-gray-300 rounded-md"
                       />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium mb-1">Registration Deadline *</label>
-                      <input
-                        type="datetime-local"
-                        value={challengeForm.registration_deadline}
-                        onChange={(e) => setChallengeForm({...challengeForm, registration_deadline: e.target.value})}
+                      <label className="block text-sm font-medium mb-1">Success Metric *</label>
+                      <select
+                        value={challengeForm.target_metric}
+                        onChange={(e) => setChallengeForm({...challengeForm, target_metric: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="savings_amount">💵 Savings Amount (₹)</option>
+                        <option value="budget_adherence">📊 Budget Adherence (%)</option>
+                        <option value="expense_reduction">📉 Expense Reduction (%)</option>
+                        <option value="goal_progress">🎯 Goal Progress (%)</option>
+                        <option value="financial_score">⭐ Financial Health Score</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Target Value *</label>
+                      <input
+                        type="number"
+                        value={challengeForm.target_value}
+                        onChange={(e) => setChallengeForm({...challengeForm, target_value: parseFloat(e.target.value) || 0})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        min="0"
+                        placeholder="e.g., 5000"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium mb-1">Max Participants</label>
-                    <input
-                      type="number"
-                      value={challengeForm.max_participants}
-                      onChange={(e) => setChallengeForm({...challengeForm, max_participants: parseInt(e.target.value)})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      min="1"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Skills Required</label>
-                    <input
-                      type="text"
-                      value={challengeForm.skills_required.join(', ')}
-                      onChange={(e) => setChallengeForm({
-                        ...challengeForm, 
-                        skills_required: e.target.value.split(',').map(s => s.trim()).filter(s => s)
-                      })}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Enter skills separated by commas (e.g., JavaScript, React, Node.js)"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Completion Criteria</label>
+                    <label className="block text-sm font-medium mb-1">Completion Criteria (Optional)</label>
                     <textarea
                       value={challengeForm.completion_criteria}
                       onChange={(e) => setChallengeForm({...challengeForm, completion_criteria: e.target.value})}
                       className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={3}
-                      placeholder="What needs to be accomplished to complete this challenge?"
+                      rows={2}
+                      placeholder="e.g., Save ₹5000 in 30 days"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Resources & Guidelines</label>
-                    <textarea
-                      value={challengeForm.resources}
-                      onChange={(e) => setChallengeForm({...challengeForm, resources: e.target.value})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={2}
-                      placeholder="Helpful resources, links, or additional guidelines"
-                    />
+                  <div className="bg-purple-50 p-3 rounded-md text-sm">
+                    <div className="font-medium mb-1">🏆 Prize Distribution:</div>
+                    <div className="text-gray-600 space-y-1">
+                      <div>• 1st Place: 50% (₹{Math.round(challengeForm.total_prize_value * 0.5)})</div>
+                      <div>• 2nd Place: 30% (₹{Math.round(challengeForm.total_prize_value * 0.3)})</div>
+                      <div>• 3rd Place: 20% (₹{Math.round(challengeForm.total_prize_value * 0.2)})</div>
+                    </div>
                   </div>
 
                   <div className="flex space-x-4 pt-4">
                     <Button 
                       className="flex-1 bg-purple-600 hover:bg-purple-700"
                       onClick={handleCreateChallenge}
-                      disabled={creatingChallenge || !challengeForm.title || !challengeForm.description}
+                      disabled={creatingChallenge || !challengeForm.title || !challengeForm.description || !challengeForm.start_date || !challengeForm.end_date || challengeForm.total_prize_value <= 0}
                     >
-                      {creatingChallenge ? 'Creating...' : 'Create Challenge'}
+                      {creatingChallenge ? '⏳ Creating...' : '🚀 Create Challenge'}
                     </Button>
                     <Button 
                       variant="outline"
