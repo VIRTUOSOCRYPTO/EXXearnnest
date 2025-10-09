@@ -5216,7 +5216,7 @@ async def create_viral_referral_link_endpoint(
             await db.referral_programs.insert_one(referral_program)
         
         # Create viral referral link with tracking
-        base_url = "https://ws-connection-test.preview.emergentagent.com"
+        base_url = "https://app-initializer-1.preview.emergentagent.com"
         original_url = f"{base_url}/register?ref={referral_program['referral_code']}"
         
         # Generate shortened URL (simple implementation)
@@ -9120,7 +9120,7 @@ async def get_referral_link(request: Request, current_user: Dict[str, Any] = Dep
             referral = referral_data
         
         # Generate shareable link
-        base_url = "https://ws-connection-test.preview.emergentagent.com"
+        base_url = "https://app-initializer-1.preview.emergentagent.com"
         referral_link = f"{base_url}/register?ref={referral['referral_code']}"
         
         return {
@@ -16630,9 +16630,18 @@ async def review_admin_request(
             raise HTTPException(status_code=404, detail="Admin request not found or already processed")
         
         # Get user information
-        user = await get_user_by_id(admin_request["user_id"])
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Handle both cases where user_id might be an object or string
+        user_id = admin_request["user_id"]
+        if isinstance(user_id, dict):
+            # user_id is already the user object
+            user = user_id
+            actual_user_id = user_id["id"]
+        else:
+            # user_id is a string, need to fetch user
+            actual_user_id = user_id
+            user = await get_user_by_id(user_id)
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
         
         decision_time = datetime.now(timezone.utc)
         
@@ -16655,7 +16664,7 @@ async def review_admin_request(
             
             campus_admin = {
                 "id": str(uuid.uuid4()),
-                "user_id": admin_request["user_id"],
+                "user_id": actual_user_id,
                 "request_id": request_id,
                 "admin_type": admin_type,
                 "college_name": admin_request["college_name"],
@@ -16679,7 +16688,7 @@ async def review_admin_request(
             
             # Update user's admin_level field
             await db.users.update_one(
-                {"id": admin_request["user_id"]},
+                {"id": actual_user_id},
                 {"$set": {
                     "admin_level": admin_type,
                     "is_admin": True
@@ -16699,14 +16708,14 @@ async def review_admin_request(
             
             # Send status update notification
             await notification_service.notify_admin_request_status_update(
-                admin_request["user_id"], 
+                actual_user_id, 
                 updated_request
             )
             
             # If approved, also send admin privileges granted notification
             if review_data.decision == "approve":
                 await notification_service.notify_admin_privileges_granted(
-                    admin_request["user_id"],
+                    actual_user_id,
                     {
                         "admin_type": admin_type,
                         "permissions": permissions,
