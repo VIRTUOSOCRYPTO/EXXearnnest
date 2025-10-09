@@ -19749,10 +19749,64 @@ async def approve_reject_registration(
             }
             await db.prize_challenge_participations.insert_one(participation)
         
+        # 🔔 REAL-TIME NOTIFICATIONS: Send registration status update notification
+        try:
+            notification_service = await get_notification_service()
+            
+            # Get event details for notification
+            event_collection_map = {
+                "college_event": "college_events",
+                "prize_challenge": "prize_challenges", 
+                "inter_college": "inter_college_competitions"
+            }
+            event_collection = event_collection_map.get(event_type)
+            event_details = await db[event_collection].find_one({
+                "id": registration.get(f"{event_type.replace('_', '')}_id" if event_type != "college_event" else "event_id")
+            }) if event_collection else {}
+            
+            event_title = event_details.get("title", "Event") if event_details else "Event"
+            
+            if approval_data.action == "approve":
+                await notification_service.create_and_notify_in_app_notification(registration["user_id"], {
+                    "type": "registration_approved",
+                    "title": "🎉 Registration Approved!",
+                    "message": f"Your registration for '{event_title}' has been approved. You're all set to participate!",
+                    "priority": "high",
+                    "action_url": f"/{event_type.replace('_', '-')}s/{registration.get(f'{event_type.replace('_', '')}_id' if event_type != 'college_event' else 'event_id')}",
+                    "metadata": {
+                        "event_type": event_type,
+                        "event_title": event_title,
+                        "registration_id": approval_data.registration_id,
+                        "approved_by": current_user.get("full_name", "Admin"),
+                        "approved_at": update_data["approved_at"].isoformat()
+                    }
+                })
+            else:  # reject
+                await notification_service.create_and_notify_in_app_notification(registration["user_id"], {
+                    "type": "registration_rejected", 
+                    "title": "❌ Registration Declined",
+                    "message": f"Your registration for '{event_title}' has been declined. Reason: {approval_data.reason}",
+                    "priority": "medium",
+                    "action_url": f"/my-registrations",
+                    "metadata": {
+                        "event_type": event_type,
+                        "event_title": event_title,
+                        "registration_id": approval_data.registration_id,
+                        "rejection_reason": approval_data.reason,
+                        "rejected_by": current_user.get("full_name", "Admin"),
+                        "rejected_at": update_data["approved_at"].isoformat()
+                    }
+                })
+                
+        except Exception as e:
+            print(f"Failed to send registration status notification: {e}")
+            # Continue execution even if notification fails
+        
         return {
             "message": f"Registration {approval_data.action}d successfully",
             "registration_id": approval_data.registration_id,
-            "new_status": update_data["status"]
+            "new_status": update_data["status"],
+            "notification_sent": True
         }
     
     except HTTPException:
