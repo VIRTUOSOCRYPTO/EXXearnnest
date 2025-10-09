@@ -1,0 +1,479 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useAuth } from '../App';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { 
+  Users, Filter, Download, CheckCircle, XCircle, Clock, 
+  Search, Calendar, Building, Award, Trophy, User
+} from 'lucide-react';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
+const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
+  const { user } = useAuth();
+  const [registrations, setRegistrations] = useState([]);
+  const [filteredRegistrations, setFilteredRegistrations] = useState([]);
+  const [collegeStats, setCollegeStats] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selectedCollege, setSelectedCollege] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedType, setSelectedType] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [approvalModal, setApprovalModal] = useState({ open: false, registration: null, action: null });
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  useEffect(() => {
+    if (eventId && eventType) {
+      fetchRegistrations();
+    }
+  }, [eventId, eventType]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [registrations, selectedCollege, selectedStatus, selectedType, searchTerm]);
+
+  const fetchRegistrations = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      setRegistrations(response.data.registrations || []);
+      setCollegeStats(response.data.college_statistics || {});
+    } catch (error) {
+      console.error('Error fetching registrations:', error);
+      alert('Failed to fetch registrations. Please check your permissions.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyFilters = () => {
+    let filtered = [...registrations];
+
+    // College filter
+    if (selectedCollege !== 'all') {
+      filtered = filtered.filter(reg => 
+        (reg.college || reg.user_college || reg.campus_name || '').toLowerCase().includes(selectedCollege.toLowerCase())
+      );
+    }
+
+    // Status filter
+    if (selectedStatus !== 'all') {
+      filtered = filtered.filter(reg => reg.status === selectedStatus);
+    }
+
+    // Registration type filter
+    if (selectedType !== 'all') {
+      filtered = filtered.filter(reg => reg.registration_type === selectedType);
+    }
+
+    // Search term filter
+    if (searchTerm) {
+      filtered = filtered.filter(reg => 
+        (reg.full_name || reg.user_name || reg.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (reg.email || reg.user_email || reg.team_leader_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (reg.usn || reg.team_leader_usn || '').toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    setFilteredRegistrations(filtered);
+  };
+
+  const handleApproveReject = async (registration, action) => {
+    if (action === 'reject' && !rejectionReason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const requestData = {
+        registration_id: registration.id,
+        action: action,
+        reason: action === 'reject' ? rejectionReason : undefined
+      };
+
+      await axios.post(`${API}/club-admin/registrations/${eventType}/approve-reject`, requestData, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      // Update local state
+      setRegistrations(prev => prev.map(reg => 
+        reg.id === registration.id 
+          ? { ...reg, status: action === 'approve' ? 'approved' : 'rejected', rejection_reason: rejectionReason }
+          : reg
+      ));
+
+      setApprovalModal({ open: false, registration: null, action: null });
+      setRejectionReason('');
+      
+      alert(`Registration ${action === 'approve' ? 'approved' : 'rejected'} successfully`);
+    } catch (error) {
+      console.error('Error processing registration:', error);
+      alert('Failed to process registration. Please try again.');
+    }
+  };
+
+  const exportRegistrations = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}/export`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      alert(`Export successful! ${response.data.total_registrations} registrations exported.`);
+    } catch (error) {
+      console.error('Error exporting registrations:', error);
+      alert('Failed to export registrations. Please try again.');
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const statusConfig = {
+      pending: { color: 'bg-yellow-500', icon: Clock },
+      approved: { color: 'bg-green-500', icon: CheckCircle },
+      rejected: { color: 'bg-red-500', icon: XCircle }
+    };
+
+    const config = statusConfig[status] || statusConfig.pending;
+    const Icon = config.icon;
+
+    return (
+      <Badge className={`${config.color} text-white`}>
+        <Icon className="w-3 h-3 mr-1" />
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </Badge>
+    );
+  };
+
+  const getTypeIcon = (type) => {
+    return type === 'group' ? <Users className="w-4 h-4" /> : <User className="w-4 h-4" />;
+  };
+
+  if (loading) {
+    return (
+      <Card className="w-full max-w-7xl mx-auto">
+        <CardContent className="p-8">
+          <div className="flex items-center justify-center space-x-4">
+            <Clock className="w-6 h-6 animate-spin" />
+            <span className="text-gray-600">Loading registrations...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Users className="w-6 h-6" />
+              <div>
+                <h1 className="text-2xl font-bold">Registration Management</h1>
+                <p className="text-gray-600 text-sm">{eventTitle}</p>
+              </div>
+            </div>
+            <Button onClick={exportRegistrations} className="bg-green-600 hover:bg-green-700">
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
+          </CardTitle>
+        </CardHeader>
+      </Card>
+
+      {/* Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-blue-600">{registrations.length}</div>
+            <div className="text-sm text-gray-600">Total Registrations</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-yellow-600">
+              {registrations.filter(r => r.status === 'pending').length}
+            </div>
+            <div className="text-sm text-gray-600">Pending</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-green-600">
+              {registrations.filter(r => r.status === 'approved').length}
+            </div>
+            <div className="text-sm text-gray-600">Approved</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-red-600">
+              {registrations.filter(r => r.status === 'rejected').length}
+            </div>
+            <div className="text-sm text-gray-600">Rejected</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex-1 min-w-60">
+              <Input
+                placeholder="Search by name, email, or USN..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            
+            <Select value={selectedCollege} onValueChange={setSelectedCollege}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Filter by College" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Colleges</SelectItem>
+                {Object.keys(collegeStats).map(college => (
+                  <SelectItem key={college} value={college}>
+                    {college} ({collegeStats[college].total})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedType} onValueChange={setSelectedType}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="individual">Individual</SelectItem>
+                <SelectItem value="group">Group</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* College Statistics */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building className="w-5 h-5" />
+            College-wise Statistics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(collegeStats).map(([college, stats]) => (
+              <div key={college} className="p-4 border rounded-lg bg-gray-50">
+                <h4 className="font-semibold text-lg mb-2">{college}</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Total:</span>
+                    <span className="font-medium">{stats.total}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Individual:</span>
+                    <span className="text-blue-600">{stats.individual}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Group:</span>
+                    <span className="text-purple-600">{stats.group}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Approved:</span>
+                    <span className="text-green-600">{stats.approved}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Registrations Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Registrations ({filteredRegistrations.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-3">Type</th>
+                  <th className="text-left p-3">Name/Team</th>
+                  <th className="text-left p-3">Email</th>
+                  <th className="text-left p-3">College</th>
+                  <th className="text-left p-3">USN</th>
+                  <th className="text-left p-3">Status</th>
+                  <th className="text-left p-3">Date</th>
+                  <th className="text-left p-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRegistrations.map((registration) => (
+                  <tr key={registration.id} className="border-b hover:bg-gray-50">
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        {getTypeIcon(registration.registration_type)}
+                        <span className="capitalize">{registration.registration_type}</span>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <div>
+                        <div className="font-medium">
+                          {registration.registration_type === 'group' 
+                            ? registration.team_name 
+                            : (registration.full_name || registration.user_name)
+                          }
+                        </div>
+                        {registration.registration_type === 'group' && (
+                          <div className="text-sm text-gray-600">
+                            Leader: {registration.team_leader_name}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      {registration.email || registration.user_email || registration.team_leader_email}
+                    </td>
+                    <td className="p-3">
+                      {registration.college || registration.user_college || registration.campus_name}
+                    </td>
+                    <td className="p-3">
+                      {registration.usn || registration.team_leader_usn}
+                    </td>
+                    <td className="p-3">
+                      {getStatusBadge(registration.status)}
+                      {registration.rejection_reason && (
+                        <div className="text-xs text-red-600 mt-1">
+                          {registration.rejection_reason}
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-3 text-sm">
+                      {new Date(registration.registration_date).toLocaleDateString()}
+                    </td>
+                    <td className="p-3">
+                      {registration.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => setApprovalModal({ open: true, registration, action: 'approve' })}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setApprovalModal({ open: true, registration, action: 'reject' })}
+                            className="border-red-500 text-red-600 hover:bg-red-50"
+                          >
+                            <XCircle className="w-3 h-3 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {filteredRegistrations.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                No registrations found matching the current filters.
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Approval/Rejection Modal */}
+      <Dialog open={approvalModal.open} onOpenChange={(open) => !open && setApprovalModal({ open: false, registration: null, action: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {approvalModal.action === 'approve' ? 'Approve Registration' : 'Reject Registration'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {approvalModal.registration && (
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Registration Details:</h4>
+                <div className="space-y-1 text-sm">
+                  <div><strong>Name:</strong> {
+                    approvalModal.registration.registration_type === 'group' 
+                      ? `${approvalModal.registration.team_name} (${approvalModal.registration.team_leader_name})`
+                      : (approvalModal.registration.full_name || approvalModal.registration.user_name)
+                  }</div>
+                  <div><strong>Email:</strong> {approvalModal.registration.email || approvalModal.registration.user_email || approvalModal.registration.team_leader_email}</div>
+                  <div><strong>College:</strong> {approvalModal.registration.college || approvalModal.registration.user_college}</div>
+                </div>
+              </div>
+            )}
+
+            {approvalModal.action === 'reject' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">Rejection Reason *</label>
+                <Input
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  placeholder="Please provide a reason for rejection..."
+                  className="w-full"
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => handleApproveReject(approvalModal.registration, approvalModal.action)}
+                className={approvalModal.action === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+              >
+                {approvalModal.action === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setApprovalModal({ open: false, registration: null, action: null })}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default RegistrationManagement;
