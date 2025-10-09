@@ -19423,6 +19423,462 @@ async def websocket_status(request: Request):
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
+# ==========================================
+# COMPREHENSIVE REGISTRATION ENDPOINTS
+# ==========================================
+
+from registration_service import (
+    save_student_id_card, validate_registration_data,
+    get_registrations_for_event, get_college_statistics,
+    export_registrations_to_csv
+)
+from models import (
+    EventRegistration, PrizeChallengeRegistration, 
+    InterCollegeRegistration, RegistrationApproval
+)
+
+# College Events - Detailed Registration
+@api_router.post("/college-events/{event_id}/register-detailed")
+@limiter.limit("10/minute")
+async def register_for_event_detailed(
+    request: Request,
+    event_id: str,
+    registration_data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Register for college event with detailed information"""
+    try:
+        db = await get_database()
+        
+        # Get event
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        # Check if registration is open
+        if event["status"] not in ["upcoming", "registration_open"]:
+            raise HTTPException(status_code=400, detail="Registration is not open")
+        
+        # Check if already registered
+        existing = await db.event_registrations.find_one({
+            "event_id": event_id,
+            "user_id": current_user["id"]
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail="Already registered")
+        
+        # Validate registration data
+        reg_type = registration_data.get("registration_type", "individual")
+        validation = await validate_registration_data(reg_type, registration_data)
+        
+        if not validation["valid"]:
+            raise HTTPException(status_code=400, detail={"errors": validation["errors"]})
+        
+        # Create registration
+        registration = EventRegistration(
+            event_id=event_id,
+            user_id=current_user["id"],
+            user_name=registration_data.get("full_name", current_user.get("full_name", "")),
+            user_email=registration_data.get("email", current_user.get("email", "")),
+            user_college=registration_data.get("college", current_user.get("university", "")),
+            registration_type=reg_type,
+            usn=registration_data.get("usn"),
+            phone_number=registration_data.get("phone_number"),
+            semester=registration_data.get("semester"),
+            year=registration_data.get("year"),
+            branch=registration_data.get("branch"),
+            section=registration_data.get("section"),
+            student_id_card_url=registration_data.get("student_id_card_url"),
+            team_name=registration_data.get("team_name"),
+            team_leader_name=registration_data.get("team_leader_name"),
+            team_leader_usn=registration_data.get("team_leader_usn"),
+            team_leader_email=registration_data.get("team_leader_email"),
+            team_leader_phone=registration_data.get("team_leader_phone"),
+            team_size=registration_data.get("team_size"),
+            team_members=registration_data.get("team_members", [])
+        )
+        
+        await db.event_registrations.insert_one(registration.dict())
+        
+        # Update participant count
+        await db.college_events.update_one(
+            {"id": event_id},
+            {"$inc": {"current_participants": 1}}
+        )
+        
+        return {
+            "message": "Registration submitted successfully",
+            "registration_id": registration.id,
+            "status": "pending",
+            "note": "Your registration is pending approval by the event organizer"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to register")
+
+# Prize Challenges - Detailed Registration
+@api_router.post("/prize-challenges/{challenge_id}/register-detailed")
+@limiter.limit("10/minute")
+async def register_for_prize_challenge_detailed(
+    request: Request,
+    challenge_id: str,
+    registration_data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Register for prize challenge with detailed information"""
+    try:
+        db = await get_database()
+        
+        # Get challenge
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Check if already registered
+        existing = await db.prize_challenge_registrations.find_one({
+            "challenge_id": challenge_id,
+            "user_id": current_user["id"]
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail="Already registered")
+        
+        # Validate required fields
+        required_fields = ["full_name", "email", "phone_number", "college", "usn", "semester", "year", "branch"]
+        missing_fields = [f for f in required_fields if not registration_data.get(f)]
+        
+        if missing_fields:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Missing required fields: {', '.join(missing_fields)}"
+            )
+        
+        # Create registration
+        registration = PrizeChallengeRegistration(
+            challenge_id=challenge_id,
+            user_id=current_user["id"],
+            full_name=registration_data["full_name"],
+            email=registration_data["email"],
+            phone_number=registration_data["phone_number"],
+            college=registration_data["college"],
+            usn=registration_data["usn"],
+            semester=registration_data["semester"],
+            year=registration_data["year"],
+            branch=registration_data["branch"],
+            section=registration_data.get("section"),
+            student_id_card_url=registration_data.get("student_id_card_url")
+        )
+        
+        await db.prize_challenge_registrations.insert_one(registration.dict())
+        
+        return {
+            "message": "Registration submitted successfully",
+            "registration_id": registration.id,
+            "status": "pending",
+            "note": "Your registration is pending approval"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to register")
+
+# Inter-College Competitions - Detailed Registration
+@api_router.post("/inter-college/competitions/{competition_id}/register-detailed")
+@limiter.limit("10/minute")
+async def register_for_competition_detailed(
+    request: Request,
+    competition_id: str,
+    registration_data: Dict[str, Any],
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Register for inter-college competition with detailed information"""
+    try:
+        db = await get_database()
+        
+        # Get competition
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Check if already registered
+        existing = await db.inter_college_registrations.find_one({
+            "competition_id": competition_id,
+            "user_id": current_user["id"]
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail="Already registered")
+        
+        # Create registration
+        reg_type = registration_data.get("registration_type", "admin")
+        
+        registration = InterCollegeRegistration(
+            competition_id=competition_id,
+            user_id=current_user["id"],
+            registration_type=reg_type,
+            admin_name=registration_data.get("admin_name"),
+            admin_email=registration_data.get("admin_email"),
+            admin_phone=registration_data.get("admin_phone"),
+            campus_name=registration_data.get("campus_name"),
+            team_name=registration_data.get("team_name"),
+            team_type=registration_data.get("team_type"),
+            team_leader_name=registration_data.get("team_leader_name"),
+            team_leader_usn=registration_data.get("team_leader_usn"),
+            team_leader_email=registration_data.get("team_leader_email"),
+            team_leader_phone=registration_data.get("team_leader_phone"),
+            team_leader_semester=registration_data.get("team_leader_semester"),
+            team_leader_year=registration_data.get("team_leader_year"),
+            team_leader_branch=registration_data.get("team_leader_branch"),
+            team_size=registration_data.get("team_size"),
+            team_members=registration_data.get("team_members", [])
+        )
+        
+        await db.inter_college_registrations.insert_one(registration.dict())
+        
+        return {
+            "message": "Registration submitted successfully",
+            "registration_id": registration.id,
+            "status": "pending"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to register")
+
+# Club Admin - View Registrations
+@api_router.get("/club-admin/registrations/{event_type}/{event_id}")
+async def get_event_registrations(
+    event_type: str,  # "college_event", "prize_challenge", "inter_college"
+    event_id: str,
+    college: Optional[str] = None,
+    status: Optional[str] = None,
+    registration_type: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Get all registrations for an event with filters"""
+    try:
+        db = await get_database()
+        
+        # Build filters
+        filters = {}
+        if college:
+            filters["college"] = college
+        if status:
+            filters["status"] = status
+        if registration_type:
+            filters["registration_type"] = registration_type
+        
+        # Get registrations
+        registrations = await get_registrations_for_event(db, event_id, event_type, filters)
+        
+        # Get college statistics
+        stats = await get_college_statistics(registrations)
+        
+        return {
+            "registrations": registrations,
+            "total_count": len(registrations),
+            "college_statistics": stats,
+            "filters_applied": filters
+        }
+    
+    except Exception as e:
+        print(f"Error fetching registrations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch registrations")
+
+# Club Admin - Approve/Reject Registration
+@api_router.post("/club-admin/registrations/{event_type}/approve-reject")
+async def approve_reject_registration(
+    event_type: str,
+    approval_data: RegistrationApproval,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Approve or reject a registration"""
+    try:
+        db = await get_database()
+        
+        # Map event type to collection
+        collection_map = {
+            "college_event": "event_registrations",
+            "prize_challenge": "prize_challenge_registrations",
+            "inter_college": "inter_college_registrations"
+        }
+        
+        collection_name = collection_map.get(event_type)
+        if not collection_name:
+            raise HTTPException(status_code=400, detail="Invalid event type")
+        
+        # Get registration
+        registration = await db[collection_name].find_one({"id": approval_data.registration_id})
+        if not registration:
+            raise HTTPException(status_code=404, detail="Registration not found")
+        
+        # Validate rejection reason
+        if approval_data.action == "reject" and not approval_data.reason:
+            raise HTTPException(status_code=400, detail="Rejection reason is required")
+        
+        # Update registration
+        update_data = {
+            "status": "approved" if approval_data.action == "approve" else "rejected",
+            "approved_by": current_user["id"],
+            "approved_at": datetime.now(timezone.utc)
+        }
+        
+        if approval_data.action == "reject":
+            update_data["rejection_reason"] = approval_data.reason
+        
+        await db[collection_name].update_one(
+            {"id": approval_data.registration_id},
+            {"$set": update_data}
+        )
+        
+        # If approved for prize challenge, create participation record
+        if approval_data.action == "approve" and event_type == "prize_challenge":
+            participation = {
+                "id": str(uuid.uuid4()),
+                "challenge_id": registration["challenge_id"],
+                "user_id": registration["user_id"],
+                "joined_at": datetime.now(timezone.utc),
+                "participation_status": "active",
+                "current_progress": 0.0,
+                "progress_percentage": 0.0
+            }
+            await db.prize_challenge_participations.insert_one(participation)
+        
+        return {
+            "message": f"Registration {approval_data.action}d successfully",
+            "registration_id": approval_data.registration_id,
+            "new_status": update_data["status"]
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error processing approval: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process approval")
+
+# Club Admin - Export Registrations to CSV
+@api_router.get("/club-admin/registrations/{event_type}/{event_id}/export")
+async def export_registrations(
+    event_type: str,
+    event_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Export registrations to CSV"""
+    try:
+        db = await get_database()
+        
+        # Get event name
+        event_collection_map = {
+            "college_event": "college_events",
+            "prize_challenge": "prize_challenges",
+            "inter_college": "inter_college_competitions"
+        }
+        
+        event_collection = event_collection_map.get(event_type)
+        event = await db[event_collection].find_one({"id": event_id})
+        event_name = event.get("title", "event") if event else "event"
+        
+        # Get registrations
+        registrations = await get_registrations_for_event(db, event_id, event_type)
+        
+        if not registrations:
+            raise HTTPException(status_code=404, detail="No registrations found")
+        
+        # Export to CSV
+        csv_path = await export_registrations_to_csv(registrations, event_name)
+        
+        return {
+            "message": "Export successful",
+            "file_path": csv_path,
+            "total_registrations": len(registrations)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Export error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export registrations")
+
+# Upload Student ID Card
+@api_router.post("/upload/student-id")
+async def upload_student_id(
+    file: UploadFile,
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Upload student ID card"""
+    try:
+        # Validate file type
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
+            )
+        
+        # Save file
+        file_url = await save_student_id_card(file, current_user["id"])
+        
+        if not file_url:
+            raise HTTPException(status_code=500, detail="Failed to save file")
+        
+        return {
+            "message": "File uploaded successfully",
+            "file_url": file_url
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Upload error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload file")
+
+# User Dashboard - Get My Registrations
+@api_router.get("/my-registrations")
+async def get_my_registrations(
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
+):
+    """Get all registrations for current user"""
+    try:
+        db = await get_database()
+        
+        user_id = current_user["id"]
+        
+        # Get all types of registrations
+        event_regs = await db.event_registrations.find({"user_id": user_id}).to_list(100)
+        prize_regs = await db.prize_challenge_registrations.find({"user_id": user_id}).to_list(100)
+        comp_regs = await db.inter_college_registrations.find({"user_id": user_id}).to_list(100)
+        
+        # Fetch event details for each registration
+        for reg in event_regs:
+            event = await db.college_events.find_one({"id": reg["event_id"]})
+            reg["event_details"] = event if event else {}
+        
+        for reg in prize_regs:
+            challenge = await db.prize_challenges.find_one({"id": reg["challenge_id"]})
+            reg["challenge_details"] = challenge if challenge else {}
+        
+        for reg in comp_regs:
+            competition = await db.inter_college_competitions.find_one({"id": reg["competition_id"]})
+            reg["competition_details"] = competition if competition else {}
+        
+        return {
+            "college_events": event_regs,
+            "prize_challenges": prize_regs,
+            "inter_college_competitions": comp_regs,
+            "total_registrations": len(event_regs) + len(prize_regs) + len(comp_regs)
+        }
+    
+    except Exception as e:
+        print(f"Error fetching registrations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch registrations")
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
