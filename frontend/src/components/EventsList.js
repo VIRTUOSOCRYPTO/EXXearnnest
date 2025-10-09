@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import EventOverviewModal from './EventOverviewModal';
 import { 
   CalendarDays, 
   MapPin, 
@@ -31,6 +32,8 @@ const EventsList = () => {
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [eventOverviewOpen, setEventOverviewOpen] = useState(false);
   const [filters, setFilters] = useState({
     event_type: '',
     status: '',
@@ -295,7 +298,10 @@ const EventsList = () => {
           <Button
             variant="outline"
             className="flex-1"
-            onClick={() => navigate(`/events/${event.id}`)}
+            onClick={() => {
+              setSelectedEvent(event);
+              setEventOverviewOpen(true);
+            }}
           >
             View Details
           </Button>
@@ -523,6 +529,16 @@ const EventsList = () => {
           )}
         </TabsContent>
       </Tabs>
+      
+      {/* Event Overview Modal */}
+      <EventOverviewModal
+        open={eventOverviewOpen}
+        onClose={() => {
+          setEventOverviewOpen(false);
+          setSelectedEvent(null);
+        }}
+        event={selectedEvent}
+      />
     </div>
   );
 };
