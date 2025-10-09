@@ -48,6 +48,7 @@ const Navigation = () => {
     { path: '/analytics', label: 'Analytics', icon: ChartBarIcon },
     { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
     { path: '/friends-referrals', label: 'Friends & Referrals', icon: UsersIcon },
+    { path: '/my-registrations', label: 'My Registrations', icon: CalendarDaysIcon },
     { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
     { path: '/recommendations', label: 'Recommendations', icon: LightBulbIcon },
     { path: '/challenges', label: 'Challenges', icon: FireIcon },
