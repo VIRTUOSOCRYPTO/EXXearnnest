@@ -595,16 +595,6 @@ const CampusAdminDashboard = () => {
           </Card>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap gap-4">
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => window.location.href = '/create-college-event'}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create College Event
-          </Button>
-        </div>
       </div>
     );
   };
@@ -782,13 +772,6 @@ const CampusAdminDashboard = () => {
           >
             {collegeEventsLoading ? "Loading..." : "Refresh"}
           </Button>
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700"
-            onClick={() => window.location.href = '/create-event'}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Create Event
-          </Button>
         </div>
       </div>
 
@@ -959,13 +942,6 @@ const CampusAdminDashboard = () => {
             <div className="text-center py-8">
               <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-4">No college events found</p>
-              <Button 
-                className="bg-blue-600 hover:bg-blue-700"
-                onClick={() => window.location.href = '/create-event'}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Event
-              </Button>
             </div>
           )}
         </CardContent>
