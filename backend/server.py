@@ -17873,6 +17873,272 @@ async def moderate_competition_participant(
         logger.error(f"Moderate competition participant error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to moderate participant")
 
+# ===== CAMPUS ADMIN COLLEGE EVENTS MANAGEMENT =====
+
+@api_router.get("/campus-admin/college-events")
+@limiter.limit("20/minute")
+async def get_campus_admin_college_events(
+    request: Request,
+    status: Optional[str] = None,
+    event_type: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Get college events in campus admin's institution"""
+    try:
+        db = await get_database()
+        college_name = current_campus_admin["college_name"]
+        
+        # Build query filter - events in this college
+        query_filter = {
+            "$or": [
+                {"college_name": college_name},  # Events created by this college
+                {"visibility": "all_colleges"},  # Public events
+                {"eligible_colleges": college_name}  # Events this college is invited to
+            ]
+        }
+        
+        if status:
+            query_filter["status"] = status
+        if event_type:
+            query_filter["event_type"] = event_type
+        
+        # Get total count
+        total_count = await db.college_events.count_documents(query_filter)
+        
+        # Get paginated events
+        skip = (page - 1) * limit
+        events_cursor = db.college_events.find(query_filter).sort("created_at", -1).skip(skip).limit(limit)
+        events = await events_cursor.to_list(None)
+        
+        # Enrich with registration statistics
+        enhanced_events = []
+        for event in events:
+            if "_id" in event:
+                del event["_id"]
+                
+            # Get registration count
+            registration_count = await db.event_registrations.count_documents({
+                "event_id": event["id"]
+            })
+            
+            # Get pending registrations count
+            pending_count = await db.event_registrations.count_documents({
+                "event_id": event["id"],
+                "status": "pending"
+            })
+            
+            # Get creator details
+            creator = await get_user_by_id(event["created_by"])
+            
+            event_info = {
+                **event,
+                "current_registrations": registration_count,
+                "pending_registrations": pending_count,
+                "creator_name": creator.get("full_name", "Unknown") if creator else "Unknown",
+                "creator_email": creator.get("email") if creator else None,
+                "can_manage": event["college_name"] == college_name  # Can manage if created by this college
+            }
+            enhanced_events.append(event_info)
+        
+        return {
+            "events": enhanced_events,
+            "total": total_count,
+            "page": page,
+            "limit": limit,
+            "college_name": college_name
+        }
+        
+    except Exception as e:
+        logger.error(f"Get campus admin college events error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get college events")
+
+@api_router.get("/campus-admin/college-events/{event_id}/registrations")
+@limiter.limit("20/minute")
+async def get_campus_admin_event_registrations(
+    request: Request,
+    event_id: str,
+    status: Optional[str] = None,
+    registration_type: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Get registrations for a college event (campus admin view)"""
+    try:
+        db = await get_database()
+        college_name = current_campus_admin["college_name"]
+        
+        # Verify event belongs to this campus admin's college
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        if event["college_name"] != college_name:
+            raise HTTPException(status_code=403, detail="Cannot access registrations for events from other colleges")
+        
+        # Build query filter
+        query_filter = {"event_id": event_id}
+        if status:
+            query_filter["status"] = status
+        if registration_type:
+            query_filter["registration_type"] = registration_type
+        
+        # Get total count
+        total_count = await db.event_registrations.count_documents(query_filter)
+        
+        # Get paginated registrations
+        skip = (page - 1) * limit
+        registrations_cursor = db.event_registrations.find(query_filter).sort("registration_date", -1).skip(skip).limit(limit)
+        registrations = await registrations_cursor.to_list(None)
+        
+        # Enrich with user details
+        enhanced_registrations = []
+        for reg in registrations:
+            if "_id" in reg:
+                del reg["_id"]
+            
+            # Get user details
+            user = await get_user_by_id(reg["user_id"])
+            if user:
+                reg["user_details"] = {
+                    "full_name": user.get("full_name"),
+                    "email": user.get("email"),
+                    "university": user.get("university"),
+                    "points": user.get("points", 0)
+                }
+            
+            enhanced_registrations.append(reg)
+        
+        return {
+            "registrations": enhanced_registrations,
+            "total": total_count,
+            "page": page,
+            "limit": limit,
+            "event_title": event["title"],
+            "event_id": event_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get campus admin event registrations error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get registrations")
+
+@api_router.post("/campus-admin/college-events/{event_id}/registrations/manage")
+@limiter.limit("10/minute")
+async def manage_campus_admin_event_registration(
+    request: Request,
+    event_id: str,
+    action_data: Dict[str, Any],
+    current_campus_admin: Dict[str, Any] = Depends(get_current_campus_admin)
+):
+    """Approve/reject college event registrations (campus admin level)"""
+    try:
+        db = await get_database()
+        college_name = current_campus_admin["college_name"]
+        
+        # Verify event belongs to this campus admin's college
+        event = await db.college_events.find_one({"id": event_id})
+        if not event:
+            raise HTTPException(status_code=404, detail="Event not found")
+        
+        if event["college_name"] != college_name:
+            raise HTTPException(status_code=403, detail="Cannot manage registrations for events from other colleges")
+        
+        registration_id = action_data.get("registration_id")
+        action = action_data.get("action")  # "approve" or "reject"
+        reason = action_data.get("reason", "")
+        
+        if not registration_id or not action:
+            raise HTTPException(status_code=400, detail="Registration ID and action are required")
+        
+        if action not in ["approve", "reject"]:
+            raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+        
+        # Get registration
+        registration = await db.event_registrations.find_one({"id": registration_id, "event_id": event_id})
+        if not registration:
+            raise HTTPException(status_code=404, detail="Registration not found")
+        
+        # Update registration status
+        new_status = "approved" if action == "approve" else "rejected"
+        update_data = {
+            "status": new_status,
+            "reviewed_at": datetime.now(timezone.utc),
+            "reviewed_by": current_campus_admin["user_id"],
+            "reviewer_type": "campus_admin",
+            "review_notes": reason
+        }
+        
+        await db.event_registrations.update_one(
+            {"id": registration_id},
+            {"$set": update_data}
+        )
+        
+        # Send notification to user
+        try:
+            user = await get_user_by_id(registration["user_id"])
+            if user:
+                notification_title = f"Registration {new_status.title()}"
+                if action == "approve":
+                    message = f"Your registration for '{event['title']}' has been approved by campus administration!"
+                    priority = "high"
+                else:
+                    message = f"Your registration for '{event['title']}' was not approved. {reason if reason else 'Please contact the organizers for more information.'}"
+                    priority = "medium"
+                
+                from websocket_service import notification_service
+                await notification_service.create_and_notify_in_app_notification(
+                    user_id=registration["user_id"],
+                    title=notification_title,
+                    message=message,
+                    priority=priority,
+                    action_url="/my-registrations",
+                    metadata={
+                        "type": "registration_update",
+                        "event_id": event_id,
+                        "registration_id": registration_id,
+                        "action": action,
+                        "reviewer": "campus_admin"
+                    }
+                )
+        except Exception as notification_error:
+            logger.error(f"Failed to send registration notification: {notification_error}")
+        
+        # Create audit log
+        audit_log = AdminAuditLog(
+            admin_id=current_campus_admin["user_id"],
+            admin_type="campus_admin",
+            admin_level="campus",
+            college_name=college_name,
+            action_type="registration_management",
+            action_description=f"Campus admin {action}d registration for event '{event['title']}': {reason}",
+            target_type="event_registration",
+            target_id=registration_id,
+            affected_entities=[
+                {"type": "event", "id": event_id, "name": event["title"]},
+                {"type": "user", "id": registration["user_id"], "name": registration.get("user_name", "Unknown")}
+            ],
+            severity="info",
+            ip_address=request.client.host
+        )
+        await db.admin_audit_logs.insert_one(audit_log.dict())
+        
+        return {
+            "message": f"Registration {action}d successfully",
+            "registration_id": registration_id,
+            "action": action,
+            "event_title": event["title"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Manage campus admin event registration error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to manage registration")
+
 # ===== CLUB ADMIN DASHBOARD ENDPOINTS =====
 
 @api_router.get("/club-admin/dashboard")
