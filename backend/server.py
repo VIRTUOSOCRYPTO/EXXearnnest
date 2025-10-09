@@ -7699,11 +7699,19 @@ async def delete_inter_college_competition(
         if competition["created_by"] != current_user_id and not is_system_admin:
             raise HTTPException(status_code=403, detail="Only the creator or super admin can delete this competition")
         
+        # Check if competition has participants - prevent deletion
+        participant_count = await db.inter_college_registrations.count_documents({"competition_id": competition_id})
+        if participant_count > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot delete competition with {participant_count} registered participant(s). Please cancel the competition instead."
+            )
+        
         # Don't allow deletion if competition is active
         if competition.get("status") == "active":
             raise HTTPException(status_code=400, detail="Cannot delete an active competition. Cancel it first.")
         
-        # Delete competition and related data
+        # Delete competition and related data (only if no participants)
         await db.inter_college_competitions.delete_one({"id": competition_id})
         await db.campus_leaderboards.delete_many({"competition_id": competition_id})
         await db.competition_registrations.delete_many({"competition_id": competition_id})
@@ -7820,11 +7828,19 @@ async def delete_prize_challenge(
         if challenge["created_by"] != current_user_id and not is_system_admin:
             raise HTTPException(status_code=403, detail="Only the creator or super admin can delete this challenge")
         
+        # Check if challenge has participants - prevent deletion
+        participant_count = await db.prize_challenge_participations.count_documents({"challenge_id": challenge_id})
+        if participant_count > 0:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot delete challenge with {participant_count} registered participant(s). Please cancel the challenge instead."
+            )
+        
         # Don't allow deletion if challenge is active
         if challenge.get("status") == "active":
             raise HTTPException(status_code=400, detail="Cannot delete an active challenge. Cancel it first.")
         
-        # Delete challenge and related data
+        # Delete challenge and related data (only if no participants)
         await db.prize_challenges.delete_one({"id": challenge_id})
         await db.prize_challenge_participations.delete_many({"challenge_id": challenge_id})
         
