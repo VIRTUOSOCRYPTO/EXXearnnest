@@ -358,30 +358,9 @@ const Navigation = () => {
                     
                     // Show specific dashboards based on admin level
                     if (item.requiredLevel) {
-                      // Super admins can see all dashboards
-                      if (userAdminLevel === 'super_admin' || user?.is_super_admin) {
-                        const Icon = item.icon;
-                        const isActive = location.pathname === item.path;
-                        return (
-                          <Link
-                            key={item.path}
-                            to={item.path}
-                            onClick={closeAllDropdowns}
-                            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                              isActive
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                            }`}
-                          >
-                            <Icon className="w-4 h-4" />
-                            {item.label}
-                          </Link>
-                        );
-                      }
-                      
                       // Show only matching dashboard for specific admin level
                       if (userAdminLevel === item.requiredLevel || 
-                          (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user')) {
+                          (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user' && userAdminLevel !== 'super_admin')) {
                         const Icon = item.icon;
                         const isActive = location.pathname === item.path;
                         return (
@@ -665,30 +644,9 @@ const Navigation = () => {
                   
                   // Show specific dashboards based on admin level
                   if (item.requiredLevel) {
-                    // Super admins can see all dashboards
-                    if (userAdminLevel === 'super_admin' || user?.is_super_admin) {
-                      const Icon = item.icon;
-                      const isActive = location.pathname === item.path;
-                      return (
-                        <Link
-                          key={item.path}
-                          to={item.path}
-                          onClick={closeMobileMenu}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                            isActive
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                          }`}
-                        >
-                          <Icon className="w-5 h-5" />
-                          {item.label}
-                        </Link>
-                      );
-                    }
-                    
                     // Show only matching dashboard for specific admin level
                     if (userAdminLevel === item.requiredLevel || 
-                        (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user')) {
+                        (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user' && userAdminLevel !== 'super_admin')) {
                       const Icon = item.icon;
                       const isActive = location.pathname === item.path;
                       return (
