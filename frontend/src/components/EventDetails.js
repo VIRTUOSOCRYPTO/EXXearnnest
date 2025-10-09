@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import RegistrationModal from './RegistrationModal';
 import { 
   CalendarDays, 
   MapPin, 
@@ -38,6 +39,7 @@ const EventDetails = () => {
   const [registering, setRegistering] = useState(false);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
 
   const eventTypeIcons = {
     hackathon: '💻',
@@ -57,8 +59,11 @@ const EventDetails = () => {
   const fetchEventDetails = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API}/college-events/${id}`);
-      setEvent(response.data.event);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/college-events/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setEvent(response.data);
     } catch (error) {
       console.error('Error fetching event details:', error);
       if (error.response?.status === 404) {
@@ -72,7 +77,10 @@ const EventDetails = () => {
   const fetchParticipants = async () => {
     try {
       setLoadingParticipants(true);
-      const response = await axios.get(`${API}/college-events/${id}/participants`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/college-events/${id}/participants`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setParticipants(response.data.participants || []);
     } catch (error) {
       console.error('Error fetching participants:', error);
@@ -85,7 +93,10 @@ const EventDetails = () => {
   const registerForEvent = async () => {
     try {
       setRegistering(true);
-      const response = await axios.post(`${API}/college-events/${id}/register`);
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API}/college-events/${id}/register`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       
       // Update the event status locally
       setEvent(prev => ({ 
@@ -110,7 +121,10 @@ const EventDetails = () => {
 
     try {
       setDeleting(true);
-      await axios.delete(`${API}/college-events/${id}`);
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API}/college-events/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       
       alert('Event deleted successfully!');
       navigate('/events');
@@ -253,13 +267,105 @@ const EventDetails = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Description */}
+          {/* Event Overview */}
           <Card>
             <CardHeader>
-              <CardTitle>About This Event</CardTitle>
+              <CardTitle>Event Overview</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-gray-700 leading-relaxed whitespace-pre-line">{event.description}</p>
+            </CardContent>
+          </Card>
+
+          {/* Rules and Guidelines */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="w-5 h-5" />
+                Rules & Guidelines
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Rules */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">📋 Event Rules</h3>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <ul className="space-y-2 text-sm text-gray-700">
+                    <li>• Participants must arrive 15 minutes before the event start time</li>
+                    <li>• Valid college ID is mandatory for entry</li>
+                    <li>• Registration is mandatory and non-transferable</li>
+                    <li>• Participants must follow the college dress code</li>
+                    <li>• Late entries will not be allowed</li>
+                    <li>• Decision of judges will be final and binding</li>
+                    {event.event_type === 'hackathon' && (
+                      <>
+                        <li>• Team size should be 2-4 members</li>
+                        <li>• Laptops and chargers are mandatory</li>
+                        <li>• Internet will be provided by the organizers</li>
+                      </>
+                    )}
+                    {event.event_type === 'coding_competition' && (
+                      <>
+                        <li>• Individual participation only</li>
+                        <li>• Use of external resources is not allowed</li>
+                        <li>• Plagiarism will lead to disqualification</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Do's */}
+              <div>
+                <h3 className="text-lg font-semibold text-green-800 mb-3">✅ Do's</h3>
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <ul className="space-y-2 text-sm text-gray-700">
+                    <li>• Bring your student ID card and registration confirmation</li>
+                    <li>• Maintain discipline and decorum throughout the event</li>
+                    <li>• Follow organizer instructions promptly</li>
+                    <li>• Network and collaborate with fellow participants</li>
+                    <li>• Ask questions if you have any doubts</li>
+                    <li>• Keep your workspace clean and organized</li>
+                    {event.event_type === 'workshop' && (
+                      <>
+                        <li>• Bring notebook and pen for taking notes</li>
+                        <li>• Actively participate in discussions</li>
+                      </>
+                    )}
+                    {event.is_virtual && (
+                      <>
+                        <li>• Ensure stable internet connection</li>
+                        <li>• Join the meeting 5 minutes early</li>
+                        <li>• Keep your microphone muted when not speaking</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Don'ts */}
+              <div>
+                <h3 className="text-lg font-semibold text-red-800 mb-3">❌ Don'ts</h3>
+                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                  <ul className="space-y-2 text-sm text-gray-700">
+                    <li>• Don't use mobile phones during the event</li>
+                    <li>• Don't engage in any form of cheating or plagiarism</li>
+                    <li>• Don't disturb other participants</li>
+                    <li>• Don't leave the venue without informing organizers</li>
+                    <li>• Don't bring outside food and drinks</li>
+                    <li>• Don't indulge in any inappropriate behavior</li>
+                    {event.event_type === 'coding_competition' && (
+                      <>
+                        <li>• Don't access unauthorized websites</li>
+                        <li>• Don't communicate with external sources</li>
+                      </>
+                    )}
+                    {!event.is_virtual && (
+                      <li>• Don't bring valuables - organizers are not responsible for loss</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -396,6 +502,67 @@ const EventDetails = () => {
             </Card>
           )}
 
+          {/* Registration Section */}
+          {event.registration_enabled && !event.is_registered && 
+           event.registered_count < (event.max_participants || Infinity) &&
+           (!event.registration_deadline || new Date(event.registration_deadline) > new Date()) && (
+            <Card className="border-2 border-green-200 bg-green-50">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl text-green-800 flex items-center justify-center gap-2">
+                  <Users className="w-8 h-8" />
+                  Ready to Join?
+                </CardTitle>
+                <p className="text-green-700">Register now to secure your spot in {event.title}</p>
+              </CardHeader>
+              <CardContent className="text-center">
+                <div className="mb-6">
+                  <div className="text-3xl font-bold text-green-600 mb-2">
+                    {event.registered_count || 0}
+                    {event.max_participants && `/${event.max_participants}`}
+                  </div>
+                  <div className="text-sm text-gray-600">Participants Registered</div>
+                  {event.max_participants && (
+                    <div className="mt-2 bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(((event.registered_count || 0) / event.max_participants) * 100, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                <Button
+                  onClick={() => setRegistrationModalOpen(true)}
+                  size="lg"
+                  className="w-full max-w-md bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-8 text-lg"
+                >
+                  <Users className="w-5 h-5 mr-2" />
+                  Register Now
+                </Button>
+                
+                {event.registration_deadline && (
+                  <p className="mt-4 text-sm text-gray-600">
+                    Registration closes on {new Date(event.registration_deadline).toLocaleDateString()}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Already Registered */}
+          {event.is_registered && (
+            <Card className="border-2 border-green-200 bg-green-50">
+              <CardContent className="text-center py-8">
+                <div className="text-6xl mb-4">✅</div>
+                <h3 className="text-xl font-bold text-green-800 mb-2">You're Registered!</h3>
+                <p className="text-green-700">Thank you for registering for {event.title}</p>
+                <p className="text-sm text-gray-600 mt-2">
+                  You'll receive updates and reminders via email.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tags */}
           {event.tags && event.tags.length > 0 && (
             <Card>
@@ -442,12 +609,11 @@ const EventDetails = () => {
                  event.registered_count < (event.max_participants || Infinity) &&
                  (!event.registration_deadline || new Date(event.registration_deadline) > new Date()) ? (
                   <Button
-                    onClick={registerForEvent}
-                    disabled={registering}
+                    onClick={() => setRegistrationModalOpen(true)}
                     className="w-full bg-green-600 hover:bg-green-700"
                   >
                     <Users className="w-4 h-4 mr-2" />
-                    {registering ? 'Registering...' : 'Register Now'}
+                    Register Now
                   </Button>
                 ) : event.is_registered ? (
                   <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
@@ -578,6 +744,21 @@ const EventDetails = () => {
           </Card>
         </div>
       </div>
+      
+      {/* Registration Modal */}
+      {registrationModalOpen && (
+        <RegistrationModal
+          open={registrationModalOpen}
+          onClose={() => {
+            setRegistrationModalOpen(false);
+            // Refresh event data after registration
+            fetchEventDetails();
+          }}
+          eventId={event.id}
+          eventTitle={event.title}
+          eventType="college_event"
+        />
+      )}
     </div>
   );
 };
