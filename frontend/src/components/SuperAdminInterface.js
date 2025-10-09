@@ -505,13 +505,11 @@ const SuperAdminInterface = () => {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="requests">Admin Requests</TabsTrigger>
             <TabsTrigger value="oversight">Campus Admins</TabsTrigger>
             <TabsTrigger value="club-admins">Club Admins</TabsTrigger>
-            <TabsTrigger value="competitions">Create Competition</TabsTrigger>
-            <TabsTrigger value="challenges">Create Challenge</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
             <TabsTrigger value="alerts">Alerts</TabsTrigger>
           </TabsList>
@@ -641,6 +639,395 @@ const SuperAdminInterface = () => {
                       </div>
                     </CardContent>
                   </Card>
+                </div>
+
+                {/* Create Competition Section */}
+                <div className="mt-8">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-semibold">Create Inter-College Competition</h2>
+                    <div className="flex items-center space-x-2">
+                      <Trophy className="w-5 h-5 text-yellow-600" />
+                      <span className="text-sm text-gray-600">Competition Management</span>
+                    </div>
+                  </div>
+
+                  {!showCompetitionForm ? (
+                    <Card>
+                      <CardContent className="p-6">
+                        <div className="text-center py-8">
+                          <Trophy className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
+                          <h3 className="text-xl font-semibold mb-2">Competition Creation</h3>
+                          <p className="text-gray-600 mb-6">Create and manage inter-college competitions</p>
+                          <Button 
+                            className="bg-yellow-600 hover:bg-yellow-700"
+                            onClick={() => setShowCompetitionForm(true)}
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Create New Competition
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                          <span>Create Financial Competition</span>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setShowCompetitionForm(false)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Title *</label>
+                            <input
+                              type="text"
+                              value={competitionForm.title}
+                              onChange={(e) => setCompetitionForm({...competitionForm, title: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              placeholder="e.g., 30-Day Savings Sprint"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Competition Type *</label>
+                            <select
+                              value={competitionForm.competition_type}
+                              onChange={(e) => setCompetitionForm({...competitionForm, competition_type: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="campus_savings">💰 Campus Savings Challenge</option>
+                              <option value="campus_streak">🔥 Campus Streak Challenge</option>
+                              <option value="campus_referrals">👥 Campus Referral Challenge</option>
+                              <option value="campus_goals">🎯 Campus Goals Challenge</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Description *</label>
+                          <textarea
+                            value={competitionForm.description}
+                            onChange={(e) => setCompetitionForm({...competitionForm, description: e.target.value})}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            rows={3}
+                            placeholder="Describe the competition goals and rules..."
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
+                            <input
+                              type="datetime-local"
+                              value={competitionForm.start_date}
+                              onChange={(e) => setCompetitionForm({...competitionForm, start_date: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">End Date & Time *</label>
+                            <input
+                              type="datetime-local"
+                              value={competitionForm.end_date}
+                              onChange={(e) => setCompetitionForm({...competitionForm, end_date: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Registration Opens *</label>
+                            <input
+                              type="datetime-local"
+                              value={competitionForm.registration_start}
+                              onChange={(e) => setCompetitionForm({...competitionForm, registration_start: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Registration Closes *</label>
+                            <input
+                              type="datetime-local"
+                              value={competitionForm.registration_end}
+                              onChange={(e) => setCompetitionForm({...competitionForm, registration_end: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Success Metric *</label>
+                            <select
+                              value={competitionForm.target_metric}
+                              onChange={(e) => setCompetitionForm({...competitionForm, target_metric: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="total_savings">💵 Total Savings Amount</option>
+                              <option value="savings_rate">📊 Savings Rate (%)</option>
+                              <option value="budget_adherence">✅ Budget Adherence Score</option>
+                              <option value="goal_completion">🎯 Goals Completed</option>
+                              <option value="financial_score">⭐ Financial Health Score</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Total Prize Pool (₹) *</label>
+                            <input
+                              type="number"
+                              value={competitionForm.prize_pool}
+                              onChange={(e) => setCompetitionForm({...competitionForm, prize_pool: parseInt(e.target.value) || 0})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              min="0"
+                              placeholder="e.g., 50000"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="bg-blue-50 p-3 rounded-md text-sm">
+                          <div className="font-medium mb-1">📋 Competition Details:</div>
+                          <div className="text-gray-600 space-y-1">
+                            <div>• Open to all colleges/campuses</div>
+                            <div>• Prize distribution: 1st (50%), 2nd (30%), 3rd (20%)</div>
+                            <div>• Winners based on {competitionForm.target_metric.replace('_', ' ')}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex space-x-4 pt-4">
+                          <Button 
+                            className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                            onClick={handleCreateCompetition}
+                            disabled={creatingCompetition || !competitionForm.title || !competitionForm.description || !competitionForm.start_date || !competitionForm.end_date || competitionForm.prize_pool <= 0}
+                          >
+                            {creatingCompetition ? '⏳ Creating...' : '🚀 Create Competition'}
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => setShowCompetitionForm(false)}
+                            disabled={creatingCompetition}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+
+                {/* Create Challenge Section */}
+                <div className="mt-8">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-semibold">Create Prize Challenge</h2>
+                    <div className="flex items-center space-x-2">
+                      <Award className="w-5 h-5 text-purple-600" />
+                      <span className="text-sm text-gray-600">Challenge Management</span>
+                    </div>
+                  </div>
+
+                  {!showChallengeForm ? (
+                    <Card>
+                      <CardContent className="p-6">
+                        <div className="text-center py-8">
+                          <Award className="w-16 h-16 text-purple-600 mx-auto mb-4" />
+                          <h3 className="text-xl font-semibold mb-2">Challenge Creation</h3>
+                          <p className="text-gray-600 mb-6">Create and manage skill-based challenges</p>
+                          <Button 
+                            className="bg-purple-600 hover:bg-purple-700"
+                            onClick={() => setShowChallengeForm(true)}
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Create New Challenge
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                          <span>Create Prize Challenge</span>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setShowChallengeForm(false)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Title *</label>
+                            <input
+                              type="text"
+                              value={challengeForm.title}
+                              onChange={(e) => setChallengeForm({...challengeForm, title: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              placeholder="e.g., 7-Day Budget Challenge"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Challenge Type *</label>
+                            <select
+                              value={challengeForm.challenge_type}
+                              onChange={(e) => setChallengeForm({...challengeForm, challenge_type: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="savings_based">💰 Savings Challenge</option>
+                              <option value="budgeting">📊 Budgeting Challenge</option>
+                              <option value="investment_learning">📈 Investment Learning</option>
+                              <option value="expense_tracking">📝 Expense Tracking</option>
+                              <option value="financial_goals">🎯 Financial Goals</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Description *</label>
+                          <textarea
+                            value={challengeForm.description}
+                            onChange={(e) => setChallengeForm({...challengeForm, description: e.target.value})}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            rows={3}
+                            placeholder="Describe what participants need to achieve..."
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Difficulty *</label>
+                            <select
+                              value={challengeForm.difficulty_level}
+                              onChange={(e) => setChallengeForm({...challengeForm, difficulty_level: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="beginner">🟢 Beginner</option>
+                              <option value="intermediate">🟡 Intermediate</option>
+                              <option value="advanced">🟠 Advanced</option>
+                              <option value="expert">🔴 Expert</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Max Participants</label>
+                            <input
+                              type="number"
+                              value={challengeForm.max_participants}
+                              onChange={(e) => setChallengeForm({...challengeForm, max_participants: parseInt(e.target.value)})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              min="1"
+                              placeholder="e.g., 100"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Total Prize (₹) *</label>
+                            <input
+                              type="number"
+                              value={challengeForm.total_prize_value}
+                              onChange={(e) => setChallengeForm({...challengeForm, total_prize_value: parseInt(e.target.value) || 0})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              min="0"
+                              placeholder="e.g., 10000"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
+                            <input
+                              type="datetime-local"
+                              value={challengeForm.start_date}
+                              onChange={(e) => setChallengeForm({...challengeForm, start_date: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">End Date & Time *</label>
+                            <input
+                              type="datetime-local"
+                              value={challengeForm.end_date}
+                              onChange={(e) => setChallengeForm({...challengeForm, end_date: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Success Metric *</label>
+                            <select
+                              value={challengeForm.target_metric}
+                              onChange={(e) => setChallengeForm({...challengeForm, target_metric: e.target.value})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="savings_amount">💵 Savings Amount (₹)</option>
+                              <option value="budget_adherence">📊 Budget Adherence (%)</option>
+                              <option value="expense_reduction">📉 Expense Reduction (%)</option>
+                              <option value="goal_progress">🎯 Goal Progress (%)</option>
+                              <option value="financial_score">⭐ Financial Health Score</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium mb-1">Target Value *</label>
+                            <input
+                              type="number"
+                              value={challengeForm.target_value}
+                              onChange={(e) => setChallengeForm({...challengeForm, target_value: parseFloat(e.target.value) || 0})}
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              min="0"
+                              placeholder="e.g., 5000"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Completion Criteria (Optional)</label>
+                          <textarea
+                            value={challengeForm.completion_criteria}
+                            onChange={(e) => setChallengeForm({...challengeForm, completion_criteria: e.target.value})}
+                            className="w-full p-2 border border-gray-300 rounded-md"
+                            rows={2}
+                            placeholder="e.g., Save ₹5000 in 30 days"
+                          />
+                        </div>
+
+                        <div className="bg-purple-50 p-3 rounded-md text-sm">
+                          <div className="font-medium mb-1">🏆 Prize Distribution:</div>
+                          <div className="text-gray-600 space-y-1">
+                            <div>• 1st Place: 50% (₹{Math.round(challengeForm.total_prize_value * 0.5)})</div>
+                            <div>• 2nd Place: 30% (₹{Math.round(challengeForm.total_prize_value * 0.3)})</div>
+                            <div>• 3rd Place: 20% (₹{Math.round(challengeForm.total_prize_value * 0.2)})</div>
+                          </div>
+                        </div>
+
+                        <div className="flex space-x-4 pt-4">
+                          <Button 
+                            className="flex-1 bg-purple-600 hover:bg-purple-700"
+                            onClick={handleCreateChallenge}
+                            disabled={creatingChallenge || !challengeForm.title || !challengeForm.description || !challengeForm.start_date || !challengeForm.end_date || challengeForm.total_prize_value <= 0}
+                          >
+                            {creatingChallenge ? '⏳ Creating...' : '🚀 Create Challenge'}
+                          </Button>
+                          <Button 
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => setShowChallengeForm(false)}
+                            disabled={creatingChallenge}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </>
             ) : (
@@ -970,395 +1357,6 @@ const SuperAdminInterface = () => {
                   </div>
                 )}
               </div>
-            )}
-          </TabsContent>
-
-          {/* Create Competition Tab */}
-          <TabsContent value="competitions" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Create Inter-College Competition</h2>
-              <div className="flex items-center space-x-2">
-                <Trophy className="w-5 h-5 text-yellow-600" />
-                <span className="text-sm text-gray-600">Competition Management</span>
-              </div>
-            </div>
-
-            {!showCompetitionForm ? (
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <Trophy className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">Competition Creation</h3>
-                    <p className="text-gray-600 mb-6">Create and manage inter-college competitions</p>
-                    <Button 
-                      className="bg-yellow-600 hover:bg-yellow-700"
-                      onClick={() => setShowCompetitionForm(true)}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create New Competition
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Create Financial Competition</span>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setShowCompetitionForm(false)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Title *</label>
-                      <input
-                        type="text"
-                        value={competitionForm.title}
-                        onChange={(e) => setCompetitionForm({...competitionForm, title: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="e.g., 30-Day Savings Sprint"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Competition Type *</label>
-                      <select
-                        value={competitionForm.competition_type}
-                        onChange={(e) => setCompetitionForm({...competitionForm, competition_type: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="campus_savings">💰 Campus Savings Challenge</option>
-                        <option value="campus_streak">🔥 Campus Streak Challenge</option>
-                        <option value="campus_referrals">👥 Campus Referral Challenge</option>
-                        <option value="campus_goals">🎯 Campus Goals Challenge</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Description *</label>
-                    <textarea
-                      value={competitionForm.description}
-                      onChange={(e) => setCompetitionForm({...competitionForm, description: e.target.value})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={3}
-                      placeholder="Describe the competition goals and rules..."
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
-                      <input
-                        type="datetime-local"
-                        value={competitionForm.start_date}
-                        onChange={(e) => setCompetitionForm({...competitionForm, start_date: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">End Date & Time *</label>
-                      <input
-                        type="datetime-local"
-                        value={competitionForm.end_date}
-                        onChange={(e) => setCompetitionForm({...competitionForm, end_date: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Registration Opens *</label>
-                      <input
-                        type="datetime-local"
-                        value={competitionForm.registration_start}
-                        onChange={(e) => setCompetitionForm({...competitionForm, registration_start: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Registration Closes *</label>
-                      <input
-                        type="datetime-local"
-                        value={competitionForm.registration_end}
-                        onChange={(e) => setCompetitionForm({...competitionForm, registration_end: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Success Metric *</label>
-                      <select
-                        value={competitionForm.target_metric}
-                        onChange={(e) => setCompetitionForm({...competitionForm, target_metric: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="total_savings">💵 Total Savings Amount</option>
-                        <option value="savings_rate">📊 Savings Rate (%)</option>
-                        <option value="budget_adherence">✅ Budget Adherence Score</option>
-                        <option value="goal_completion">🎯 Goals Completed</option>
-                        <option value="financial_score">⭐ Financial Health Score</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Total Prize Pool (₹) *</label>
-                      <input
-                        type="number"
-                        value={competitionForm.prize_pool}
-                        onChange={(e) => setCompetitionForm({...competitionForm, prize_pool: parseInt(e.target.value) || 0})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        min="0"
-                        placeholder="e.g., 50000"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="bg-blue-50 p-3 rounded-md text-sm">
-                    <div className="font-medium mb-1">📋 Competition Details:</div>
-                    <div className="text-gray-600 space-y-1">
-                      <div>• Open to all colleges/campuses</div>
-                      <div>• Prize distribution: 1st (50%), 2nd (30%), 3rd (20%)</div>
-                      <div>• Winners based on {competitionForm.target_metric.replace('_', ' ')}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-4 pt-4">
-                    <Button 
-                      className="flex-1 bg-yellow-600 hover:bg-yellow-700"
-                      onClick={handleCreateCompetition}
-                      disabled={creatingCompetition || !competitionForm.title || !competitionForm.description || !competitionForm.start_date || !competitionForm.end_date || competitionForm.prize_pool <= 0}
-                    >
-                      {creatingCompetition ? '⏳ Creating...' : '🚀 Create Competition'}
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => setShowCompetitionForm(false)}
-                      disabled={creatingCompetition}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* Create Challenge Tab */}
-          <TabsContent value="challenges" className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Create Prize Challenge</h2>
-              <div className="flex items-center space-x-2">
-                <Award className="w-5 h-5 text-purple-600" />
-                <span className="text-sm text-gray-600">Challenge Management</span>
-              </div>
-            </div>
-
-            {!showChallengeForm ? (
-              <Card>
-                <CardContent className="p-6">
-                  <div className="text-center py-8">
-                    <Award className="w-16 h-16 text-purple-600 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">Challenge Creation</h3>
-                    <p className="text-gray-600 mb-6">Create and manage skill-based challenges</p>
-                    <Button 
-                      className="bg-purple-600 hover:bg-purple-700"
-                      onClick={() => setShowChallengeForm(true)}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create New Challenge
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span>Create Prize Challenge</span>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setShowChallengeForm(false)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Title *</label>
-                      <input
-                        type="text"
-                        value={challengeForm.title}
-                        onChange={(e) => setChallengeForm({...challengeForm, title: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        placeholder="e.g., 7-Day Budget Challenge"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Challenge Type *</label>
-                      <select
-                        value={challengeForm.challenge_type}
-                        onChange={(e) => setChallengeForm({...challengeForm, challenge_type: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="savings_based">💰 Savings Challenge</option>
-                        <option value="budgeting">📊 Budgeting Challenge</option>
-                        <option value="investment_learning">📈 Investment Learning</option>
-                        <option value="expense_tracking">📝 Expense Tracking</option>
-                        <option value="financial_goals">🎯 Financial Goals</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Description *</label>
-                    <textarea
-                      value={challengeForm.description}
-                      onChange={(e) => setChallengeForm({...challengeForm, description: e.target.value})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={3}
-                      placeholder="Describe what participants need to achieve..."
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Difficulty *</label>
-                      <select
-                        value={challengeForm.difficulty_level}
-                        onChange={(e) => setChallengeForm({...challengeForm, difficulty_level: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="beginner">🟢 Beginner</option>
-                        <option value="intermediate">🟡 Intermediate</option>
-                        <option value="advanced">🟠 Advanced</option>
-                        <option value="expert">🔴 Expert</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Max Participants</label>
-                      <input
-                        type="number"
-                        value={challengeForm.max_participants}
-                        onChange={(e) => setChallengeForm({...challengeForm, max_participants: parseInt(e.target.value)})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        min="1"
-                        placeholder="e.g., 100"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Total Prize (₹) *</label>
-                      <input
-                        type="number"
-                        value={challengeForm.total_prize_value}
-                        onChange={(e) => setChallengeForm({...challengeForm, total_prize_value: parseInt(e.target.value) || 0})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        min="0"
-                        placeholder="e.g., 10000"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
-                      <input
-                        type="datetime-local"
-                        value={challengeForm.start_date}
-                        onChange={(e) => setChallengeForm({...challengeForm, start_date: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">End Date & Time *</label>
-                      <input
-                        type="datetime-local"
-                        value={challengeForm.end_date}
-                        onChange={(e) => setChallengeForm({...challengeForm, end_date: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Success Metric *</label>
-                      <select
-                        value={challengeForm.target_metric}
-                        onChange={(e) => setChallengeForm({...challengeForm, target_metric: e.target.value})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="savings_amount">💵 Savings Amount (₹)</option>
-                        <option value="budget_adherence">📊 Budget Adherence (%)</option>
-                        <option value="expense_reduction">📉 Expense Reduction (%)</option>
-                        <option value="goal_progress">🎯 Goal Progress (%)</option>
-                        <option value="financial_score">⭐ Financial Health Score</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Target Value *</label>
-                      <input
-                        type="number"
-                        value={challengeForm.target_value}
-                        onChange={(e) => setChallengeForm({...challengeForm, target_value: parseFloat(e.target.value) || 0})}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        min="0"
-                        placeholder="e.g., 5000"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Completion Criteria (Optional)</label>
-                    <textarea
-                      value={challengeForm.completion_criteria}
-                      onChange={(e) => setChallengeForm({...challengeForm, completion_criteria: e.target.value})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={2}
-                      placeholder="e.g., Save ₹5000 in 30 days"
-                    />
-                  </div>
-
-                  <div className="bg-purple-50 p-3 rounded-md text-sm">
-                    <div className="font-medium mb-1">🏆 Prize Distribution:</div>
-                    <div className="text-gray-600 space-y-1">
-                      <div>• 1st Place: 50% (₹{Math.round(challengeForm.total_prize_value * 0.5)})</div>
-                      <div>• 2nd Place: 30% (₹{Math.round(challengeForm.total_prize_value * 0.3)})</div>
-                      <div>• 3rd Place: 20% (₹{Math.round(challengeForm.total_prize_value * 0.2)})</div>
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-4 pt-4">
-                    <Button 
-                      className="flex-1 bg-purple-600 hover:bg-purple-700"
-                      onClick={handleCreateChallenge}
-                      disabled={creatingChallenge || !challengeForm.title || !challengeForm.description || !challengeForm.start_date || !challengeForm.end_date || challengeForm.total_prize_value <= 0}
-                    >
-                      {creatingChallenge ? '⏳ Creating...' : '🚀 Create Challenge'}
-                    </Button>
-                    <Button 
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => setShowChallengeForm(false)}
-                      disabled={creatingChallenge}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
             )}
           </TabsContent>
         </Tabs>
