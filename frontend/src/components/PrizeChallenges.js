@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
 import { Gift, Clock, Zap, Star, Target, Award, TrendingUp, Calendar, Users, DollarSign, Trophy, Crown, Edit, Trash2 } from 'lucide-react';
+import RegistrationModal from './RegistrationModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -22,6 +23,8 @@ const PrizeChallenges = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [editingChallenge, setEditingChallenge] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
+  const [selectedChallengeForRegistration, setSelectedChallengeForRegistration] = useState(null);
 
   useEffect(() => {
     fetchChallenges();
@@ -338,12 +341,14 @@ const PrizeChallenges = () => {
 
           {challenge.can_join && (
             <Button
-              onClick={() => joinChallenge(challenge.id)}
-              disabled={joining}
+              onClick={() => {
+                setSelectedChallengeForRegistration(challenge);
+                setRegistrationModalOpen(true);
+              }}
               className="w-full sm:flex-1 bg-purple-600 hover:bg-purple-700"
             >
               <Gift className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="whitespace-nowrap">{joining ? 'Joining...' : 'Join Challenge'}</span>
+              <span className="whitespace-nowrap">Register Now</span>
             </Button>
           )}
 
@@ -757,6 +762,20 @@ const PrizeChallenges = () => {
           )}
         </TabsContent>
       </Tabs>
+      
+      {/* Registration Modal */}
+      {selectedChallengeForRegistration && (
+        <RegistrationModal
+          open={registrationModalOpen}
+          onClose={() => {
+            setRegistrationModalOpen(false);
+            setSelectedChallengeForRegistration(null);
+          }}
+          eventId={selectedChallengeForRegistration.id}
+          eventType="prize_challenge"
+          eventTitle={selectedChallengeForRegistration.title}
+        />
+      )}
     </div>
   );
 };
