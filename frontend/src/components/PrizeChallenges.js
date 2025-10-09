@@ -339,7 +339,7 @@ const PrizeChallenges = () => {
             </DialogContent>
           </Dialog>
 
-          {challenge.can_join && (
+          {challenge.can_join && !challenge.is_participating && (
             <Button
               onClick={() => {
                 setSelectedChallengeForRegistration(challenge);
@@ -349,6 +349,16 @@ const PrizeChallenges = () => {
             >
               <Gift className="w-4 h-4 mr-2 flex-shrink-0" />
               <span className="whitespace-nowrap">Register Now</span>
+            </Button>
+          )}
+
+          {challenge.is_participating && (
+            <Button
+              disabled
+              className="w-full sm:flex-1 bg-emerald-500 cursor-not-allowed opacity-75"
+            >
+              <Users className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="whitespace-nowrap">Registered</span>
             </Button>
           )}
 
