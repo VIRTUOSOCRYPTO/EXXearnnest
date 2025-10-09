@@ -89,7 +89,7 @@ const SuperAdminInterface = () => {
   const [competitionForm, setCompetitionForm] = useState({
     title: '',
     description: '',
-    competition_type: 'savings_challenge',
+    competition_type: 'campus_savings',
     start_date: '',
     end_date: '',
     registration_start: '',
@@ -356,7 +356,7 @@ const SuperAdminInterface = () => {
         setCompetitionForm({
           title: '',
           description: '',
-          competition_type: 'savings_challenge',
+          competition_type: 'campus_savings',
           start_date: '',
           end_date: '',
           registration_start: '',
@@ -1033,11 +1033,10 @@ const SuperAdminInterface = () => {
                         onChange={(e) => setCompetitionForm({...competitionForm, competition_type: e.target.value})}
                         className="w-full p-2 border border-gray-300 rounded-md"
                       >
-                        <option value="savings_challenge">💰 Savings Challenge</option>
-                        <option value="budget_mastery">📊 Budget Mastery</option>
-                        <option value="investment_simulation">📈 Investment Simulation</option>
-                        <option value="financial_literacy">🎓 Financial Literacy Quiz</option>
-                        <option value="goal_achievement">🎯 Goal Achievement Race</option>
+                        <option value="campus_savings">💰 Campus Savings Challenge</option>
+                        <option value="campus_streak">🔥 Campus Streak Challenge</option>
+                        <option value="campus_referrals">👥 Campus Referral Challenge</option>
+                        <option value="campus_goals">🎯 Campus Goals Challenge</option>
                       </select>
                     </div>
                   </div>
