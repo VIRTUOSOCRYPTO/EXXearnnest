@@ -261,7 +261,7 @@ const InterCollegeCompetitions = () => {
             </DialogContent>
           </Dialog>
 
-          {!competition.is_registered && competition.is_eligible && competition.registration_open && (
+          {!competition.is_registered && competition.is_eligible && (
             <Button
               onClick={() => {
                 setSelectedCompForRegistration(competition);
