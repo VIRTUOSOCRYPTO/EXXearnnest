@@ -39,14 +39,24 @@ const EventOverviewModal = ({ open, onClose, event }) => {
     const startDate = new Date(event.start_date);
     const endDate = new Date(event.end_date);
     const regDeadline = event.registration_deadline ? new Date(event.registration_deadline) : null;
+    
+    // Check manual admin override first, default to true if not set
+    // Using registration_required field (backend model field name)
+    const registrationEnabled = event.registration_required !== undefined ? event.registration_required : true;
 
     if (now < startDate) {
+      // Check if manually disabled by admin
+      if (!registrationEnabled) {
+        return <Badge variant="secondary">Registration Closed</Badge>;
+      }
+      // Check date-based registration status
       if (regDeadline && now <= regDeadline) {
         return <Badge className="bg-green-500">Registration Open</Badge>;
       } else if (regDeadline && now > regDeadline) {
         return <Badge variant="secondary">Registration Closed</Badge>;
       } else {
-        return <Badge variant="outline" className="bg-blue-100">Upcoming</Badge>;
+        // No deadline set, registration is open until event starts
+        return <Badge className="bg-green-500">Registration Open</Badge>;
       }
     } else if (now >= startDate && now <= endDate) {
       return <Badge className="bg-orange-500">Ongoing</Badge>;
@@ -57,12 +67,27 @@ const EventOverviewModal = ({ open, onClose, event }) => {
 
   const canRegister = () => {
     const now = new Date();
+    const startDate = new Date(event.start_date);
     const regDeadline = event.registration_deadline ? new Date(event.registration_deadline) : null;
     
-    return event.registration_enabled && 
+    // Default registration_required to true if not set (backward compatibility)
+    // Using registration_required field (backend model field name)
+    const registrationEnabled = event.registration_required !== undefined ? event.registration_required : true;
+    
+    // Check if event hasn't started yet
+    const isBeforeEventStart = now < startDate;
+    
+    // Check if within registration deadline (if set) or before event start (if no deadline)
+    const isWithinRegistrationPeriod = regDeadline ? now <= regDeadline : isBeforeEventStart;
+    
+    // Check if slots available
+    const hasSlotsAvailable = (event.current_participants || event.registered_count || 0) < (event.max_participants || Infinity);
+    
+    return registrationEnabled && 
            !event.is_registered && 
-           event.registered_count < (event.max_participants || Infinity) &&
-           (!regDeadline || now <= regDeadline);
+           hasSlotsAvailable &&
+           isWithinRegistrationPeriod &&
+           isBeforeEventStart;
   };
 
   const formatDate = (dateString) => {
