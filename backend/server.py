@@ -6537,6 +6537,10 @@ async def create_inter_college_competition(
         })
         
         # Add admin metadata
+        # Check if user is super admin
+        user_obj = await get_user_by_id(current_user)
+        is_system_admin = user_obj.get("is_super_admin", False)
+        
         if is_system_admin:
             competition_dict.update({
                 "created_by_system_admin": True,
@@ -6546,11 +6550,11 @@ async def create_inter_college_competition(
         else:
             competition_dict.update({
                 "created_by_system_admin": False,
-                "created_by_campus_admin": current_admin["admin_type"] == "campus_admin",
-                "created_by_club_admin": current_admin["admin_type"] == "club_admin",
-                "admin_id": current_admin["id"],
-                "creator_college": current_admin["college_name"],
-                "creator_admin_type": current_admin["admin_type"]
+                "created_by_campus_admin": current_admin.get("admin_type") == "campus_admin",
+                "created_by_club_admin": current_admin.get("admin_type") == "club_admin",
+                "admin_id": current_admin.get("id"),
+                "creator_college": current_admin.get("college_name"),
+                "creator_admin_type": current_admin.get("admin_type")
             })
         
         competition = InterCollegeCompetition(**competition_dict)
@@ -6596,6 +6600,7 @@ async def create_inter_college_competition(
         await db.admin_audit_logs.insert_one(audit_log)
         
         return {
+            "success": True,
             "message": "Inter-college competition created successfully",
             "competition_id": competition.id,
             "creator_type": creator_type,
@@ -6607,8 +6612,10 @@ async def create_inter_college_competition(
         }
         
     except Exception as e:
+        import traceback
         logger.error(f"Create inter-college competition error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create competition")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to create competition: {str(e)}")
 
 @api_router.get("/inter-college/competitions")
 @limiter.limit("20/minute")
@@ -7274,6 +7281,10 @@ async def create_prize_challenge(
         })
         
         # Add admin metadata
+        # Check if user is super admin
+        user_obj = await get_user_by_id(current_user)
+        is_system_admin = user_obj.get("is_super_admin", False)
+        
         if is_system_admin:
             challenge_dict.update({
                 "created_by_system_admin": True,
@@ -7283,11 +7294,11 @@ async def create_prize_challenge(
         else:
             challenge_dict.update({
                 "created_by_system_admin": False,
-                "created_by_campus_admin": current_admin["admin_type"] == "campus_admin",
-                "created_by_club_admin": current_admin["admin_type"] == "club_admin",
-                "admin_id": current_admin["id"],
-                "creator_college": current_admin["college_name"],
-                "creator_admin_type": current_admin["admin_type"]
+                "created_by_campus_admin": current_admin.get("admin_type") == "campus_admin",
+                "created_by_club_admin": current_admin.get("admin_type") == "club_admin",
+                "admin_id": current_admin.get("id"),
+                "creator_college": current_admin.get("college_name"),
+                "creator_admin_type": current_admin.get("admin_type")
             })
         
         challenge = PrizeChallenge(**challenge_dict)
@@ -7319,6 +7330,7 @@ async def create_prize_challenge(
         await db.admin_audit_logs.insert_one(audit_log)
         
         return {
+            "success": True,
             "message": "Prize-based challenge created successfully",
             "challenge_id": challenge.id,
             "creator_type": creator_type,
@@ -7328,8 +7340,10 @@ async def create_prize_challenge(
         }
         
     except Exception as e:
+        import traceback
         logger.error(f"Create prize challenge error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to create prize challenge")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to create prize challenge: {str(e)}")
 
 @api_router.get("/prize-challenges")
 @limiter.limit("20/minute")
