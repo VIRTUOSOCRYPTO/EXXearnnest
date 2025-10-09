@@ -65,7 +65,20 @@ const CampusAdminDashboard = () => {
     fetchDashboardData();
     fetchCompetitions();
     fetchChallenges();
-  }, []);
+    
+    // Set up auto-refresh every 30 seconds for live data updates
+    const interval = setInterval(() => {
+      fetchDashboardData();
+      fetchCompetitions();
+      fetchChallenges();
+      // Also refresh college events if we're on that tab
+      if (activeTab === "college-events") {
+        fetchCollegeEvents();
+      }
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab === "club-admins") {
