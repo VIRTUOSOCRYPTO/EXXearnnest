@@ -185,7 +185,10 @@ async def get_current_super_admin(user_id: str = Depends(get_current_user)) -> D
     if not is_super:
         raise HTTPException(status_code=403, detail="Super admin privileges required")
     
-    return user
+    # Return user with proper user_id field for consistency
+    user_dict = dict(user) if user else {}
+    user_dict["user_id"] = user.get("id", user_id)
+    return user_dict
 
 async def get_current_campus_admin(user_id: str = Depends(get_current_user)) -> Dict[str, Any]:
     """Get current authenticated campus admin with privileges"""
@@ -6622,7 +6625,7 @@ async def create_inter_college_competition(
 async def get_inter_college_competitions(
     request: Request,
     status: Optional[str] = None,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Get all inter-college competitions"""
     try:
@@ -6636,8 +6639,8 @@ async def get_inter_college_competitions(
         competitions = await db.inter_college_competitions.find(filter_query).sort("created_at", -1).to_list(None)
         
         # Enhance with user's participation status
-        user = await get_user_by_id(current_user)
-        user_university = user.get("university") if user else None
+        user_id = current_user.get("id")
+        user_university = current_user.get("university")
         
         enhanced_competitions = []
         for competition in competitions:
@@ -6648,7 +6651,7 @@ async def get_inter_college_competitions(
             # Check if user is registered
             user_participation = await db.campus_competition_participations.find_one({
                 "competition_id": competition["id"],
-                "user_id": current_user["id"]
+                "user_id": user_id
             })
             
             # Get campus leaderboard stats
@@ -6657,6 +6660,29 @@ async def get_inter_college_competitions(
                 "campus": user_university
             }) if user_university else None
             
+            # Calculate registration status
+            now = datetime.now(timezone.utc)
+            registration_start = competition.get("registration_start")
+            registration_end = competition.get("registration_end")
+            
+            # Ensure timezone-aware datetime comparison
+            if isinstance(registration_start, str):
+                registration_start = datetime.fromisoformat(registration_start.replace('Z', '+00:00'))
+            elif registration_start and registration_start.tzinfo is None:
+                registration_start = registration_start.replace(tzinfo=timezone.utc)
+                
+            if isinstance(registration_end, str):
+                registration_end = datetime.fromisoformat(registration_end.replace('Z', '+00:00'))
+            elif registration_end and registration_end.tzinfo is None:
+                registration_end = registration_end.replace(tzinfo=timezone.utc)
+            
+            # Check if registration is currently open
+            registration_open = True
+            if registration_start and registration_end:
+                registration_open = registration_start <= now <= registration_end
+            elif competition.get("status") in ["completed", "cancelled"]:
+                registration_open = False
+
             enhanced_competition = {
                 **competition,
                 "is_eligible": is_eligible,
@@ -6664,7 +6690,7 @@ async def get_inter_college_competitions(
                 "user_campus": user_university,
                 "campus_rank": campus_stats.get("campus_rank", 0) if campus_stats else 0,
                 "campus_participants": campus_stats.get("total_participants", 0) if campus_stats else 0,
-                "registration_open": True  # Simplified for now
+                "registration_open": registration_open
             }
             enhanced_competitions.append(enhanced_competition)
         
