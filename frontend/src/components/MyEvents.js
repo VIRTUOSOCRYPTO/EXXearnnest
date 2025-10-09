@@ -86,14 +86,24 @@ const MyEvents = () => {
     const startDate = new Date(event.start_date);
     const endDate = new Date(event.end_date);
     const regDeadline = event.registration_deadline ? new Date(event.registration_deadline) : null;
+    
+    // Check manual admin override first, default to true if not set
+    // Using registration_required field (backend model field name)
+    const registrationEnabled = event.registration_required !== undefined ? event.registration_required : true;
 
     if (now < startDate) {
+      // Check if manually disabled by admin
+      if (!registrationEnabled) {
+        return <Badge variant="secondary">Registration Closed</Badge>;
+      }
+      // Check date-based registration status
       if (regDeadline && now <= regDeadline) {
         return <Badge className="bg-green-500">Registration Open</Badge>;
       } else if (regDeadline && now > regDeadline) {
         return <Badge variant="secondary">Registration Closed</Badge>;
       } else {
-        return <Badge variant="outline" className="bg-blue-100">Upcoming</Badge>;
+        // No deadline set, registration is open until event starts
+        return <Badge className="bg-green-500">Registration Open</Badge>;
       }
     } else if (now >= startDate && now <= endDate) {
       return <Badge className="bg-orange-500">Ongoing</Badge>;
