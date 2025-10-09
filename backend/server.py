@@ -6708,12 +6708,12 @@ async def get_inter_college_competitions(
 async def register_for_inter_college_competition(
     request: Request,
     competition_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
     """Register for an inter-college competition"""
     try:
         db = await get_database()
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -6729,12 +6729,25 @@ async def register_for_inter_college_competition(
         
         # Check if registration is open
         now = datetime.now(timezone.utc)
-        reg_start = competition.get("registration_start", now)
-        reg_end = competition.get("registration_end", now)
+        reg_start = competition.get("registration_start")
+        reg_end = competition.get("registration_end")
         
-        if now < reg_start:
+        # Convert to timezone-aware datetime if needed
+        if reg_start:
+            if isinstance(reg_start, str):
+                reg_start = datetime.fromisoformat(reg_start.replace('Z', '+00:00'))
+            elif not reg_start.tzinfo:
+                reg_start = reg_start.replace(tzinfo=timezone.utc)
+        
+        if reg_end:
+            if isinstance(reg_end, str):
+                reg_end = datetime.fromisoformat(reg_end.replace('Z', '+00:00'))
+            elif not reg_end.tzinfo:
+                reg_end = reg_end.replace(tzinfo=timezone.utc)
+        
+        if reg_start and now < reg_start:
             raise HTTPException(status_code=400, detail="Registration has not started yet")
-        if now > reg_end:
+        if reg_end and now > reg_end:
             raise HTTPException(status_code=400, detail="Registration period has ended")
         
         # Check eligibility
@@ -6772,7 +6785,7 @@ async def register_for_inter_college_competition(
         # Create participation record
         participation = CampusCompetitionParticipation(
             competition_id=competition_id,
-            user_id=current_user,
+            user_id=current_user["id"],
             campus=user_university
         )
         
@@ -6794,7 +6807,7 @@ async def register_for_inter_college_competition(
         
         # Award registration points
         await db.users.update_one(
-            {"id": current_user},
+            {"id": current_user["id"]},
             {"$inc": {"experience_points": 25}}  # Registration bonus
         )
         
@@ -6845,12 +6858,25 @@ async def register_team_for_inter_college_competition(
         
         # Check if registration is open
         now = datetime.now(timezone.utc)
-        reg_start = competition.get("registration_start", now)
-        reg_end = competition.get("registration_end", now)
+        reg_start = competition.get("registration_start")
+        reg_end = competition.get("registration_end")
         
-        if now < reg_start:
+        # Convert to timezone-aware datetime if needed
+        if reg_start:
+            if isinstance(reg_start, str):
+                reg_start = datetime.fromisoformat(reg_start.replace('Z', '+00:00'))
+            elif not reg_start.tzinfo:
+                reg_start = reg_start.replace(tzinfo=timezone.utc)
+        
+        if reg_end:
+            if isinstance(reg_end, str):
+                reg_end = datetime.fromisoformat(reg_end.replace('Z', '+00:00'))
+            elif not reg_end.tzinfo:
+                reg_end = reg_end.replace(tzinfo=timezone.utc)
+        
+        if reg_start and now < reg_start:
             raise HTTPException(status_code=400, detail="Registration has not started yet")
-        if now > reg_end:
+        if reg_end and now > reg_end:
             raise HTTPException(status_code=400, detail="Registration period has ended")
         
         # Check eligibility
@@ -7491,14 +7517,22 @@ async def join_prize_challenge(
         start_date = challenge.get("start_date")
         end_date = challenge.get("end_date")
         
-        if isinstance(start_date, str):
-            start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        if isinstance(end_date, str):
-            end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        # Convert to timezone-aware datetime if needed
+        if start_date:
+            if isinstance(start_date, str):
+                start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            elif not start_date.tzinfo:
+                start_date = start_date.replace(tzinfo=timezone.utc)
         
-        if now < start_date:
+        if end_date:
+            if isinstance(end_date, str):
+                end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            elif not end_date.tzinfo:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+        
+        if start_date and now < start_date:
             raise HTTPException(status_code=400, detail="Challenge has not started yet")
-        if now > end_date:
+        if end_date and now > end_date:
             raise HTTPException(status_code=400, detail="Challenge has ended")
         
         # Check entry requirements
@@ -19457,9 +19491,6 @@ async def get_live_viral_milestones():
         logger.error(f"Live viral milestones error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get viral milestones")
 
-# Include ALL API routes after endpoint definitions
-app.include_router(api_router)
-
 # ===== REAL-TIME WEBSOCKET ENDPOINTS =====
 # WebSocket endpoints must use /api prefix for Kubernetes ingress routing
 
@@ -20222,6 +20253,9 @@ async def get_my_registrations(
     except Exception as e:
         print(f"Error fetching registrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch registrations")
+
+# Include ALL API routes after ALL endpoint definitions
+app.include_router(api_router)
 
 # Health check endpoint
 @app.get("/health")
