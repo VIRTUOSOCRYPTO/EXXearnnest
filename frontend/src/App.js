@@ -360,6 +360,10 @@ function App() {
                 element={user ? <CreateEvent /> : <Navigate to="/login" />} 
               />
               <Route 
+                path="/create-college-event" 
+                element={user ? <CreateEvent /> : <Navigate to="/login" />} 
+              />
+              <Route 
                 path="/events/:id" 
                 element={user ? <EventDetails /> : <Navigate to="/login" />} 
               />
