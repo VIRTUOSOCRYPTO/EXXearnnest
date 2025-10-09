@@ -2903,8 +2903,112 @@ class EventRegistration(BaseModel):
     user_email: str
     user_college: str
     registration_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    status: str = "registered"  # "registered", "attended", "cancelled"
+    status: str = "pending"  # "pending", "approved", "rejected", "attended", "cancelled"
+    rejection_reason: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    
+    # Individual registration details
+    registration_type: str = "individual"  # "individual" or "group"
+    usn: Optional[str] = None
+    phone_number: Optional[str] = None
+    semester: Optional[int] = None
+    year: Optional[int] = None
+    branch: Optional[str] = None
+    section: Optional[str] = None
+    student_id_card_url: Optional[str] = None
+    
+    # Group registration details
     team_name: Optional[str] = None
-    team_members: List[Dict[str, str]] = []  # [{"name": "...", "email": "..."}]
+    team_leader_name: Optional[str] = None
+    team_leader_usn: Optional[str] = None
+    team_leader_email: Optional[str] = None
+    team_leader_phone: Optional[str] = None
+    team_size: Optional[int] = None
+    team_members: List[Dict[str, Any]] = []  # Full member details with USN, email, phone, etc.
+    
     additional_info: Optional[Dict[str, Any]] = None
+
+
+
+class PrizeChallengeRegistration(BaseModel):
+    """Detailed registration model for Prize Challenges"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    challenge_id: str
+    user_id: str
+    registration_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    status: str = "pending"  # "pending", "approved", "rejected", "active", "completed"
+    rejection_reason: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    
+    # Student details
+    full_name: str
+    email: str
+    phone_number: str
+    college: str
+    usn: str
+    semester: int = Field(ge=1, le=8)
+    year: int = Field(ge=1, le=4)
+    branch: str
+    section: Optional[str] = None
+    student_id_card_url: Optional[str] = None
+    
+    # Performance tracking (once approved)
+    current_progress: float = 0.0
+    progress_percentage: float = 0.0
+    current_rank: Optional[int] = None
+    
+    additional_info: Optional[Dict[str, Any]] = None
+
+class InterCollegeRegistration(BaseModel):
+    """Detailed registration model for Inter-College Competitions"""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    competition_id: str
+    user_id: str
+    registration_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    status: str = "pending"  # "pending", "approved", "rejected", "active", "completed"
+    rejection_reason: Optional[str] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    
+    # Registration type
+    registration_type: str = "admin"  # "admin" (individual campus admin) or "team"
+    
+    # For admin registration
+    admin_name: Optional[str] = None
+    admin_email: Optional[str] = None
+    admin_phone: Optional[str] = None
+    campus_name: Optional[str] = None
+    
+    # For team registration
+    team_name: Optional[str] = None
+    team_type: Optional[str] = None  # "team_leader" (creating new team) or "join_team" (joining existing)
+    existing_team_id: Optional[str] = None
+    team_leader_name: Optional[str] = None
+    team_leader_usn: Optional[str] = None
+    team_leader_email: Optional[str] = None
+    team_leader_phone: Optional[str] = None
+    team_leader_semester: Optional[int] = None
+    team_leader_year: Optional[int] = None
+    team_leader_branch: Optional[str] = None
+    team_size: Optional[int] = Field(None, ge=1, le=5)
+    min_team_size: Optional[int] = Field(None, ge=1)
+    max_team_size: Optional[int] = Field(None, le=5)
+    
+    # Team members (for team_leader type)
+    team_members: List[Dict[str, Any]] = []  # Full member details
+    
+    # Performance tracking
+    campus_score: float = 0.0
+    campus_rank: Optional[int] = None
+    
+    additional_info: Optional[Dict[str, Any]] = None
+
+class RegistrationApproval(BaseModel):
+    """Model for approving/rejecting registrations"""
+    registration_id: str
+    action: str = Field(..., pattern=r'^(approve|reject)$')
+    reason: Optional[str] = None  # Required for rejection
+    additional_notes: Optional[str] = None
 
