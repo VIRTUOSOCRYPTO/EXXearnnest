@@ -51,6 +51,23 @@ setup_backend() {
     echo "✅ Backend dependencies ready"
 }
 
+# Function to run first-time initialization scripts
+run_initialization() {
+    echo "🎯 Running first-time initialization..."
+    
+    cd /app/backend
+    source /root/.venv/bin/activate
+    
+    # Run the master initialization script
+    python3 initialize_app.py
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Initialization complete"
+    else
+        echo "⚠️  Initialization completed with warnings"
+    fi
+}
+
 # Function to setup frontend dependencies  
 setup_frontend() {
     echo "🔧 Setting up frontend dependencies..."
@@ -147,6 +164,9 @@ main() {
     wait_for_service "mongodb"
     setup_mongodb
     
+    # Step 2.5: Run first-time initialization (only runs once)
+    run_initialization
+    
     # Step 3: Start backend (depends on MongoDB)
     echo "🚀 Starting backend..."
     sudo supervisorctl start backend
@@ -173,8 +193,8 @@ main() {
     
     echo ""
     echo "🎉 EarnNest startup complete!"
-    echo "🌐 Frontend URL: https://run-analyze.preview.emergentagent.com"
-    echo "🔧 Backend API: https://run-analyze.preview.emergentagent.com/api"
+    echo "🌐 Frontend URL: https://fullstack-rating.preview.emergentagent.com"
+    echo "🔧 Backend API: https://fullstack-rating.preview.emergentagent.com/api"
     echo "📝 Code Server: Available on port 8080"
     echo ""
     echo "✅ All services should now be running automatically!"
