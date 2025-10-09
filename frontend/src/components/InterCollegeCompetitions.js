@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
 import { Trophy, Users, Calendar, Award, Target, Medal, Star, Edit, Trash2 } from 'lucide-react';
+import RegistrationModal from './RegistrationModal';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -22,6 +23,8 @@ const InterCollegeCompetitions = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [editingCompetition, setEditingCompetition] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
+  const [selectedCompForRegistration, setSelectedCompForRegistration] = useState(null);
 
   useEffect(() => {
     fetchCompetitions();
@@ -260,12 +263,14 @@ const InterCollegeCompetitions = () => {
 
           {!competition.is_registered && competition.is_eligible && competition.registration_open && (
             <Button
-              onClick={() => registerForCompetition(competition.id)}
-              disabled={registering}
+              onClick={() => {
+                setSelectedCompForRegistration(competition);
+                setRegistrationModalOpen(true);
+              }}
               className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700"
             >
               <Users className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="whitespace-nowrap">{registering ? 'Registering...' : 'Register Now'}</span>
+              <span className="whitespace-nowrap">Register Now</span>
             </Button>
           )}
 
@@ -624,6 +629,20 @@ const InterCollegeCompetitions = () => {
           )}
         </TabsContent>
       </Tabs>
+      
+      {/* Registration Modal */}
+      {selectedCompForRegistration && (
+        <RegistrationModal
+          open={registrationModalOpen}
+          onClose={() => {
+            setRegistrationModalOpen(false);
+            setSelectedCompForRegistration(null);
+          }}
+          eventId={selectedCompForRegistration.id}
+          eventType="inter_college"
+          eventTitle={selectedCompForRegistration.title}
+        />
+      )}
     </div>
   );
 };
