@@ -84,6 +84,68 @@ const SuperAdminInterface = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [reviewing, setReviewing] = useState(false);
 
+  // Competition Creation State
+  const [showCompetitionForm, setShowCompetitionForm] = useState(false);
+  const [competitionForm, setCompetitionForm] = useState({
+    title: '',
+    description: '',
+    competition_type: 'hackathon',
+    start_date: '',
+    end_date: '',
+    registration_start: '',
+    registration_end: '',
+    min_participants_per_campus: 10,
+    max_participants_per_campus: 100,
+    eligible_universities: [],
+    min_user_level: 1,
+    scoring_method: 'total',
+    target_metric: 'projects_submitted',
+    target_value: null,
+    prize_pool: 0,
+    prize_distribution: {
+      first: 50,
+      second: 30,
+      third: 20
+    },
+    campus_reputation_points: {
+      winner: 1000,
+      runner_up: 500,
+      participation: 100
+    },
+    participation_rewards: {}
+  });
+  const [creatingCompetition, setCreatingCompetition] = useState(false);
+
+  // Challenge Creation State
+  const [showChallengeForm, setShowChallengeForm] = useState(false);
+  const [challengeForm, setChallengeForm] = useState({
+    title: '',
+    description: '',
+    challenge_type: 'skill_based',
+    challenge_category: 'individual',
+    difficulty_level: 'medium',
+    target_metric: 'completion_score',
+    target_value: 100,
+    start_date: '',
+    end_date: '',
+    duration_hours: 24,
+    max_participants: 50,
+    entry_requirements: {},
+    prize_type: 'cash',
+    total_prize_value: 0,
+    prize_structure: {
+      first: 50,
+      second: 30,
+      third: 20
+    },
+    scholarship_details: null,
+    campus_reputation_rewards: {
+      winner: 500,
+      participation: 100
+    }
+  });
+  const [creatingChallenge, setCreatingChallenge] = useState(false);
+
   useEffect(() => {
     checkSuperAdminAccess();
   }, []);
@@ -97,6 +159,10 @@ const SuperAdminInterface = () => {
       fetchCampusAdminsOversight();
     } else if (activeTab === "club-admins") {
       fetchClubAdminsOverview();
+    } else if (activeTab === "competitions") {
+      // Competition tab - no data fetching needed for now
+    } else if (activeTab === "challenges") {
+      // Challenge tab - no data fetching needed for now
     } else if (activeTab === "audit") {
       fetchAuditLogs();
     } else if (activeTab === "alerts") {
@@ -255,10 +321,93 @@ const SuperAdminInterface = () => {
 
   const markAlertAsRead = async (alertId) => {
     try {
-      await axios.put(`${API}/super-admin/alerts/${alertId}/read`);
+      const token = localStorage.getItem('token');
+      await axios.put(`${API}/super-admin/alerts/${alertId}/read`, {}, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
       fetchAlerts();
     } catch (error) {
       console.error('Error marking alert as read:', error);
+    }
+  };
+
+  const handleCreateCompetition = async () => {
+    setCreatingCompetition(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API}/inter-college/competitions`, competitionForm, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.data.success) {
+        alert('Competition created successfully!');
+        setShowCompetitionForm(false);
+        setCompetitionForm({
+          title: '',
+          description: '',
+          competition_type: 'hackathon',
+          start_date: '',
+          end_date: '',
+          registration_start: '',
+          registration_end: '',
+          min_participants_per_campus: 10,
+          max_participants_per_campus: 100,
+          eligible_universities: [],
+          min_user_level: 1,
+          scoring_method: 'total',
+          target_metric: 'projects_submitted',
+          target_value: null,
+          prize_pool: 0,
+          prize_distribution: { first: 50, second: 30, third: 20 },
+          campus_reputation_points: { winner: 1000, runner_up: 500, participation: 100 },
+          participation_rewards: {}
+        });
+      }
+    } catch (error) {
+      console.error('Error creating competition:', error);
+      alert('Failed to create competition: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setCreatingCompetition(false);
+    }
+  };
+
+  const handleCreateChallenge = async () => {
+    setCreatingChallenge(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API}/prize-challenges`, challengeForm, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.data.success) {
+        alert('Challenge created successfully!');
+        setShowChallengeForm(false);
+        setChallengeForm({
+          title: '',
+          description: '',
+          challenge_type: 'skill_based',
+          challenge_category: 'individual',
+          difficulty_level: 'medium',
+          target_metric: 'completion_score',
+          target_value: 100,
+          start_date: '',
+          end_date: '',
+          duration_hours: 24,
+          max_participants: 50,
+          entry_requirements: {},
+          prize_type: 'cash',
+          total_prize_value: 0,
+          prize_structure: { first: 50, second: 30, third: 20 },
+          scholarship_details: null,
+          campus_reputation_rewards: { winner: 500, participation: 100 }
+        });
+      }
+    } catch (error) {
+      console.error('Error creating challenge:', error);
+      alert('Failed to create challenge: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setCreatingChallenge(false);
     }
   };
 
@@ -338,11 +487,13 @@ const SuperAdminInterface = () => {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="requests">Admin Requests</TabsTrigger>
             <TabsTrigger value="oversight">Campus Admins</TabsTrigger>
             <TabsTrigger value="club-admins">Club Admins</TabsTrigger>
+            <TabsTrigger value="competitions">Create Competition</TabsTrigger>
+            <TabsTrigger value="challenges">Create Challenge</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
             <TabsTrigger value="alerts">Alerts</TabsTrigger>
           </TabsList>
@@ -801,6 +952,397 @@ const SuperAdminInterface = () => {
                   </div>
                 )}
               </div>
+            )}
+          </TabsContent>
+
+          {/* Create Competition Tab */}
+          <TabsContent value="competitions" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Create Inter-College Competition</h2>
+              <div className="flex items-center space-x-2">
+                <Trophy className="w-5 h-5 text-yellow-600" />
+                <span className="text-sm text-gray-600">Competition Management</span>
+              </div>
+            </div>
+
+            {!showCompetitionForm ? (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="text-center py-8">
+                    <Trophy className="w-16 h-16 text-yellow-600 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">Competition Creation</h3>
+                    <p className="text-gray-600 mb-6">Create and manage inter-college competitions</p>
+                    <Button 
+                      className="bg-yellow-600 hover:bg-yellow-700"
+                      onClick={() => setShowCompetitionForm(true)}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create New Competition
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Create Inter-College Competition</span>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setShowCompetitionForm(false)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Title *</label>
+                      <input
+                        type="text"
+                        value={competitionForm.title}
+                        onChange={(e) => setCompetitionForm({...competitionForm, title: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="Competition title"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Competition Type *</label>
+                      <select
+                        value={competitionForm.competition_type}
+                        onChange={(e) => setCompetitionForm({...competitionForm, competition_type: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="hackathon">Hackathon</option>
+                        <option value="coding_contest">Coding Contest</option>
+                        <option value="project_showcase">Project Showcase</option>
+                        <option value="business_plan">Business Plan</option>
+                        <option value="case_study">Case Study</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Description *</label>
+                    <textarea
+                      value={competitionForm.description}
+                      onChange={(e) => setCompetitionForm({...competitionForm, description: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={3}
+                      placeholder="Competition description"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <input
+                        type="datetime-local"
+                        value={competitionForm.start_date}
+                        onChange={(e) => setCompetitionForm({...competitionForm, start_date: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <input
+                        type="datetime-local"
+                        value={competitionForm.end_date}
+                        onChange={(e) => setCompetitionForm({...competitionForm, end_date: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Registration Start *</label>
+                      <input
+                        type="datetime-local"
+                        value={competitionForm.registration_start}
+                        onChange={(e) => setCompetitionForm({...competitionForm, registration_start: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Registration End *</label>
+                      <input
+                        type="datetime-local"
+                        value={competitionForm.registration_end}
+                        onChange={(e) => setCompetitionForm({...competitionForm, registration_end: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Target Metric *</label>
+                      <select
+                        value={competitionForm.target_metric}
+                        onChange={(e) => setCompetitionForm({...competitionForm, target_metric: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="projects_submitted">Projects Submitted</option>
+                        <option value="completion_rate">Completion Rate</option>
+                        <option value="innovation_score">Innovation Score</option>
+                        <option value="technical_score">Technical Score</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Prize Pool (₹) *</label>
+                      <input
+                        type="number"
+                        value={competitionForm.prize_pool}
+                        onChange={(e) => setCompetitionForm({...competitionForm, prize_pool: parseInt(e.target.value) || 0})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        min="0"
+                        placeholder="Total prize money"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Max Participants per Campus</label>
+                      <input
+                        type="number"
+                        value={competitionForm.max_participants_per_campus}
+                        onChange={(e) => setCompetitionForm({...competitionForm, max_participants_per_campus: parseInt(e.target.value)})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        min="1"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Prize distribution is handled automatically based on prize_pool */}
+
+                  {/* Additional competition details can be added later */}
+
+                  <div className="flex space-x-4 pt-4">
+                    <Button 
+                      className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                      onClick={handleCreateCompetition}
+                      disabled={creatingCompetition || !competitionForm.title || !competitionForm.description || !competitionForm.target_metric || competitionForm.prize_pool <= 0}
+                    >
+                      {creatingCompetition ? 'Creating...' : 'Create Competition'}
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setShowCompetitionForm(false)}
+                      disabled={creatingCompetition}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Create Challenge Tab */}
+          <TabsContent value="challenges" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Create Prize Challenge</h2>
+              <div className="flex items-center space-x-2">
+                <Award className="w-5 h-5 text-purple-600" />
+                <span className="text-sm text-gray-600">Challenge Management</span>
+              </div>
+            </div>
+
+            {!showChallengeForm ? (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="text-center py-8">
+                    <Award className="w-16 h-16 text-purple-600 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">Challenge Creation</h3>
+                    <p className="text-gray-600 mb-6">Create and manage skill-based challenges</p>
+                    <Button 
+                      className="bg-purple-600 hover:bg-purple-700"
+                      onClick={() => setShowChallengeForm(true)}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create New Challenge
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Create Prize Challenge</span>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setShowChallengeForm(false)}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Title *</label>
+                      <input
+                        type="text"
+                        value={challengeForm.title}
+                        onChange={(e) => setChallengeForm({...challengeForm, title: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        placeholder="Challenge title"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Type *</label>
+                      <select
+                        value={challengeForm.type}
+                        onChange={(e) => setChallengeForm({...challengeForm, type: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="skill_based">Skill Based</option>
+                        <option value="creative">Creative</option>
+                        <option value="technical">Technical</option>
+                        <option value="problem_solving">Problem Solving</option>
+                        <option value="research">Research</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Description *</label>
+                    <textarea
+                      value={challengeForm.description}
+                      onChange={(e) => setChallengeForm({...challengeForm, description: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={3}
+                      placeholder="Challenge description"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Difficulty Level *</label>
+                      <select
+                        value={challengeForm.difficulty_level}
+                        onChange={(e) => setChallengeForm({...challengeForm, difficulty_level: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                        <option value="expert">Expert</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Prize Amount (₹)</label>
+                      <input
+                        type="number"
+                        value={challengeForm.prize_amount}
+                        onChange={(e) => setChallengeForm({...challengeForm, prize_amount: parseInt(e.target.value) || 0})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        min="0"
+                        placeholder="Prize money"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Start Date *</label>
+                      <input
+                        type="datetime-local"
+                        value={challengeForm.start_date}
+                        onChange={(e) => setChallengeForm({...challengeForm, start_date: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">End Date *</label>
+                      <input
+                        type="datetime-local"
+                        value={challengeForm.end_date}
+                        onChange={(e) => setChallengeForm({...challengeForm, end_date: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Registration Deadline *</label>
+                      <input
+                        type="datetime-local"
+                        value={challengeForm.registration_deadline}
+                        onChange={(e) => setChallengeForm({...challengeForm, registration_deadline: e.target.value})}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Max Participants</label>
+                    <input
+                      type="number"
+                      value={challengeForm.max_participants}
+                      onChange={(e) => setChallengeForm({...challengeForm, max_participants: parseInt(e.target.value)})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      min="1"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Skills Required</label>
+                    <input
+                      type="text"
+                      value={challengeForm.skills_required.join(', ')}
+                      onChange={(e) => setChallengeForm({
+                        ...challengeForm, 
+                        skills_required: e.target.value.split(',').map(s => s.trim()).filter(s => s)
+                      })}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Enter skills separated by commas (e.g., JavaScript, React, Node.js)"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Completion Criteria</label>
+                    <textarea
+                      value={challengeForm.completion_criteria}
+                      onChange={(e) => setChallengeForm({...challengeForm, completion_criteria: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={3}
+                      placeholder="What needs to be accomplished to complete this challenge?"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Resources & Guidelines</label>
+                    <textarea
+                      value={challengeForm.resources}
+                      onChange={(e) => setChallengeForm({...challengeForm, resources: e.target.value})}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows={2}
+                      placeholder="Helpful resources, links, or additional guidelines"
+                    />
+                  </div>
+
+                  <div className="flex space-x-4 pt-4">
+                    <Button 
+                      className="flex-1 bg-purple-600 hover:bg-purple-700"
+                      onClick={handleCreateChallenge}
+                      disabled={creatingChallenge || !challengeForm.title || !challengeForm.description}
+                    >
+                      {creatingChallenge ? 'Creating...' : 'Create Challenge'}
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setShowChallengeForm(false)}
+                      disabled={creatingChallenge}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </Tabs>
