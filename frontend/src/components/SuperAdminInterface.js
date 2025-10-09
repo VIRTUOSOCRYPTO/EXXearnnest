@@ -144,10 +144,16 @@ const SuperAdminInterface = () => {
   const fetchCampusAdminsOversight = async () => {
     try {
       setAdminsLoading(true);
-      const response = await axios.get(`${API}/super-admin/admins`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/super-admin/admins`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setCampusAdmins(response.data.admins || []);
     } catch (error) {
       console.error('Error fetching campus admins:', error);
+      if (error.response?.status === 403) {
+        alert('Super admin access required');
+      }
     } finally {
       setAdminsLoading(false);
     }
@@ -156,10 +162,16 @@ const SuperAdminInterface = () => {
   const fetchClubAdminsOverview = async () => {
     try {
       setClubAdminsLoading(true);
-      const response = await axios.get(`${API}/super-admin/club-admins`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/super-admin/club-admins`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setClubAdmins(response.data.club_admins || []);
     } catch (error) {
       console.error('Error fetching club admins:', error);
+      if (error.response?.status === 403) {
+        alert('Super admin access required');
+      }
     } finally {
       setClubAdminsLoading(false);
     }
