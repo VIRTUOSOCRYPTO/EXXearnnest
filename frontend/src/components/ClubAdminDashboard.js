@@ -289,40 +289,13 @@ const ClubAdminDashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={() => window.location.href = '/create-competition'}
-              disabled={!capabilities.can_create_competitions || statistics.remaining_monthly_quota === 0}
-            >
-              <Trophy className="w-4 h-4 mr-2" />
-              Create Inter-College Competition
-            </Button>
-            <Button 
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => window.location.href = '/create-challenge'}
-              disabled={!capabilities.can_create_challenges || statistics.remaining_monthly_quota === 0}
-            >
-              <Award className="w-4 h-4 mr-2" />
-              Create Prize Challenge
-            </Button>
-            <Button 
-              variant="outline" 
-              className="border-purple-600 text-purple-600 hover:bg-purple-50"
-              onClick={() => window.location.href = '/campus-reputation'}
-            >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              View Campus Reputation
-            </Button>
-            <Button 
-              variant="outline" 
-              className="border-purple-600 text-purple-600 hover:bg-purple-50"
-              onClick={() => window.location.href = '/group-challenges'}
-            >
-              <Users className="w-4 h-4 mr-2" />
-              View Group Challenges
-            </Button>
-          </div>
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 w-full"
+            onClick={() => window.location.href = '/create-college-event'}
+          >
+            <Calendar className="w-4 h-4 mr-2" />
+            Create My College Event
+          </Button>
           {statistics.remaining_monthly_quota === 0 && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
               <p className="text-sm text-yellow-800">
@@ -577,26 +550,16 @@ const ClubAdminDashboard = () => {
                       <CardTitle>Permissions & Capabilities</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4">
                         <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <span>Create Competitions</span>
-                          <Badge className={capabilities.can_create_competitions ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                            {capabilities.can_create_competitions ? 'Enabled' : 'Disabled'}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <span>Create Challenges</span>
-                          <Badge className={capabilities.can_create_challenges ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                            {capabilities.can_create_challenges ? 'Enabled' : 'Disabled'}
+                          <span>Create College Events</span>
+                          <Badge className='bg-green-100 text-green-800'>
+                            Enabled
                           </Badge>
                         </div>
                         <div className="flex items-center justify-between p-3 border rounded-lg">
                           <span>Monthly Event Limit</span>
-                          <Badge variant="outline">{capabilities.max_events_per_month}</Badge>
-                        </div>
-                        <div className="flex items-center justify-between p-3 border rounded-lg">
-                          <span>Monthly Challenge Limit</span>
-                          <Badge variant="outline">{capabilities.max_challenges_per_month}</Badge>
+                          <Badge variant="outline">{capabilities.max_events_per_month || 10}</Badge>
                         </div>
                       </div>
                     </CardContent>
