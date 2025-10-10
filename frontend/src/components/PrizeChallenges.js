@@ -172,6 +172,8 @@ const PrizeChallenges = () => {
 
   const filteredChallenges = challenges.filter(challenge => {
     switch (activeTab) {
+      case "all":
+        return true;
       case "participating":
         return challenge.is_participating;
       case "available":
@@ -335,7 +337,16 @@ const PrizeChallenges = () => {
             </DialogContent>
           </Dialog>
 
-          {challenge.can_join && !challenge.is_participating && (
+          {/* Registration button logic */}
+          {challenge.is_participating ? (
+            <Button
+              disabled
+              className="w-full sm:flex-1 bg-emerald-500 cursor-not-allowed opacity-75"
+            >
+              <Users className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="whitespace-nowrap">Already Registered</span>
+            </Button>
+          ) : challenge.can_join ? (
             <Button
               onClick={() => joinChallenge(challenge.id)}
               disabled={joining}
@@ -344,25 +355,38 @@ const PrizeChallenges = () => {
               <Gift className="w-4 h-4 mr-2 flex-shrink-0" />
               <span className="whitespace-nowrap">{joining ? 'Registering...' : 'Register Now'}</span>
             </Button>
-          )}
-
-          {challenge.is_participating && (
-            <Button
-              disabled
-              className="w-full sm:flex-1 bg-emerald-500 cursor-not-allowed opacity-75"
-            >
-              <Users className="w-4 h-4 mr-2 flex-shrink-0" />
-              <span className="whitespace-nowrap">Already Registered</span>
-            </Button>
-          )}
-
-          {!challenge.meets_requirements && !challenge.is_participating && (
+          ) : !challenge.meets_requirements ? (
             <Button
               disabled
               variant="outline"
               className="w-full sm:flex-1"
             >
               <span className="break-words text-center w-full">Requirements Not Met</span>
+            </Button>
+          ) : challenge.time_to_start_seconds > 0 ? (
+            <Button
+              disabled
+              variant="outline"
+              className="w-full sm:flex-1"
+            >
+              <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span className="whitespace-nowrap">Opens Soon</span>
+            </Button>
+          ) : challenge.time_to_end_seconds <= 0 ? (
+            <Button
+              disabled
+              variant="outline"
+              className="w-full sm:flex-1"
+            >
+              <span className="whitespace-nowrap">Challenge Ended</span>
+            </Button>
+          ) : (
+            <Button
+              disabled
+              variant="outline"
+              className="w-full sm:flex-1"
+            >
+              <span className="whitespace-nowrap">Not Available</span>
             </Button>
           )}
 
