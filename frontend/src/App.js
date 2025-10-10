@@ -56,6 +56,7 @@ import MyRegistrations from './components/MyRegistrations';
 
 // College Events System
 import CreateEvent from './components/CreateEvent';
+import EditEvent from './components/EditEvent';
 import EventsList from './components/EventsList';
 import EventDetails from './components/EventDetails';
 import MyEvents from './components/MyEvents';
@@ -366,6 +367,10 @@ function App() {
               <Route 
                 path="/events/:id" 
                 element={user ? <EventDetails /> : <Navigate to="/login" />} 
+              />
+              <Route 
+                path="/events/:id/edit" 
+                element={user ? <EditEvent /> : <Navigate to="/login" />} 
               />
               <Route 
                 path="/my-events" 
