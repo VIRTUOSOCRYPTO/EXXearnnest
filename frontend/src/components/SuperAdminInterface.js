@@ -273,6 +273,18 @@ const SuperAdminInterface = () => {
     }
   };
 
+  const fetchAdminActivitiesData = async (adminUserId) => {
+    try {
+      const response = await axios.get(`${API}/super-admin/campus-admins/activities`, {
+        params: { admin_id: adminUserId }
+      });
+      setAdminActivities(response.data.activities || []);
+    } catch (error) {
+      console.error('Error fetching admin activities:', error);
+      setAdminActivities([]);
+    }
+  };
+
   const reviewAdminRequest = async (requestId, decision) => {
     try {
       setReviewing(true);
@@ -1123,30 +1135,90 @@ const SuperAdminInterface = () => {
                 {campusAdmins.map((admin) => (
                   <Card key={admin.id}>
                     <CardContent className="p-6">
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <h3 className="font-semibold text-lg">{admin.admin_name}</h3>
+                          <div className="flex items-center space-x-2 mb-3">
+                            <User className="w-5 h-5 text-blue-600" />
+                            <h3 className="font-semibold text-lg">{admin.user_details?.full_name || admin.admin_name || 'N/A'}</h3>
                             <Badge className={getStatusColor(admin.status)}>
                               {admin.status}
                             </Badge>
+                            {admin.admin_type === 'campus_admin' && (
+                              <Badge className="bg-purple-100 text-purple-800">
+                                Campus Admin
+                              </Badge>
+                            )}
+                            {admin.admin_type === 'club_admin' && (
+                              <Badge className="bg-blue-100 text-blue-800">
+                                Club Admin
+                              </Badge>
+                            )}
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
-                            <div>
-                              <p><strong>College:</strong> {admin.college_name}</p>
-                              <p><strong>Admin Type:</strong> {admin.admin_type}</p>
-                              <p><strong>Days Active:</strong> {admin.days_active}</p>
+                          {/* Contact Information */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                <span className="text-gray-600">{admin.user_details?.email || admin.contact_email || 'N/A'}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Phone className="w-4 h-4 text-gray-400" />
+                                <span className="text-gray-600">{admin.contact_phone || 'N/A'}</span>
+                              </div>
                             </div>
-                            <div>
-                              <p><strong>Success Rate:</strong> {admin.success_rate}%</p>
-                              <p><strong>Competitions:</strong> {admin.competitions_created}</p>
-                              <p><strong>Participants:</strong> {admin.participants_managed}</p>
+                            
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                <Building className="w-4 h-4 text-gray-400" />
+                                <span className="text-gray-600"><strong>College:</strong> {admin.college_name || admin.university_name || 'N/A'}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <GraduationCap className="w-4 h-4 text-gray-400" />
+                                <span className="text-gray-600"><strong>Club:</strong> {admin.club_name || 'N/A'}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                <UserCheck className="w-4 h-4 text-gray-400" />
+                                <span className="text-gray-600"><strong>Appointed By:</strong> {admin.appointed_by_name || 'System'}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-gray-400" />
+                                <span className="text-gray-600">
+                                  <strong>Appointed:</strong> {admin.appointed_at ? new Date(admin.appointed_at).toLocaleDateString() : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Activity Metrics */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-gray-50 rounded-lg">
+                            <div className="text-center">
+                              <div className="text-xl font-bold text-blue-600">{admin.competitions_created || 0}</div>
+                              <div className="text-xs text-gray-600">Events Created</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xl font-bold text-green-600">{admin.participants_managed || 0}</div>
+                              <div className="text-xs text-gray-600">Participants</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xl font-bold text-purple-600">
+                                {admin.activity_metrics?.days_active || admin.days_active || 0}
+                              </div>
+                              <div className="text-xs text-gray-600">Days Active</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xl font-bold text-orange-600">
+                                {admin.privileges_expiry ? new Date(admin.privileges_expiry).toLocaleDateString() : 'N/A'}
+                              </div>
+                              <div className="text-xs text-gray-600">Expires</div>
                             </div>
                           </div>
                         </div>
                         
-                        <div className="flex space-x-2">
+                        <div className="flex flex-col gap-2 ml-4">
                           {admin.status === 'active' && (
                             <Button
                               size="sm"
@@ -1157,9 +1229,17 @@ const SuperAdminInterface = () => {
                               Suspend
                             </Button>
                           )}
-                          <Button size="sm" variant="outline">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedAdmin(admin);
+                              setShowAdminModal(true);
+                              fetchAdminActivitiesData(admin.user_id);
+                            }}
+                          >
                             <Eye className="w-4 h-4 mr-2" />
-                            View Details
+                            View Activity
                           </Button>
                         </div>
                       </div>
@@ -1439,6 +1519,171 @@ const SuperAdminInterface = () => {
                   rows={2}
                 />
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Admin Activity Modal */}
+      {showAdminModal && selectedAdmin && (
+        <Dialog open={showAdminModal} onOpenChange={setShowAdminModal}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold">
+                Admin Activity Details - {selectedAdmin.user_details?.full_name || selectedAdmin.admin_name}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-6 mt-4">
+              {/* Admin Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <Trophy className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+                      <div className="text-2xl font-bold text-blue-600">
+                        {selectedAdmin.competitions_created || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Competitions</div>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <Users className="w-6 h-6 mx-auto mb-2 text-green-600" />
+                      <div className="text-2xl font-bold text-green-600">
+                        {selectedAdmin.participants_managed || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Participants</div>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <Award className="w-6 h-6 mx-auto mb-2 text-purple-600" />
+                      <div className="text-2xl font-bold text-purple-600">
+                        {selectedAdmin.challenges_created || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Challenges</div>
+                    </div>
+                    <div className="text-center p-3 bg-orange-50 rounded-lg">
+                      <Calendar className="w-6 h-6 mx-auto mb-2 text-orange-600" />
+                      <div className="text-2xl font-bold text-orange-600">
+                        {selectedAdmin.activity_metrics?.days_active || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Days Active</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Recent Activities */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Recent Activities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {adminActivities.length > 0 ? (
+                    <div className="space-y-3">
+                      {adminActivities.map((activity, index) => (
+                        <div key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                          <Activity className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">{activity.action_type || activity.activity_type}</div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              {activity.action_description || activity.description}
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              {activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'N/A'}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Activity className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>No recent activities found</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Admin Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Admin Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Name:</span>
+                        <span className="text-gray-600">{selectedAdmin.user_details?.full_name || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Email:</span>
+                        <span className="text-gray-600">{selectedAdmin.user_details?.email || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Phone:</span>
+                        <span className="text-gray-600">{selectedAdmin.contact_phone || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Building className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">College:</span>
+                        <span className="text-gray-600">{selectedAdmin.college_name || 'N/A'}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Club:</span>
+                        <span className="text-gray-600">{selectedAdmin.club_name || 'N/A'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <UserCheck className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Appointed By:</span>
+                        <span className="text-gray-600">{selectedAdmin.appointed_by_name || 'System'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Appointed:</span>
+                        <span className="text-gray-600">
+                          {selectedAdmin.appointed_at ? new Date(selectedAdmin.appointed_at).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium">Expires:</span>
+                        <span className="text-gray-600">
+                          {selectedAdmin.privileges_expiry ? new Date(selectedAdmin.privileges_expiry).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Permissions */}
+              {selectedAdmin.permissions && Object.keys(selectedAdmin.permissions).length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Permissions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(selectedAdmin.permissions).map(([key, value]) => (
+                        value && (
+                          <Badge key={key} variant="outline" className="bg-blue-50">
+                            {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </Badge>
+                        )
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </DialogContent>
         </Dialog>
