@@ -7,10 +7,32 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
-import { Trophy, Users, Calendar, Award, Target, Medal, Star, Edit, Trash2 } from 'lucide-react';
+import { Trophy, Users, Calendar, Award, Target, Medal, Star, Edit, Trash2, Plus, X } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+// Utility function to format target metrics
+const formatTargetMetric = (target_metric, target_value = null) => {
+  const metricLabels = {
+    'total_savings': 'Total Savings',
+    'monthly_savings': 'Monthly Savings',
+    'streak_days': 'Streak Days',
+    'goals_completed': 'Goals Completed',
+    'transactions': 'Transactions',
+    'achievement_points': 'Achievement Points'
+  };
+  
+  const label = metricLabels[target_metric] || target_metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  
+  if (target_value && (target_metric.includes('savings') || target_metric.includes('amount'))) {
+    return `₹${target_value.toLocaleString()} ${label}`;
+  } else if (target_value) {
+    return `${target_value} ${label}`;
+  }
+  
+  return label;
+};
 
 const InterCollegeCompetitions = () => {
   const { user } = useAuth();
@@ -212,7 +234,7 @@ const InterCollegeCompetitions = () => {
           <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
             <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
             <div className="text-xs sm:text-sm font-medium mb-1">Target</div>
-            <div className="text-xs text-gray-600 break-words leading-tight">{competition.target_metric}</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">{formatTargetMetric(competition.target_metric, competition.target_value)}</div>
           </div>
           <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
             <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
@@ -310,9 +332,22 @@ const InterCollegeCompetitions = () => {
     const [formData, setFormData] = useState({
       title: competition.title || '',
       description: competition.description || '',
-      prize_pool: competition.prize_pool || 0,
-      duration_days: competition.duration_days || 7,
-      target_metric: competition.target_metric || 'Savings Amount'
+      competition_type: competition.competition_type || 'savings_challenge',
+      start_date: competition.start_date ? new Date(competition.start_date).toISOString().slice(0, 16) : '',
+      end_date: competition.end_date ? new Date(competition.end_date).toISOString().slice(0, 16) : '',
+      registration_start: competition.registration_start ? new Date(competition.registration_start).toISOString().slice(0, 16) : '',
+      registration_end: competition.registration_end ? new Date(competition.registration_end).toISOString().slice(0, 16) : '',
+      min_participants_per_campus: competition.min_participants_per_campus || 10,
+      max_participants_per_campus: competition.max_participants_per_campus || 100,
+      eligible_universities: competition.eligible_universities || [],
+      min_user_level: competition.min_user_level || 1,
+      scoring_method: competition.scoring_method || 'total',
+      target_metric: competition.target_metric || 'total_savings',
+      target_value: competition.target_value || '',
+      prize_pool: competition.prize_pool || '',
+      prize_distribution: competition.prize_distribution || { first: 50, second: 30, third: 20 },
+      campus_reputation_points: competition.campus_reputation_points || { first: 100, second: 75, third: 50 },
+      participation_rewards: competition.participation_rewards || { points: 10, badge: 'Participant' }
     });
 
     const handleSubmit = (e) => {
@@ -320,29 +355,66 @@ const InterCollegeCompetitions = () => {
       onSave(competition.id, formData);
     };
 
+    const [newUniversity, setNewUniversity] = useState('');
+
+    const handleAddUniversity = () => {
+      if (newUniversity.trim() && !formData.eligible_universities.includes(newUniversity.trim())) {
+        setFormData(prev => ({
+          ...prev,
+          eligible_universities: [...prev.eligible_universities, newUniversity.trim()]
+        }));
+        setNewUniversity('');
+      }
+    };
+
+    const handleRemoveUniversity = (universityToRemove) => {
+      setFormData(prev => ({
+        ...prev,
+        eligible_universities: prev.eligible_universities.filter(uni => uni !== universityToRemove)
+      }));
+    };
+
     return (
       <Dialog open={true} onOpenChange={onCancel}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" />
               Edit Competition
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Competition Title</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Competition Title *</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Competition Type *</label>
+                <select
+                  value={formData.competition_type}
+                  onChange={(e) => setFormData({ ...formData, competition_type: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select Type</option>
+                  <option value="savings_challenge">💰 Savings Challenge</option>
+                  <option value="budgeting_contest">📊 Budgeting Contest</option>
+                  <option value="financial_literacy">📚 Financial Literacy</option>
+                  <option value="investment_simulation">📈 Investment Simulation</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Description</label>
+              <label className="block text-sm font-medium mb-2">Description *</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -352,43 +424,235 @@ const InterCollegeCompetitions = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Prize Pool (₹)</label>
+                <label className="block text-sm font-medium mb-2">Competition Start *</label>
                 <input
-                  type="number"
-                  value={formData.prize_pool}
-                  onChange={(e) => setFormData({ ...formData, prize_pool: parseInt(e.target.value) || 0 })}
+                  type="datetime-local"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  min="0"
+                  required
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium mb-2">Duration (Days)</label>
+                <label className="block text-sm font-medium mb-2">Competition End *</label>
                 <input
-                  type="number"
-                  value={formData.duration_days}
-                  onChange={(e) => setFormData({ ...formData, duration_days: parseInt(e.target.value) || 7 })}
+                  type="datetime-local"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  min="1"
-                  max="365"
+                  required
                 />
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Registration Start *</label>
+                <input
+                  type="datetime-local"
+                  value={formData.registration_start}
+                  onChange={(e) => setFormData({ ...formData, registration_start: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Registration End *</label>
+                <input
+                  type="datetime-local"
+                  value={formData.registration_end}
+                  onChange={(e) => setFormData({ ...formData, registration_end: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Target and Scoring */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Target Metric *</label>
+                <select
+                  value={formData.target_metric}
+                  onChange={(e) => setFormData({ ...formData, target_metric: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Select Metric</option>
+                  <option value="total_savings">💵 Total Savings Amount</option>
+                  <option value="monthly_savings">📅 Monthly Savings</option>
+                  <option value="streak_days">🔥 Streak Days</option>
+                  <option value="goals_completed">🎯 Goals Completed</option>
+                  <option value="transactions">💳 Transaction Count</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Target Value</label>
+                <input
+                  type="number"
+                  value={formData.target_value}
+                  onChange={(e) => setFormData({ ...formData, target_value: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., 10000"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Scoring Method *</label>
+                <select
+                  value={formData.scoring_method}
+                  onChange={(e) => setFormData({ ...formData, scoring_method: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="total">Total Achievement</option>
+                  <option value="average">Average Performance</option>
+                  <option value="percentage">Percentage of Goal</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Participants */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Min Participants per Campus *</label>
+                <input
+                  type="number"
+                  value={formData.min_participants_per_campus}
+                  onChange={(e) => setFormData({ ...formData, min_participants_per_campus: parseInt(e.target.value) || 0 })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  min="1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Max Participants per Campus *</label>
+                <input
+                  type="number"
+                  value={formData.max_participants_per_campus}
+                  onChange={(e) => setFormData({ ...formData, max_participants_per_campus: parseInt(e.target.value) || 0 })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  min="1"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Eligible Universities */}
             <div>
-              <label className="block text-sm font-medium mb-2">Target Metric</label>
-              <select
-                value={formData.target_metric}
-                onChange={(e) => setFormData({ ...formData, target_metric: e.target.value })}
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="Savings Amount">Savings Amount</option>
-                <option value="Transaction Count">Transaction Count</option>
-                <option value="Budget Adherence">Budget Adherence</option>
-                <option value="Goal Completion">Goal Completion</option>
-              </select>
+              <label className="block text-sm font-medium mb-2">Eligible Universities</label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={newUniversity}
+                  onChange={(e) => setNewUniversity(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddUniversity())}
+                  placeholder="Add university name"
+                  className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+                <Button type="button" onClick={handleAddUniversity} className="px-4 py-3">
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {formData.eligible_universities.map((uni, index) => (
+                  <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm flex items-center gap-1">
+                    {uni}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveUniversity(uni)}
+                      className="text-blue-600 hover:text-blue-800"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Prize Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Total Prize Pool (₹) *</label>
+                <input
+                  type="number"
+                  value={formData.prize_pool}
+                  onChange={(e) => setFormData({ ...formData, prize_pool: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  min="0"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Minimum User Level</label>
+                <input
+                  type="number"
+                  value={formData.min_user_level}
+                  onChange={(e) => setFormData({ ...formData, min_user_level: parseInt(e.target.value) || 1 })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  min="1"
+                />
+              </div>
+            </div>
+
+            {/* Prize Distribution */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Prize Distribution (%)</label>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">First Place (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_distribution.first}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_distribution: { 
+                        ...formData.prize_distribution, 
+                        first: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Second Place (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_distribution.second}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_distribution: { 
+                        ...formData.prize_distribution, 
+                        second: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Third Place (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_distribution.third}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_distribution: { 
+                        ...formData.prize_distribution, 
+                        third: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-4">
