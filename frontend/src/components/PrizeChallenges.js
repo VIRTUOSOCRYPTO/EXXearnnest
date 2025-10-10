@@ -12,6 +12,28 @@ import { Gift, Clock, Zap, Star, Target, Award, TrendingUp, Calendar, Users, Dol
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// Utility function to format target metrics
+const formatTargetMetric = (target_metric, target_value = null) => {
+  const metricLabels = {
+    'savings_amount': 'Savings Amount',
+    'transaction_count': 'Transactions',
+    'streak_days': 'Streak Days',
+    'goals_completed': 'Goals Completed',
+    'achievement_points': 'Achievement Points',
+    'monthly_income': 'Monthly Income'
+  };
+  
+  const label = metricLabels[target_metric] || target_metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  
+  if (target_value && (target_metric.includes('savings') || target_metric.includes('amount') || target_metric.includes('income'))) {
+    return `₹${target_value.toLocaleString()}`;
+  } else if (target_value) {
+    return `${target_value} ${label}`;
+  }
+  
+  return label;
+};
+
 const PrizeChallenges = () => {
   const { user } = useAuth();
   const [challenges, setChallenges] = useState([]);
@@ -237,7 +259,7 @@ const PrizeChallenges = () => {
             <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
             <div className="text-xs sm:text-sm font-medium mb-1">Target</div>
             <div className="text-xs text-gray-600 break-words leading-tight">
-              {challenge.target_value} {challenge.target_metric}
+              {formatTargetMetric(challenge.target_metric, challenge.target_value)}
             </div>
           </div>
           <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
@@ -274,7 +296,7 @@ const PrizeChallenges = () => {
               className="h-2 mb-2"
             />
             <div className="text-xs text-gray-600 break-words leading-relaxed">
-              {challenge.user_participation.current_progress || 0} / {challenge.target_value} {challenge.target_metric}
+              {challenge.user_participation.current_progress || 0} / {formatTargetMetric(challenge.target_metric, challenge.target_value)}
             </div>
           </div>
         )}
@@ -421,11 +443,28 @@ const PrizeChallenges = () => {
     const [formData, setFormData] = useState({
       title: challenge.title || '',
       description: challenge.description || '',
-      prize_amount: challenge.prize_amount || 0,
       challenge_type: challenge.challenge_type || 'weekly',
-      difficulty: challenge.difficulty || 'medium',
-      target_amount: challenge.target_amount || 0,
-      duration_days: challenge.duration_days || 7
+      challenge_category: challenge.challenge_category || 'savings',
+      difficulty_level: challenge.difficulty_level || 'medium',
+      target_metric: challenge.target_metric || 'savings_amount',
+      target_value: challenge.target_value || '',
+      start_date: challenge.start_date ? new Date(challenge.start_date).toISOString().slice(0, 16) : '',
+      end_date: challenge.end_date ? new Date(challenge.end_date).toISOString().slice(0, 16) : '',
+      duration_hours: challenge.duration_hours || 0,
+      max_participants: challenge.max_participants || '',
+      entry_requirements: challenge.entry_requirements || {
+        min_level: 1,
+        min_savings: 0,
+        required_badges: []
+      },
+      prize_type: challenge.prize_type || 'cash',
+      total_prize_value: challenge.total_prize_value || '',
+      prize_structure: challenge.prize_structure || {
+        first: 40,
+        second: 30,
+        third: 20,
+        participation: 10
+      }
     });
 
     const handleSubmit = (e) => {
@@ -435,27 +474,46 @@ const PrizeChallenges = () => {
 
     return (
       <Dialog open={true} onOpenChange={onCancel}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit className="w-5 h-5" />
               Edit Challenge
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Challenge Title</label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                required
-              />
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Basic Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Challenge Title *</label>
+                <input
+                  type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Challenge Category *</label>
+                <select
+                  value={formData.challenge_category}
+                  onChange={(e) => setFormData({ ...formData, challenge_category: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                >
+                  <option value="">Select Category</option>
+                  <option value="savings">💰 Savings Challenge</option>
+                  <option value="budgeting">📊 Budgeting Challenge</option>
+                  <option value="earning">💼 Earning Challenge</option>
+                  <option value="investment">📈 Investment Challenge</option>
+                  <option value="streak">🔥 Streak Challenge</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Description</label>
+              <label className="block text-sm font-medium mb-2">Description *</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -465,70 +523,250 @@ const PrizeChallenges = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* Challenge Type and Difficulty */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Challenge Type</label>
+                <label className="block text-sm font-medium mb-2">Challenge Type *</label>
                 <select
                   value={formData.challenge_type}
                   onChange={(e) => setFormData({ ...formData, challenge_type: e.target.value })}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
                 >
-                  <option value="flash">Flash Challenge</option>
-                  <option value="weekly">Weekly Challenge</option>
-                  <option value="monthly">Monthly Challenge</option>
-                  <option value="seasonal">Seasonal Challenge</option>
+                  <option value="">Select Type</option>
+                  <option value="daily">⚡ Daily Challenge</option>
+                  <option value="weekly">📅 Weekly Challenge</option>
+                  <option value="monthly">🗓️ Monthly Challenge</option>
+                  <option value="flash">💥 Flash Challenge</option>
+                  <option value="seasonal">🌟 Seasonal Challenge</option>
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium mb-2">Difficulty</label>
+                <label className="block text-sm font-medium mb-2">Difficulty Level *</label>
                 <select
-                  value={formData.difficulty}
-                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                  value={formData.difficulty_level}
+                  onChange={(e) => setFormData({ ...formData, difficulty_level: e.target.value })}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
                 >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                  <option value="extreme">Extreme</option>
+                  <option value="beginner">🌱 Beginner</option>
+                  <option value="easy">😊 Easy</option>
+                  <option value="medium">🎯 Medium</option>
+                  <option value="hard">💪 Hard</option>
+                  <option value="extreme">🔥 Extreme</option>
                 </select>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Prize Amount (₹)</label>
+                <label className="block text-sm font-medium mb-2">Max Participants</label>
                 <input
                   type="number"
-                  value={formData.prize_amount}
-                  onChange={(e) => setFormData({ ...formData, prize_amount: parseInt(e.target.value) || 0 })}
+                  value={formData.max_participants}
+                  onChange={(e) => setFormData({ ...formData, max_participants: e.target.value })}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Target Amount (₹)</label>
-                <input
-                  type="number"
-                  value={formData.target_amount}
-                  onChange={(e) => setFormData({ ...formData, target_amount: parseInt(e.target.value) || 0 })}
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
+                  placeholder="Leave empty for unlimited"
+                  min="1"
                 />
               </div>
             </div>
 
+            {/* Target and Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Target Metric *</label>
+                <select
+                  value={formData.target_metric}
+                  onChange={(e) => setFormData({ ...formData, target_metric: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                >
+                  <option value="">Select Metric</option>
+                  <option value="savings_amount">💵 Savings Amount (₹)</option>
+                  <option value="transaction_count">💳 Transaction Count</option>
+                  <option value="streak_days">🔥 Streak Days</option>
+                  <option value="goals_completed">🎯 Goals Completed</option>
+                  <option value="monthly_income">💼 Monthly Income</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Target Value *</label>
+                <input
+                  type="number"
+                  value={formData.target_value}
+                  onChange={(e) => setFormData({ ...formData, target_value: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  placeholder="e.g., 5000"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Challenge Start *</label>
+                <input
+                  type="datetime-local"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Challenge End *</label>
+                <input
+                  type="datetime-local"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Prize Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Prize Type *</label>
+                <select
+                  value={formData.prize_type}
+                  onChange={(e) => setFormData({ ...formData, prize_type: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                >
+                  <option value="">Select Prize Type</option>
+                  <option value="cash">💰 Cash Prize</option>
+                  <option value="voucher">🎫 Vouchers</option>
+                  <option value="badge">🏆 Badges & Recognition</option>
+                  <option value="points">⭐ Achievement Points</option>
+                  <option value="mixed">🎁 Mixed Rewards</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Total Prize Value (₹) *</label>
+                <input
+                  type="number"
+                  value={formData.total_prize_value}
+                  onChange={(e) => setFormData({ ...formData, total_prize_value: e.target.value })}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  min="0"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Prize Distribution */}
             <div>
-              <label className="block text-sm font-medium mb-2">Duration (Days)</label>
-              <input
-                type="number"
-                value={formData.duration_days}
-                onChange={(e) => setFormData({ ...formData, duration_days: parseInt(e.target.value) || 7 })}
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                min="1"
-                max="365"
-              />
+              <label className="block text-sm font-medium mb-2">Prize Distribution (%)</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">First Place (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_structure.first}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_structure: { 
+                        ...formData.prize_structure, 
+                        first: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Second Place (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_structure.second}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_structure: { 
+                        ...formData.prize_structure, 
+                        second: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Third Place (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_structure.third}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_structure: { 
+                        ...formData.prize_structure, 
+                        third: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Participation (%)</label>
+                  <input
+                    type="number"
+                    value={formData.prize_structure.participation}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      prize_structure: { 
+                        ...formData.prize_structure, 
+                        participation: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    min="0"
+                    max="100"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Entry Requirements */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Entry Requirements</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Minimum Level</label>
+                  <input
+                    type="number"
+                    value={formData.entry_requirements.min_level}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      entry_requirements: { 
+                        ...formData.entry_requirements, 
+                        min_level: parseInt(e.target.value) || 1 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    min="1"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Minimum Savings (₹)</label>
+                  <input
+                    type="number"
+                    value={formData.entry_requirements.min_savings}
+                    onChange={(e) => setFormData({ 
+                      ...formData, 
+                      entry_requirements: { 
+                        ...formData.entry_requirements, 
+                        min_savings: parseInt(e.target.value) || 0 
+                      } 
+                    })}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    min="0"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-4">
