@@ -79,7 +79,7 @@ const EditEvent = () => {
   const fetchEventDetails = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API}/events/${id}`);
+      const response = await axios.get(`${API}/college-events/${id}`);
       const event = response.data.event;
       
       // Convert date strings to format suitable for datetime-local input
