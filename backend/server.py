@@ -60,6 +60,9 @@ load_dotenv(ROOT_DIR / '.env')
 # Get frontend URL from environment (for referral links, etc.)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
+# Get backend URL for file downloads (same as frontend URL by default)
+BACKEND_URL = os.environ.get('BACKEND_URL', FRONTEND_URL)
+
 # Ensure uploads directory exists
 UPLOADS_DIR = ROOT_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
@@ -8041,18 +8044,37 @@ async def get_college_events(
         
         events = await db.college_events.find(filter_dict).sort("start_date", 1).to_list(None)
         
-        # Enhance with creator details
+        # Enhance with creator details and registration info
         enhanced_events = []
+        user_id = current_user["id"]
+        
         for event in events:
             # Remove MongoDB _id field
             if "_id" in event:
                 del event["_id"]
             
             creator = await get_user_by_id(event["created_by"])
+            
+            # Check if current user is registered for this event
+            user_registration = await db.event_registrations.find_one({
+                "event_id": event["id"],
+                "user_id": user_id
+            })
+            is_registered = user_registration is not None
+            
+            # Get total registration count
+            registration_count = await db.event_registrations.count_documents({
+                "event_id": event["id"]
+            })
+            
             event_info = {
                 **event,
                 "creator_name": creator.get("full_name", "Unknown") if creator else "Unknown",
-                "creator_email": creator.get("email") if creator else None
+                "creator_email": creator.get("email") if creator else None,
+                "is_registered": is_registered,
+                "registered_count": registration_count,
+                "current_participants": registration_count,  # For backward compatibility
+                "registration_enabled": event.get("registration_required", True)  # Frontend compatibility
             }
             enhanced_events.append(event_info)
         
@@ -8276,11 +8298,16 @@ async def register_for_event(
             {"$inc": {"current_participants": 1}}
         )
         
+        # Get updated registration count
+        updated_count = await db.event_registrations.count_documents({"event_id": event_id})
+        
         return {
             "message": "Successfully registered for event",
             "registration_id": registration.id,
             "event_title": event["title"],
-            "event_date": event["start_date"]
+            "event_date": event["start_date"],
+            "updated_count": updated_count,
+            "is_registered": True
         }
         
     except HTTPException:
@@ -19747,7 +19774,8 @@ async def websocket_status(request: Request):
 from registration_service import (
     save_student_id_card, validate_registration_data,
     get_registrations_for_event, get_college_statistics,
-    export_registrations_to_csv
+    export_registrations_to_csv, export_registrations_to_excel,
+    export_registrations_to_pdf, export_registrations_to_docx
 )
 from models import (
     EventRegistration, PrizeChallengeRegistration, 
@@ -20136,14 +20164,15 @@ async def approve_reject_registration(
         print(f"Error processing approval: {e}")
         raise HTTPException(status_code=500, detail="Failed to process approval")
 
-# Club Admin - Export Registrations to CSV
+# Club Admin - Export Registrations in Multiple Formats
 @api_router.get("/club-admin/registrations/{event_type}/{event_id}/export")
 async def export_registrations(
     event_type: str,
     event_id: str,
+    format: str = "csv",  # csv, excel, pdf, docx
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Export registrations to CSV"""
+    """Export registrations in multiple formats (CSV, Excel, PDF, DOCX)"""
     try:
         db = await get_database()
         
@@ -20164,13 +20193,30 @@ async def export_registrations(
         if not registrations:
             raise HTTPException(status_code=404, detail="No registrations found")
         
-        # Export to CSV
-        csv_path = await export_registrations_to_csv(registrations, event_name)
+        # Export in requested format
+        file_path = None
+        format_lower = format.lower()
+        
+        if format_lower == "csv":
+            file_path = await export_registrations_to_csv(registrations, event_name)
+        elif format_lower == "excel" or format_lower == "xlsx":
+            file_path = await export_registrations_to_excel(registrations, event_name)
+        elif format_lower == "pdf":
+            file_path = await export_registrations_to_pdf(registrations, event_name)
+        elif format_lower == "docx" or format_lower == "word":
+            file_path = await export_registrations_to_docx(registrations, event_name)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported format. Use: csv, excel, pdf, docx")
+        
+        if not file_path:
+            raise HTTPException(status_code=500, detail="Export failed")
         
         return {
-            "message": "Export successful",
-            "file_path": csv_path,
-            "total_registrations": len(registrations)
+            "message": f"Export successful ({format.upper()})",
+            "file_path": file_path,
+            "format": format_lower,
+            "total_registrations": len(registrations),
+            "download_url": f"{BACKEND_URL}{file_path}"
         }
     
     except HTTPException:
@@ -20230,17 +20276,29 @@ async def get_my_registrations(
         prize_regs = await db.prize_challenge_registrations.find({"user_id": user_id}).to_list(100)
         comp_regs = await db.inter_college_registrations.find({"user_id": user_id}).to_list(100)
         
-        # Fetch event details for each registration
+        # Remove MongoDB _id fields and fetch event details
         for reg in event_regs:
+            if "_id" in reg:
+                del reg["_id"]
             event = await db.college_events.find_one({"id": reg["event_id"]})
+            if event and "_id" in event:
+                del event["_id"]
             reg["event_details"] = event if event else {}
         
         for reg in prize_regs:
+            if "_id" in reg:
+                del reg["_id"]
             challenge = await db.prize_challenges.find_one({"id": reg["challenge_id"]})
+            if challenge and "_id" in challenge:
+                del challenge["_id"]
             reg["challenge_details"] = challenge if challenge else {}
         
         for reg in comp_regs:
+            if "_id" in reg:
+                del reg["_id"]
             competition = await db.inter_college_competitions.find_one({"id": reg["competition_id"]})
+            if competition and "_id" in competition:
+                del competition["_id"]
             reg["competition_details"] = competition if competition else {}
         
         return {
