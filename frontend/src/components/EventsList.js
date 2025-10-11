@@ -99,10 +99,15 @@ const EventsList = () => {
       setRegistering(true);
       const response = await axios.post(`${API}/college-events/${eventId}/register`);
       
-      // Update the event status locally
+      // Update the event status locally with actual backend response
       setEvents(prev => prev.map(event => 
         event.id === eventId 
-          ? { ...event, is_registered: true, registered_count: (event.registered_count || 0) + 1 }
+          ? { 
+              ...event, 
+              is_registered: response.data.is_registered || true, 
+              registered_count: response.data.updated_count || (event.registered_count || 0) + 1,
+              current_participants: response.data.updated_count || (event.current_participants || 0) + 1
+            }
           : event
       ));
 
