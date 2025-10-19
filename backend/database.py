@@ -145,7 +145,81 @@ async def init_database():
         await db.universities.create_index([("state", 1), ("ranking", 1)])
         await db.universities.create_index("student_levels")
         
-        logger.info("Database indexes created successfully")
+        # ENHANCED INDEXES FOR CRITICAL COLLECTIONS
+        
+        # Notifications collection indexes (high-traffic collection)
+        await db.notifications.create_index("user_id")
+        await db.notifications.create_index("is_read")
+        await db.notifications.create_index("created_at")
+        await db.notifications.create_index([("user_id", 1), ("is_read", 1)])  # Compound for unread queries
+        await db.notifications.create_index([("user_id", 1), ("created_at", -1)])  # Sorted retrieval
+        await db.notifications.create_index("priority")  # For priority-based filtering
+        await db.notifications.create_index("notification_type")  # For type-based filtering
+        
+        # Friendships collection indexes (viral feature)
+        await db.friendships.create_index("user_id")
+        await db.friendships.create_index("friend_id")
+        await db.friendships.create_index([("user_id", 1), ("status", 1)])  # Active friends
+        await db.friendships.create_index([("friend_id", 1), ("status", 1)])  # Reverse lookup
+        await db.friendships.create_index("created_at")
+        await db.friendships.create_index("connection_type")  # referral_signup, manual, etc.
+        
+        # Referral programs collection indexes
+        await db.referral_programs.create_index("referrer_id", unique=True)
+        await db.referral_programs.create_index("referral_code", unique=True)
+        await db.referral_programs.create_index("total_referrals")
+        await db.referral_programs.create_index("successful_referrals")
+        
+        # Referred users collection indexes
+        await db.referred_users.create_index("referrer_id")
+        await db.referred_users.create_index("referred_user_id")
+        await db.referred_users.create_index("status")
+        await db.referred_users.create_index("signed_up_at")
+        await db.referred_users.create_index([("referrer_id", 1), ("status", 1)])
+        
+        # Gamification collections indexes
+        await db.gamification_profiles.create_index("user_id", unique=True)
+        await db.gamification_profiles.create_index("level")
+        await db.gamification_profiles.create_index("experience_points")
+        await db.gamification_profiles.create_index("current_streak")
+        
+        # Leaderboards collection indexes (high-read collection)
+        await db.leaderboards.create_index("leaderboard_type")
+        await db.leaderboards.create_index("period")
+        await db.leaderboards.create_index([("leaderboard_type", 1), ("period", 1)])
+        await db.leaderboards.create_index([("leaderboard_type", 1), ("period", 1), ("rank", 1)])
+        await db.leaderboards.create_index("user_id")
+        await db.leaderboards.create_index("university")
+        await db.leaderboards.create_index([("university", 1), ("leaderboard_type", 1)])
+        
+        # Group challenges collection indexes
+        await db.group_challenges.create_index("challenge_type")
+        await db.group_challenges.create_index("university")
+        await db.group_challenges.create_index("status")
+        await db.group_challenges.create_index("end_date")
+        await db.group_challenges.create_index([("status", 1), ("end_date", 1)])
+        
+        # Group challenge participants indexes
+        await db.group_challenge_participants.create_index("challenge_id")
+        await db.group_challenge_participants.create_index("user_id")
+        await db.group_challenge_participants.create_index([("challenge_id", 1), ("user_id", 1)], unique=True)
+        await db.group_challenge_participants.create_index("completed")
+        
+        # Campus admin collections indexes
+        await db.campus_admin_requests.create_index("user_id")
+        await db.campus_admin_requests.create_index("status")
+        await db.campus_admin_requests.create_index("admin_type")
+        await db.campus_admin_requests.create_index("college_name")
+        await db.campus_admin_requests.create_index("email_verified")
+        
+        # Performance monitoring indexes
+        await db.admin_audit_logs.create_index("admin_user_id")
+        await db.admin_audit_logs.create_index("action_type")
+        await db.admin_audit_logs.create_index("timestamp")
+        await db.admin_audit_logs.create_index([("timestamp", -1)])  # Recent first
+        await db.admin_audit_logs.create_index("severity")
+        
+        logger.info("✅ All database indexes created successfully (including enhanced performance indexes)")
         
         # Initialize seed data
         await init_seed_data()
@@ -1019,3 +1093,245 @@ async def get_user_transaction_patterns(user_id: str, days: int = 30):
     ]
     
     return await db.transactions.aggregate(pipeline).to_list(50)
+
+
+# ===========================
+# PAGINATION HELPER FUNCTIONS
+# ===========================
+
+async def paginate_query(collection, query: dict, skip: int = 0, limit: int = 20, sort_field: str = "created_at", sort_order: int = -1):
+    """
+    Generic pagination helper with sorting
+    
+    Args:
+        collection: MongoDB collection
+        query: MongoDB query dict
+        skip: Number of documents to skip (offset)
+        limit: Max documents to return (page size)
+        sort_field: Field to sort by
+        sort_order: 1 for ascending, -1 for descending
+    
+    Returns:
+        {
+            "data": [...],
+            "total": int,
+            "skip": int,
+            "limit": int,
+            "has_more": bool
+        }
+    """
+    # Get total count
+    total = await collection.count_documents(query)
+    
+    # Get paginated data
+    cursor = collection.find(query).sort(sort_field, sort_order).skip(skip).limit(limit)
+    data = await cursor.to_list(limit)
+    
+    return {
+        "data": clean_mongo_doc(data),
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "has_more": (skip + limit) < total,
+        "page": (skip // limit) + 1 if limit > 0 else 1,
+        "total_pages": (total + limit - 1) // limit if limit > 0 else 1
+    }
+
+async def get_transactions_paginated(user_id: str, skip: int = 0, limit: int = 20, transaction_type: str = None):
+    """Get user transactions with pagination"""
+    query = {"user_id": user_id}
+    if transaction_type:
+        query["type"] = transaction_type
+    
+    return await paginate_query(
+        db.transactions, 
+        query, 
+        skip=skip, 
+        limit=limit,
+        sort_field="date",
+        sort_order=-1  # Most recent first
+    )
+
+async def get_notifications_paginated(user_id: str, skip: int = 0, limit: int = 20, unread_only: bool = False):
+    """Get user notifications with pagination"""
+    query = {"user_id": user_id}
+    if unread_only:
+        query["is_read"] = False
+    
+    return await paginate_query(
+        db.notifications,
+        query,
+        skip=skip,
+        limit=limit,
+        sort_field="created_at",
+        sort_order=-1  # Most recent first
+    )
+
+async def get_friends_paginated(user_id: str, skip: int = 0, limit: int = 50):
+    """Get user friends with pagination"""
+    query = {"user_id": user_id, "status": "active"}
+    
+    return await paginate_query(
+        db.friendships,
+        query,
+        skip=skip,
+        limit=limit,
+        sort_field="created_at",
+        sort_order=-1
+    )
+
+# ===========================
+# N+1 QUERY OPTIMIZATION
+# ===========================
+
+async def get_friends_with_details_optimized(user_id: str, limit: int = 50):
+    """
+    Get friends list with user details using aggregation (fixes N+1 query problem)
+    Instead of fetching each friend's details separately, use aggregation pipeline
+    """
+    pipeline = [
+        # Match user's friendships
+        {"$match": {"user_id": user_id, "status": "active"}},
+        
+        # Sort by creation date
+        {"$sort": {"created_at": -1}},
+        
+        # Limit results
+        {"$limit": limit},
+        
+        # Lookup friend user details
+        {"$lookup": {
+            "from": "users",
+            "localField": "friend_id",
+            "foreignField": "id",
+            "as": "friend_details"
+        }},
+        
+        # Unwind friend details
+        {"$unwind": "$friend_details"},
+        
+        # Lookup gamification data
+        {"$lookup": {
+            "from": "gamification_profiles",
+            "localField": "friend_id",
+            "foreignField": "user_id",
+            "as": "gamification"
+        }},
+        
+        # Project final structure
+        {"$project": {
+            "_id": 0,
+            "friendship_id": "$id",
+            "friend_id": 1,
+            "created_at": 1,
+            "connection_type": 1,
+            "points_earned": 1,
+            "friend": {
+                "id": "$friend_details.id",
+                "full_name": "$friend_details.full_name",
+                "avatar": "$friend_details.avatar",
+                "university": "$friend_details.university",
+                "bio": "$friend_details.bio"
+            },
+            "gamification": {"$arrayElemAt": ["$gamification", 0]}
+        }}
+    ]
+    
+    friends = await db.friendships.aggregate(pipeline).to_list(limit)
+    return clean_mongo_doc(friends)
+
+async def get_notifications_with_details_optimized(user_id: str, limit: int = 20):
+    """
+    Get notifications with related entity details (fixes N+1 query)
+    """
+    pipeline = [
+        # Match user's notifications
+        {"$match": {"user_id": user_id}},
+        
+        # Sort by creation date (most recent first)
+        {"$sort": {"created_at": -1}},
+        
+        # Limit results
+        {"$limit": limit},
+        
+        # Conditionally lookup related user details if source_id exists
+        {"$lookup": {
+            "from": "users",
+            "localField": "source_id",
+            "foreignField": "id",
+            "as": "source_user"
+        }},
+        
+        # Project final structure
+        {"$project": {
+            "_id": 0,
+            "id": 1,
+            "user_id": 1,
+            "notification_type": 1,
+            "title": 1,
+            "message": 1,
+            "action_url": 1,
+            "is_read": 1,
+            "priority": 1,
+            "created_at": 1,
+            "source_user": {"$arrayElemAt": ["$source_user", 0]}
+        }}
+    ]
+    
+    notifications = await db.notifications.aggregate(pipeline).to_list(limit)
+    return clean_mongo_doc(notifications)
+
+async def get_leaderboard_optimized(leaderboard_type: str, period: str, university: str = None, limit: int = 100):
+    """
+    Get leaderboard with user details in single query (fixes N+1 query)
+    """
+    match_query = {
+        "leaderboard_type": leaderboard_type,
+        "period": period
+    }
+    if university:
+        match_query["university"] = university
+    
+    pipeline = [
+        # Match leaderboard criteria
+        {"$match": match_query},
+        
+        # Sort by rank
+        {"$sort": {"rank": 1}},
+        
+        # Limit results
+        {"$limit": limit},
+        
+        # Lookup user details
+        {"$lookup": {
+            "from": "users",
+            "localField": "user_id",
+            "foreignField": "id",
+            "as": "user"
+        }},
+        
+        # Unwind user
+        {"$unwind": "$user"},
+        
+        # Project final structure
+        {"$project": {
+            "_id": 0,
+            "rank": 1,
+            "user_id": 1,
+            "score": 1,
+            "change": 1,
+            "university": 1,
+            "user": {
+                "id": "$user.id",
+                "full_name": "$user.full_name",
+                "avatar": "$user.avatar",
+                "university": "$user.university"
+            }
+        }}
+    ]
+    
+    leaderboard = await db.leaderboards.aggregate(pipeline).to_list(limit)
+    return clean_mongo_doc(leaderboard)
+
+logger.info("✅ Pagination and N+1 query optimization functions loaded")
+
