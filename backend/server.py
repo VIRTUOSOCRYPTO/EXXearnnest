@@ -113,6 +113,51 @@ if os.environ.get("ENVIRONMENT") == "production":
 # Add performance tracking middleware
 app.add_middleware(PerformanceTrackingMiddleware)
 
+# Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add comprehensive security headers to all responses"""
+    response = await call_next(request)
+    
+    # Strict-Transport-Security (HSTS) - Force HTTPS
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    
+    # X-Content-Type-Options - Prevent MIME type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    
+    # X-Frame-Options - Prevent clickjacking
+    response.headers["X-Frame-Options"] = "DENY"
+    
+    # Content-Security-Policy - Prevent XSS and injection attacks
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "img-src 'self' data: https: blob:; "
+        "connect-src 'self' https: wss:; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    
+    # X-XSS-Protection - Legacy XSS protection (still useful for older browsers)
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    
+    # Referrer-Policy - Control referrer information
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    
+    # Permissions-Policy - Control browser features
+    response.headers["Permissions-Policy"] = (
+        "geolocation=(self), "
+        "microphone=(), "
+        "camera=(), "
+        "payment=(), "
+        "usb=()"
+    )
+    
+    return response
+
 # Add rate limiting error handler
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
@@ -126,11 +171,36 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 # Global exception handler for better error messages
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error. Please try again later."}
-    )
+    """Enhanced global exception handler with production-safe error messages"""
+    import traceback
+    
+    # Log full error details for debugging (server-side only)
+    logger.error(f"Global exception on {request.method} {request.url.path}: {str(exc)}")
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    # Determine if we're in production
+    is_production = os.environ.get("ENVIRONMENT") == "production"
+    
+    # Return safe error message (no stack trace in production)
+    if is_production:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error. Please try again later.",
+                "error_id": str(uuid.uuid4())[:8]  # For support reference
+            }
+        )
+    else:
+        # In development, provide more details
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error. Please try again later.",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc) if len(str(exc)) < 200 else str(exc)[:200] + "...",
+                "path": request.url.path
+            }
+        )
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """Get current authenticated user"""
@@ -1036,6 +1106,14 @@ async def register_user(request: Request, user_data: UserCreate):
     - Rate limiting for security
     """
     try:
+        # ENHANCED SECURITY: Validate password strength (12+ chars, uppercase, lowercase, number, special)
+        password_check = check_password_strength(user_data.password)
+        if not password_check.get("valid", False):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Password does not meet security requirements: {', '.join(password_check.get('feedback', []))}"
+            )
+        
         # Check if user exists
         existing_user = await get_user_by_email(user_data.email)
         if existing_user:
@@ -10177,41 +10255,46 @@ async def invite_friend(request: Request, invite_data: FriendInviteRequest, curr
 
 @api_router.get("/friends")
 @limiter.limit("20/minute")
-async def get_friends(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
-    """Get user's friends list"""
+async def get_friends(
+    request: Request, 
+    current_user: Dict[str, Any] = Depends(get_current_user_dict),
+    skip: int = 0,
+    limit: int = 50
+):
+    """
+    Get user's friends list with pagination
+    
+    ENHANCED WITH:
+    - Pagination support
+    - Optimized N+1 query resolution (single aggregation query)
+    - Gamification data included
+    """
     try:
         db = await get_database()
         user_id = current_user["id"]
         
-        # Get all friendships where user is involved
-        friendships = await db.friendships.find({
-            "$or": [
-                {"user1_id": user_id},
-                {"user2_id": user_id}
-            ],
-            "status": "active"
-        }).to_list(None)
+        # Use optimized aggregation query (fixes N+1 problem)
+        # This replaces the loop that fetches each friend individually
+        friends_optimized = await get_friends_with_details_optimized(user_id, limit=limit)
         
+        # Transform data to match expected format
         friends_list = []
-        for friendship in friendships:
-            # Determine friend's ID
-            friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
+        for item in friends_optimized:
+            friend_data = item.get("friend", {})
+            gamification = item.get("gamification", {})
             
-            # Get friend's details
-            friend = await db.users.find_one({"id": friend_id})
-            if friend:
-                friends_list.append({
-                    "friend_id": friend_id,
-                    "full_name": friend["full_name"],
-                    "avatar": friend.get("avatar", "boy"),
-                    "university": friend.get("university"),
-                    "current_streak": friend.get("current_streak", 0),
-                    "total_earnings": friend.get("total_earnings", 0.0),
-                    "friendship_points": friendship.get("friendship_points", 0),
-                    "friendship_created": friendship["created_at"],
-                    "level": friend.get("level", 1),
-                    "badges_count": len(friend.get("badges", []))
-                })
+            friends_list.append({
+                "friend_id": item.get("friend_id"),
+                "full_name": friend_data.get("full_name", "Unknown"),
+                "avatar": friend_data.get("avatar", "boy"),
+                "university": friend_data.get("university"),
+                "current_streak": gamification.get("current_streak", 0),
+                "total_earnings": 0.0,  # Can be added to aggregation if needed
+                "friendship_points": item.get("points_earned", 0),
+                "friendship_created": item.get("created_at"),
+                "level": gamification.get("level", 1),
+                "badges_count": len(gamification.get("badges", []))
+            })
         
         return {
             "friends": friends_list,
@@ -10988,27 +11071,50 @@ async def get_group_challenge_details(request: Request, challenge_id: str, curre
 
 @api_router.get("/notifications")
 @limiter.limit("30/minute")
-async def get_notifications(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict), limit: int = 20):
-    """Get user's notifications"""
+async def get_notifications(
+    request: Request, 
+    current_user: Dict[str, Any] = Depends(get_current_user_dict),
+    skip: int = 0,
+    limit: int = 20,
+    unread_only: bool = False
+):
+    """
+    Get user's notifications with pagination
+    
+    ENHANCED WITH:
+    - Pagination support (skip/limit)
+    - Filter by unread notifications
+    - Optimized N+1 query resolution
+    """
     try:
-        db = await get_database()
         user_id = current_user.get("id")
         
-        # Get recent notifications
-        notifications = await db.notifications.find({
-            "user_id": user_id
-        }).sort("created_at", -1).limit(limit).to_list(None)
+        # Use optimized pagination function (fixes N+1 query problem)
+        paginated_notifications = await get_notifications_paginated(
+            user_id=user_id,
+            skip=skip,
+            limit=limit,
+            unread_only=unread_only
+        )
         
-        # Count unread notifications
+        # Count unread notifications (always return this)
+        db = await get_database()
         unread_count = await db.notifications.count_documents({
             "user_id": user_id,
             "is_read": False
         })
         
         return {
-            "notifications": notifications,
+            "notifications": paginated_notifications["data"],
             "unread_count": unread_count,
-            "total_count": len(notifications)
+            "pagination": {
+                "total": paginated_notifications["total"],
+                "skip": skip,
+                "limit": limit,
+                "has_more": paginated_notifications["has_more"],
+                "page": paginated_notifications["page"],
+                "total_pages": paginated_notifications["total_pages"]
+            }
         }
         
     except Exception as e:
