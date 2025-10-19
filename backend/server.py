@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -67,13 +69,63 @@ BACKEND_URL = os.environ.get('BACKEND_URL', FRONTEND_URL)
 UPLOADS_DIR = ROOT_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-# Create the main app
+# OpenAPI Tags for better API documentation organization
+tags_metadata = [
+    {"name": "Authentication", "description": "User authentication, registration, and password management"},
+    {"name": "User Profile", "description": "User profile management and settings"},
+    {"name": "Transactions", "description": "Income and expense transaction management"},
+    {"name": "Budgets", "description": "Budget creation, tracking, and management"},
+    {"name": "Financial Goals", "description": "Financial goal setting and progress tracking"},
+    {"name": "Side Hustles", "description": "Side hustle recommendations and applications"},
+    {"name": "Analytics", "description": "Financial insights and analytics"},
+    {"name": "Gamification", "description": "Points, badges, streaks, and leaderboards"},
+    {"name": "Referrals", "description": "Referral system and friend management"},
+    {"name": "Emergency Services", "description": "Emergency hospital recommendations"},
+    {"name": "Campus Admin", "description": "Campus administrator management"},
+    {"name": "Club Admin", "description": "Club administrator operations"},
+    {"name": "Super Admin", "description": "Super administrator operations"},
+    {"name": "Competitions", "description": "Inter-college and prize challenges"},
+    {"name": "Group Challenges", "description": "Group savings challenges"},
+    {"name": "Notifications", "description": "Real-time notifications and WebSocket"},
+    {"name": "Timeline", "description": "User activity timeline and feed"},
+    {"name": "Social Sharing", "description": "Social media sharing functionality"},
+]
+
+# Create the main app with enhanced API documentation
 app = FastAPI(
     title="EarnAura - Student Finance & Side Hustle Platform",
-    description="Production-ready platform for student financial management and side hustles",
+    description="""
+## 🎓 Campus-Focused Financial Platform for Students
+
+EarnAura is a comprehensive platform designed for college students to:
+- 📊 **Manage Finances**: Track income, expenses, and budgets
+- 💰 **Set Financial Goals**: Emergency funds, monthly income targets, graduation goals
+- 🚀 **Discover Side Hustles**: AI-powered recommendations based on skills
+- 🏆 **Compete & Earn**: Campus competitions, challenges, and leaderboards
+- 🤝 **Connect**: Friend referrals and social features
+- 🚨 **Emergency Support**: Location-based hospital recommendations
+
+### Features
+- Real-time WebSocket notifications
+- Gamification with points, badges, and streaks
+- Multi-level admin system (Super Admin → Campus Admin → Club Admin)
+- Inter-college competitions and prize challenges
+- AI-powered financial insights and recommendations
+
+### Authentication
+All endpoints (except registration/login) require JWT authentication via Bearer token.
+""",
     version="2.0.0",
+    openapi_tags=tags_metadata,
     docs_url="/api/docs" if os.environ.get("ENVIRONMENT") != "production" else None,
-    redoc_url="/api/redoc" if os.environ.get("ENVIRONMENT") != "production" else None
+    redoc_url="/api/redoc" if os.environ.get("ENVIRONMENT") != "production" else None,
+    contact={
+        "name": "EarnAura Support",
+        "email": "support@earnaura.com"
+    },
+    license_info={
+        "name": "Proprietary",
+    }
 )
 
 # Serve static files for uploads
@@ -93,6 +145,84 @@ app.state.limiter = limiter
 api_router.state = {}
 api_router.state['limiter'] = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ============================================================================
+# VALIDATION ERROR HANDLERS - Consistent Error Responses
+# ============================================================================
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle Pydantic validation errors with consistent format
+    Returns detailed field-level error messages
+    """
+    errors = []
+    for error in exc.errors():
+        field = " -> ".join(str(loc) for loc in error["loc"])
+        errors.append({
+            "field": field,
+            "message": error["msg"],
+            "type": error["type"]
+        })
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation Error",
+            "errors": errors,
+            "message": "Please check your input and try again"
+        }
+    )
+
+@app.exception_handler(ValidationError)
+async def pydantic_validation_exception_handler(request: Request, exc: ValidationError):
+    """
+    Handle direct Pydantic validation errors
+    """
+    errors = []
+    for error in exc.errors():
+        field = " -> ".join(str(loc) for loc in error["loc"])
+        errors.append({
+            "field": field,
+            "message": error["msg"],
+            "type": error["type"]
+        })
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation Error",
+            "errors": errors,
+            "message": "Invalid data provided"
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Handle HTTP exceptions with consistent format
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """
+    Handle unexpected exceptions
+    """
+    logger.error(f"Unexpected error: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "message": "An unexpected error occurred. Please try again later."
+        }
+    )
 
 # Middleware
 app.add_middleware(
@@ -1066,8 +1196,16 @@ async def get_local_emergency_contacts(city: str = "Bangalore") -> Dict[str, Lis
         ]
     }
     return contacts
-# Enhanced Authentication Routes with Comprehensive OTP Security
-@api_router.get("/auth/trending-skills")
+# ============================================================================
+# AUTHENTICATION ENDPOINTS
+# ============================================================================
+
+@api_router.get(
+    "/auth/trending-skills",
+    tags=["Authentication"],
+    summary="Get trending skills for registration",
+    description="Returns list of trending skills with categories and icons for user selection during registration"
+)
 @cache_result("trending_skills", 3600)  # Cache for 1 hour
 async def get_trending_skills():
     """Get trending skills for registration and profile updates"""
@@ -1093,7 +1231,19 @@ async def get_trending_skills():
 
 # Avatar selection endpoint removed
 
-@api_router.post("/auth/register")
+@api_router.post(
+    "/auth/register",
+    tags=["Authentication"],
+    summary="Register new user",
+    description="Register a new user account with mandatory fields: email, password, name, role, location, skills, and avatar",
+    response_model=Dict[str, Any],
+    responses={
+        200: {"description": "User registered successfully with JWT token"},
+        422: {"description": "Validation error - missing or invalid fields"},
+        400: {"description": "Email already registered or referral code invalid"},
+        429: {"description": "Rate limit exceeded - 5 registrations per minute"}
+    }
+)
 @limiter.limit("5/minute")
 async def register_user(request: Request, user_data: UserCreate):
     """
@@ -1332,7 +1482,18 @@ async def register_user(request: Request, user_data: UserCreate):
 
 # Removed email verification endpoints - direct registration without verification
 
-@api_router.post("/auth/login")
+@api_router.post(
+    "/auth/login",
+    tags=["Authentication"],
+    summary="User login",
+    description="Authenticate user with email and password, returns JWT token for subsequent API calls",
+    responses={
+        200: {"description": "Login successful with JWT token and user details"},
+        401: {"description": "Invalid credentials"},
+        404: {"description": "User not found"},
+        429: {"description": "Rate limit exceeded - 5 login attempts per minute"}
+    }
+)
 @limiter.limit("5/minute")
 async def login_user(request: Request, login_data: UserLogin):
     """Login user with enhanced security"""
@@ -19650,7 +19811,7 @@ async def test_websocket_endpoint(websocket: WebSocket):
 
 @app.websocket("/api/ws/notifications/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """WebSocket endpoint for real-time notifications"""
+    """WebSocket endpoint for real-time notifications with proper cleanup"""
     try:
         # Verify user authentication via query params or headers BEFORE accepting
         token = websocket.query_params.get("token")
@@ -19686,27 +19847,18 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             await websocket.close(code=1008, reason=f"Authentication failed")
             return
         
-        # Accept connection AFTER validation
-        await websocket.accept()
-        logger.info(f"WebSocket connection accepted for user {user_id}")
-        
-        # Send connection established message
-        await websocket.send_text(json.dumps({
-            "type": "connection_established",
-            "message": "Connected to real-time notifications",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }))
-        
-        # Add to connection manager
-        if user_id not in connection_manager.user_connections:
-            connection_manager.user_connections[user_id] = set()
-        connection_manager.user_connections[user_id].add(websocket)
+        # Connect user via connection manager (handles accept and tracking)
+        await connection_manager.connect_user(websocket, user_id)
+        logger.info(f"WebSocket connection established for user {user_id}")
         
         try:
             while True:
                 # Keep connection alive and handle incoming messages
                 data = await websocket.receive_text()
                 message = json.loads(data)
+                
+                # Update timestamp on activity
+                await connection_manager.update_connection_timestamp(websocket)
                 
                 # Handle different message types
                 if message.get("type") == "ping":
@@ -19726,16 +19878,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for user {user_id}")
-            if user_id in connection_manager.user_connections:
-                connection_manager.user_connections[user_id].discard(websocket)
-                if not connection_manager.user_connections[user_id]:
-                    del connection_manager.user_connections[user_id]
         except Exception as e:
             logger.error(f"WebSocket error for user {user_id}: {str(e)}")
-            if user_id in connection_manager.user_connections:
-                connection_manager.user_connections[user_id].discard(websocket)
-                if not connection_manager.user_connections[user_id]:
-                    del connection_manager.user_connections[user_id]
+        finally:
+            # Always clean up connection properly
+            await connection_manager.disconnect_user(websocket, user_id)
             
     except Exception as e:
         logger.error(f"WebSocket connection error: {str(e)}")
