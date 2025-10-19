@@ -14,7 +14,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 class ConnectionManager:
-    """Manages WebSocket connections for real-time communication"""
+    """Manages WebSocket connections for real-time communication with memory leak prevention"""
     
     def __init__(self):
         # Active connections by user ID
@@ -23,6 +23,14 @@ class ConnectionManager:
         self.admin_connections: Dict[str, Set[WebSocket]] = {}
         # System admin connections (for admin request notifications)
         self.system_admin_connections: Set[WebSocket] = set()
+        # Track connection timestamps for cleanup
+        self.connection_timestamps: Dict[WebSocket, datetime] = {}
+        # Heartbeat interval in seconds
+        self.heartbeat_interval = 30
+        # Connection timeout in seconds (5 minutes of inactivity)
+        self.connection_timeout = 300
+        # Background cleanup task
+        self._cleanup_task = None
         
     async def connect_user(self, websocket: WebSocket, user_id: str):
         """Connect a regular user for notifications"""
@@ -32,7 +40,12 @@ class ConnectionManager:
             self.user_connections[user_id] = set()
         
         self.user_connections[user_id].add(websocket)
+        self.connection_timestamps[websocket] = datetime.now(timezone.utc)
         logger.info(f"User {user_id} connected via WebSocket")
+        
+        # Start cleanup task if not running
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
         
         # Send initial connection confirmation
         await self.send_personal_message({
@@ -49,12 +62,17 @@ class ConnectionManager:
             self.admin_connections[user_id] = set()
         
         self.admin_connections[user_id].add(websocket)
+        self.connection_timestamps[websocket] = datetime.now(timezone.utc)
         
         # Add to system admin connections if applicable
         if admin_type == "system_admin":
             self.system_admin_connections.add(websocket)
         
         logger.info(f"Admin {user_id} ({admin_type}) connected via WebSocket")
+        
+        # Start cleanup task if not running
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._periodic_cleanup())
         
         # Send initial connection confirmation with admin privileges
         await self.send_personal_message({
@@ -65,7 +83,7 @@ class ConnectionManager:
         }, websocket)
 
     async def disconnect_user(self, websocket: WebSocket, user_id: str):
-        """Disconnect a user"""
+        """Disconnect a user and clean up resources"""
         if user_id in self.user_connections:
             self.user_connections[user_id].discard(websocket)
             if not self.user_connections[user_id]:
@@ -80,12 +98,77 @@ class ConnectionManager:
         # Remove from system admin connections
         self.system_admin_connections.discard(websocket)
         
+        # Remove from timestamp tracking
+        self.connection_timestamps.pop(websocket, None)
+        
+        # Close WebSocket connection properly
+        try:
+            await websocket.close()
+        except Exception as e:
+            logger.debug(f"Error closing WebSocket (may already be closed): {str(e)}")
+        
         logger.info(f"User {user_id} disconnected from WebSocket")
+    
+    async def _periodic_cleanup(self):
+        """Periodically clean up stale connections"""
+        while True:
+            try:
+                await asyncio.sleep(60)  # Run cleanup every minute
+                await self._cleanup_stale_connections()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in periodic cleanup: {str(e)}")
+    
+    async def _cleanup_stale_connections(self):
+        """Remove stale connections that haven't responded to heartbeat"""
+        now = datetime.now(timezone.utc)
+        stale_connections = []
+        
+        # Find stale connections
+        for websocket, timestamp in self.connection_timestamps.items():
+            if (now - timestamp).total_seconds() > self.connection_timeout:
+                stale_connections.append(websocket)
+        
+        # Clean up stale connections
+        for websocket in stale_connections:
+            logger.info(f"Cleaning up stale connection (inactive for {self.connection_timeout}s)")
+            
+            # Remove from all connection sets
+            for user_id, connections in list(self.user_connections.items()):
+                if websocket in connections:
+                    connections.discard(websocket)
+                    if not connections:
+                        del self.user_connections[user_id]
+            
+            for admin_id, connections in list(self.admin_connections.items()):
+                if websocket in connections:
+                    connections.discard(websocket)
+                    if not connections:
+                        del self.admin_connections[user_id]
+            
+            self.system_admin_connections.discard(websocket)
+            self.connection_timestamps.pop(websocket, None)
+            
+            # Try to close the connection
+            try:
+                await websocket.close()
+            except:
+                pass
+        
+        if stale_connections:
+            logger.info(f"Cleaned up {len(stale_connections)} stale connections")
+    
+    async def update_connection_timestamp(self, websocket: WebSocket):
+        """Update the last activity timestamp for a connection"""
+        self.connection_timestamps[websocket] = datetime.now(timezone.utc)
 
     async def send_personal_message(self, message: Dict[str, Any], websocket: WebSocket):
         """Send message to specific WebSocket connection"""
         try:
             await websocket.send_text(json.dumps(message))
+            # Update timestamp on successful message send
+            await self.update_connection_timestamp(websocket)
         except Exception as e:
             logger.error(f"Error sending personal message: {str(e)}")
 
