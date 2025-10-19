@@ -7,6 +7,7 @@ const useWebSocket = (channel = 'default', options = {}) => {
   const [lastMessage, setLastMessage] = useState(null);
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const heartbeatIntervalRef = useRef(null);
 
   const {
     onMessage,
@@ -15,10 +16,40 @@ const useWebSocket = (channel = 'default', options = {}) => {
     onError,
     autoReconnect = true,
     reconnectInterval = 3000,
-    maxReconnectAttempts = 5
+    maxReconnectAttempts = 5,
+    heartbeatInterval = 30000 // Send heartbeat every 30 seconds
   } = options;
 
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
+  // Cleanup function to properly close WebSocket and clear timers
+  const cleanup = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+    
+    if (wsRef.current) {
+      // Remove event listeners to prevent memory leaks
+      wsRef.current.onopen = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      
+      // Close connection if open
+      if (wsRef.current.readyState === WebSocket.OPEN || 
+          wsRef.current.readyState === WebSocket.CONNECTING) {
+        wsRef.current.close(1000, 'Component unmounting');
+      }
+      
+      wsRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -47,6 +78,17 @@ const useWebSocket = (channel = 'default', options = {}) => {
         
         console.log(`WebSocket connected to ${channel} channel`);
         
+        // Start heartbeat to keep connection alive
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+        }
+        
+        heartbeatIntervalRef.current = setInterval(() => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, heartbeatInterval);
+        
         if (onConnect) {
           onConnect();
         }
@@ -56,6 +98,11 @@ const useWebSocket = (channel = 'default', options = {}) => {
         try {
           const message = JSON.parse(event.data);
           setLastMessage(message);
+          
+          // Don't process pong messages as notifications
+          if (message.type === 'pong') {
+            return;
+          }
           
           // Add to notifications if it's a notification type
           if (message.type === 'notification' || message.notification_type) {
@@ -70,18 +117,24 @@ const useWebSocket = (channel = 'default', options = {}) => {
         }
       };
 
-      wsRef.current.onclose = () => {
+      wsRef.current.onclose = (event) => {
         setConnectionStatus('Disconnected');
         setIsConnected(false);
         
-        console.log(`WebSocket disconnected from ${channel} channel`);
+        // Clear heartbeat interval
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
+        }
+        
+        console.log(`WebSocket disconnected from ${channel} channel (code: ${event.code})`);
         
         if (onDisconnect) {
           onDisconnect();
         }
 
-        // Auto-reconnect logic
-        if (autoReconnect && reconnectAttempts < maxReconnectAttempts) {
+        // Auto-reconnect logic (only if not a normal closure)
+        if (autoReconnect && reconnectAttempts < maxReconnectAttempts && event.code !== 1000) {
           setReconnectAttempts(prev => prev + 1);
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
@@ -107,20 +160,13 @@ const useWebSocket = (channel = 'default', options = {}) => {
         onError(error);
       }
     }
-  }, [channel, onMessage, onConnect, onDisconnect, onError, autoReconnect, reconnectInterval, maxReconnectAttempts, reconnectAttempts]);
+  }, [channel, onMessage, onConnect, onDisconnect, onError, autoReconnect, reconnectInterval, maxReconnectAttempts, reconnectAttempts, heartbeatInterval]);
 
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-    
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-    
+    cleanup();
     setConnectionStatus('Disconnected');
     setIsConnected(false);
-  }, []);
+  }, [cleanup]);
 
   const sendMessage = useCallback((message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -151,20 +197,11 @@ const useWebSocket = (channel = 'default', options = {}) => {
       connect();
     }
 
+    // Cleanup on unmount - CRITICAL FOR PREVENTING MEMORY LEAKS
     return () => {
-      disconnect();
+      cleanup();
     };
-  }, [connect, disconnect]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      disconnect();
-    };
-  }, [disconnect]);
+  }, [connect, cleanup]);
 
   return {
     connectionStatus,
