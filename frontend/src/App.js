@@ -1,72 +1,93 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
 import pushNotificationService from './services/pushNotificationService';
 import { Toaster } from 'sonner';
 
-// Components
+// Always load these critical components (Login, Register, Dashboard, Navigation, Footer)
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import Register from './components/Register';
-import Transaction from './components/Transaction';
-import Hustles from './components/Hustles';
-import Analytics from './components/Analytics';
-import Profile from './components/Profile';
-import Budget from './components/Budget';
-import FinancialGoals from './components/FinancialGoals';
-import Recommendations from './components/Recommendations';
-import GamificationProfile from './components/GamificationProfile';
-import FriendsAndReferrals from './components/FriendsAndReferrals';
-import AllChallenges from './components/AllChallenges';
-import Notifications from './components/Notifications';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
-import SocialFeed from './components/SocialFeed';
-import DailyCheckin from './components/DailyCheckin';
-import LimitedOffers from './components/LimitedOffers';
-import SharingHub from './components/SharingHub';
-import FeatureUnlock from './components/FeatureUnlock';
-import FinancialJourney from './components/FinancialJourney';
-import DailyTips from './components/DailyTips';
-import Timeline from './components/Timeline';
-import TipsHistory from './components/TipsHistory';
-import OffersHistory from './components/OffersHistory';
-import EnhancedPhotoSharing from './components/EnhancedPhotoSharing';
-import HabitTracking from './components/HabitTracking';
-import WeeklyRecap from './components/WeeklyRecap';
-import PersonalizedGoals from './components/PersonalizedGoals';
-import CampusAmbassador from './components/CampusAmbassador';
-import GrowthMechanics from './components/GrowthMechanics';
-import ExpenseReceipts from './components/ExpenseReceipts';
-import GroupExpenses from './components/GroupExpenses';
-import InterCollegeCompetitions from './components/InterCollegeCompetitions';
-import PrizeChallenges from './components/PrizeChallenges';
-import CreateCompetition from './components/CreateCompetition';
-import CreateChallenge from './components/CreateChallenge';
-import CampusReputation from './components/CampusReputation';
 
-// Admin Verification System
-import CampusAdminRequest from './components/CampusAdminRequest';
-// Removed SystemAdminInterface - merged into SuperAdminInterface
-import CampusAdminDashboard from './components/CampusAdminDashboard';
-import ClubAdminDashboard from './components/ClubAdminDashboard';
-import SuperAdminInterface from './components/SuperAdminInterface';
-import MyRegistrations from './components/MyRegistrations';
+// ============================================================================
+// LAZY LOADED COMPONENTS - Code Splitting for Better Performance
+// ============================================================================
 
-// College Events System
-import CreateEvent from './components/CreateEvent';
-import EditEvent from './components/EditEvent';
-import EventsList from './components/EventsList';
-import EventDetails from './components/EventDetails';
-import MyEvents from './components/MyEvents';
+// Core Features - Lazy Loaded
+const Transaction = lazy(() => import('./components/Transaction'));
+const Hustles = lazy(() => import('./components/Hustles'));
+const Analytics = lazy(() => import('./components/Analytics'));
+const Profile = lazy(() => import('./components/Profile'));
+const Budget = lazy(() => import('./components/Budget'));
+const FinancialGoals = lazy(() => import('./components/FinancialGoals'));
+const Recommendations = lazy(() => import('./components/Recommendations'));
+const Notifications = lazy(() => import('./components/Notifications'));
 
-// Viral Impact Features
-import PublicCampusBattle from './components/PublicCampusBattle';
-import SpendingInsights from './components/SpendingInsights';
-import ViralMilestones from './components/ViralMilestones';
-import FriendComparisons from './components/FriendComparisons';
-import ImpactStats from './components/ImpactStats';
+// Gamification Features - Lazy Loaded
+const GamificationProfile = lazy(() => import('./components/GamificationProfile'));
+const FriendsAndReferrals = lazy(() => import('./components/FriendsAndReferrals'));
+const AllChallenges = lazy(() => import('./components/AllChallenges'));
+const SocialFeed = lazy(() => import('./components/SocialFeed'));
+const DailyCheckin = lazy(() => import('./components/DailyCheckin'));
+
+// Enhanced Features - Lazy Loaded
+const LimitedOffers = lazy(() => import('./components/LimitedOffers'));
+const SharingHub = lazy(() => import('./components/SharingHub'));
+const FeatureUnlock = lazy(() => import('./components/FeatureUnlock'));
+const FinancialJourney = lazy(() => import('./components/FinancialJourney'));
+const DailyTips = lazy(() => import('./components/DailyTips'));
+const Timeline = lazy(() => import('./components/Timeline'));
+const TipsHistory = lazy(() => import('./components/TipsHistory'));
+const OffersHistory = lazy(() => import('./components/OffersHistory'));
+const EnhancedPhotoSharing = lazy(() => import('./components/EnhancedPhotoSharing'));
+const HabitTracking = lazy(() => import('./components/HabitTracking'));
+const WeeklyRecap = lazy(() => import('./components/WeeklyRecap'));
+const PersonalizedGoals = lazy(() => import('./components/PersonalizedGoals'));
+
+// Campus Features - Lazy Loaded
+const CampusAmbassador = lazy(() => import('./components/CampusAmbassador'));
+const GrowthMechanics = lazy(() => import('./components/GrowthMechanics'));
+const ExpenseReceipts = lazy(() => import('./components/ExpenseReceipts'));
+const GroupExpenses = lazy(() => import('./components/GroupExpenses'));
+const InterCollegeCompetitions = lazy(() => import('./components/InterCollegeCompetitions'));
+const PrizeChallenges = lazy(() => import('./components/PrizeChallenges'));
+const CreateCompetition = lazy(() => import('./components/CreateCompetition'));
+const CreateChallenge = lazy(() => import('./components/CreateChallenge'));
+const CampusReputation = lazy(() => import('./components/CampusReputation'));
+
+// Admin System - Lazy Loaded
+const CampusAdminRequest = lazy(() => import('./components/CampusAdminRequest'));
+const CampusAdminDashboard = lazy(() => import('./components/CampusAdminDashboard'));
+const ClubAdminDashboard = lazy(() => import('./components/ClubAdminDashboard'));
+const SuperAdminInterface = lazy(() => import('./components/SuperAdminInterface'));
+const MyRegistrations = lazy(() => import('./components/MyRegistrations'));
+
+// College Events System - Lazy Loaded
+const CreateEvent = lazy(() => import('./components/CreateEvent'));
+const EditEvent = lazy(() => import('./components/EditEvent'));
+const EventsList = lazy(() => import('./components/EventsList'));
+const EventDetails = lazy(() => import('./components/EventDetails'));
+const MyEvents = lazy(() => import('./components/MyEvents'));
+
+// Viral Impact Features - Lazy Loaded
+const PublicCampusBattle = lazy(() => import('./components/PublicCampusBattle'));
+const SpendingInsights = lazy(() => import('./components/SpendingInsights'));
+const ViralMilestones = lazy(() => import('./components/ViralMilestones'));
+const FriendComparisons = lazy(() => import('./components/FriendComparisons'));
+const ImpactStats = lazy(() => import('./components/ImpactStats'));
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-500 mx-auto mb-4"></div>
+      <p className="text-gray-600 font-medium">Loading...</p>
+    </div>
+  </div>
+);
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -178,7 +199,8 @@ function App() {
           <Toaster position="top-right" richColors closeButton />
           {user && <Navigation />}
           <main className="flex-grow">
-            <Routes>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
               <Route 
                 path="/login" 
                 element={!user ? <Login /> : <Navigate to="/dashboard" />} 
@@ -411,7 +433,8 @@ function App() {
                 path="/" 
                 element={<Navigate to={user ? "/dashboard" : "/login"} />} 
               />
-            </Routes>
+              </Routes>
+            </Suspense>
           </main>
           {user && <Footer />}
         </div>
