@@ -107,39 +107,68 @@ def verify_verification_token(token: str, provided_code: str, token_type: str = 
         return None
 
 def check_password_strength(password: str) -> dict:
-    """Check password strength and return score with feedback"""
+    """Check password strength and return score with feedback
+    
+    ENHANCED SECURITY REQUIREMENTS:
+    - Minimum 12 characters (enforced)
+    - Must contain uppercase letter
+    - Must contain lowercase letter  
+    - Must contain number
+    - Must contain special character
+    """
     score = 0
     feedback = []
     
-    # Length check
-    if len(password) >= 8:
-        score += 20
-    else:
-        feedback.append("Password should be at least 8 characters long")
+    # CRITICAL: Minimum 12 characters required
+    if len(password) < 12:
+        feedback.append("Password must be at least 12 characters long (REQUIRED)")
+        return {
+            "score": 0,
+            "strength": "Invalid",
+            "color": "red",
+            "feedback": feedback,
+            "valid": False
+        }
     
+    # Length bonus
     if len(password) >= 12:
+        score += 20
+    
+    if len(password) >= 16:
         score += 10
     
-    # Character variety checks
-    if re.search(r'[A-Z]', password):
-        score += 15
-    else:
-        feedback.append("Add uppercase letters")
+    # REQUIRED: Character variety checks (all mandatory)
+    has_uppercase = bool(re.search(r'[A-Z]', password))
+    has_lowercase = bool(re.search(r'[a-z]', password))
+    has_digit = bool(re.search(r'\d', password))
+    has_special = bool(re.search(r'[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;/~`]', password))
     
-    if re.search(r'[a-z]', password):
-        score += 15
-    else:
-        feedback.append("Add lowercase letters")
+    # Check all requirements are met
+    missing_requirements = []
+    if not has_uppercase:
+        missing_requirements.append("uppercase letter (A-Z)")
+    if not has_lowercase:
+        missing_requirements.append("lowercase letter (a-z)")
+    if not has_digit:
+        missing_requirements.append("number (0-9)")
+    if not has_special:
+        missing_requirements.append("special character (!@#$%^&* etc)")
     
-    if re.search(r'\d', password):
-        score += 15
-    else:
-        feedback.append("Add numbers")
+    if missing_requirements:
+        feedback.append(f"REQUIRED: Add {', '.join(missing_requirements)}")
+        return {
+            "score": 0,
+            "strength": "Invalid",
+            "color": "red",
+            "feedback": feedback,
+            "valid": False
+        }
     
-    if re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-        score += 15
-    else:
-        feedback.append("Add special characters")
+    # All requirements met, add points
+    score += 15  # uppercase
+    score += 15  # lowercase
+    score += 15  # digit
+    score += 15  # special
     
     # Complexity bonus
     if len(set(password)) >= 8:  # Unique characters
@@ -190,7 +219,8 @@ def check_password_strength(password: str) -> dict:
         "score": score,
         "strength": strength,
         "color": color,
-        "feedback": feedback[:3]  # Limit to top 3 feedback items
+        "feedback": feedback[:3] if feedback else ["Password meets all requirements"],
+        "valid": True  # All requirements passed
     }
 
 def is_account_locked(failed_attempts: int, last_failed_login: Optional[datetime]) -> bool:
