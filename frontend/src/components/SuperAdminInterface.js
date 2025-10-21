@@ -211,10 +211,10 @@ const SuperAdminInterface = () => {
     try {
       setAdminsLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API}/super-admin/admins`, {
+      const response = await axios.get(`${API}/super-admin/campus-admins`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      setCampusAdmins(response.data.admins || []);
+      setCampusAdmins(response.data.campus_admins || []);
     } catch (error) {
       console.error('Error fetching campus admins:', error);
       if (error.response?.status === 403) {
@@ -1139,7 +1139,7 @@ const SuperAdminInterface = () => {
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-3">
                             <User className="w-5 h-5 text-blue-600" />
-                            <h3 className="font-semibold text-lg">{admin.user_details?.full_name || admin.admin_name || 'N/A'}</h3>
+                            <h3 className="font-semibold text-lg">{admin.full_name || admin.user_details?.full_name || admin.admin_name || 'N/A'}</h3>
                             <Badge className={getStatusColor(admin.status)}>
                               {admin.status}
                             </Badge>
@@ -1160,7 +1160,7 @@ const SuperAdminInterface = () => {
                             <div className="space-y-2 text-sm">
                               <div className="flex items-center gap-2">
                                 <Mail className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600">{admin.user_details?.email || admin.contact_email || 'N/A'}</span>
+                                <span className="text-gray-600">{admin.email || admin.user_details?.email || admin.contact_email || 'N/A'}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Phone className="w-4 h-4 text-gray-400" />
@@ -1171,7 +1171,7 @@ const SuperAdminInterface = () => {
                             <div className="space-y-2 text-sm">
                               <div className="flex items-center gap-2">
                                 <Building className="w-4 h-4 text-gray-400" />
-                                <span className="text-gray-600"><strong>College:</strong> {admin.college_name || admin.university_name || 'N/A'}</span>
+                                <span className="text-gray-600"><strong>College:</strong> {admin.college_name || admin.university || admin.university_name || admin.user_details?.university || 'N/A'}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <GraduationCap className="w-4 h-4 text-gray-400" />
@@ -1278,7 +1278,7 @@ const SuperAdminInterface = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-2">
-                            <h3 className="font-semibold text-lg">{clubAdmin.user_name}</h3>
+                            <h3 className="font-semibold text-lg">{clubAdmin.full_name || clubAdmin.user_name || 'N/A'}</h3>
                             <Badge className={getStatusColor(clubAdmin.status)}>
                               {clubAdmin.status}
                             </Badge>
@@ -1286,14 +1286,15 @@ const SuperAdminInterface = () => {
                           
                           <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
                             <div>
-                              <p><strong>Club:</strong> {clubAdmin.club_name}</p>
-                              <p><strong>College:</strong> {clubAdmin.college_name}</p>
-                              <p><strong>Appointed By:</strong> {clubAdmin.appointed_by_name}</p>
+                              <p><strong>Email:</strong> {clubAdmin.email || 'N/A'}</p>
+                              <p><strong>Club:</strong> {clubAdmin.club_name || 'N/A'}</p>
+                              <p><strong>College:</strong> {clubAdmin.college_name || 'N/A'}</p>
+                              <p><strong>Appointed By:</strong> {clubAdmin.appointed_by_name || 'System'}</p>
                             </div>
                             <div>
-                              <p><strong>Events Created:</strong> {clubAdmin.events_created}</p>
-                              <p><strong>Appointed:</strong> {new Date(clubAdmin.appointed_at).toLocaleDateString()}</p>
-                              <p><strong>Expires:</strong> {new Date(clubAdmin.expires_at).toLocaleDateString()}</p>
+                              <p><strong>Events Created:</strong> {clubAdmin.events_created || clubAdmin.competitions_created || 0}</p>
+                              <p><strong>Appointed:</strong> {clubAdmin.appointed_at ? new Date(clubAdmin.appointed_at).toLocaleDateString() : 'N/A'}</p>
+                              <p><strong>Expires:</strong> {clubAdmin.expires_at ? new Date(clubAdmin.expires_at).toLocaleDateString() : 'N/A'}</p>
                             </div>
                           </div>
                         </div>
