@@ -18689,6 +18689,52 @@ async def get_club_admin_challenges(
         logger.error(f"Get club admin challenges error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get challenges")
 
+@api_router.get("/club-admin/college-events")
+@limiter.limit("20/minute")
+async def get_club_admin_college_events(
+    request: Request,
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 10,
+    current_club_admin: Dict[str, Any] = Depends(get_current_club_admin)
+):
+    """Get college events created by this club admin"""
+    try:
+        db = await get_database()
+        
+        # Build query - only show events created by this club admin
+        query = {"created_by": current_club_admin["user_id"]}
+        
+        if status:
+            query["status"] = status
+        
+        # Get total count
+        total_count = await db.college_events.count_documents(query)
+        
+        # Get paginated events
+        skip = (page - 1) * limit
+        events = await db.college_events.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(None)
+        
+        # Enhance each event with registration counts
+        for event in events:
+            registration_count = await db.event_registrations.count_documents({
+                "event_id": event["id"]
+            })
+            event["current_participants"] = registration_count
+            event["registered_count"] = registration_count
+        
+        return {
+            "events": clean_mongo_doc(events),
+            "total_count": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": (total_count + limit - 1) // limit
+        }
+        
+    except Exception as e:
+        logger.error(f"Get club admin college events error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get college events")
+
 # ===== CAMPUS ADMIN CLUB ADMIN MANAGEMENT ENDPOINTS =====
 
 @api_router.get("/campus-admin/club-admin-requests")
@@ -20256,9 +20302,11 @@ async def get_event_registrations(
     college: Optional[str] = None,
     status: Optional[str] = None,
     registration_type: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Get all registrations for an event with filters"""
+    """Get all registrations for an event with filters and pagination"""
     try:
         db = await get_database()
         
@@ -20271,15 +20319,36 @@ async def get_event_registrations(
         if registration_type:
             filters["registration_type"] = registration_type
         
-        # Get registrations
-        registrations = await get_registrations_for_event(db, event_id, event_type, filters)
+        # Get all registrations for statistics (without pagination)
+        all_registrations = await get_registrations_for_event(db, event_id, event_type, filters)
         
-        # Get college statistics
-        stats = await get_college_statistics(registrations)
+        # Get college statistics from all registrations
+        stats = await get_college_statistics(all_registrations)
+        
+        # Apply pagination
+        total_count = len(all_registrations)
+        start_index = (page - 1) * limit
+        end_index = start_index + limit
+        paginated_registrations = all_registrations[start_index:end_index]
+        
+        total_pages = (total_count + limit - 1) // limit  # Ceiling division
+        
+        # Calculate status counts
+        status_counts = {
+            "pending": sum(1 for r in all_registrations if r.get("status") == "pending"),
+            "approved": sum(1 for r in all_registrations if r.get("status") == "approved"),
+            "rejected": sum(1 for r in all_registrations if r.get("status") == "rejected")
+        }
         
         return {
-            "registrations": registrations,
-            "total_count": len(registrations),
+            "registrations": paginated_registrations,
+            "total_count": total_count,
+            "status_counts": status_counts,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_previous": page > 1,
             "college_statistics": stats,
             "filters_applied": filters
         }
@@ -20423,9 +20492,12 @@ async def export_registrations(
     event_type: str,
     event_id: str,
     format: str = "csv",  # csv, excel, pdf, docx
+    college: Optional[str] = None,
+    status: Optional[str] = None,
+    registration_type: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Export registrations in multiple formats (CSV, Excel, PDF, DOCX)"""
+    """Export registrations in multiple formats (CSV, Excel, PDF, DOCX) with filters"""
     try:
         db = await get_database()
         
@@ -20440,8 +20512,17 @@ async def export_registrations(
         event = await db[event_collection].find_one({"id": event_id})
         event_name = event.get("title", "event") if event else "event"
         
-        # Get registrations
-        registrations = await get_registrations_for_event(db, event_id, event_type)
+        # Build filters
+        filters = {}
+        if college:
+            filters["college"] = college
+        if status:
+            filters["status"] = status
+        if registration_type:
+            filters["registration_type"] = registration_type
+        
+        # Get registrations with filters
+        registrations = await get_registrations_for_event(db, event_id, event_type, filters)
         
         if not registrations:
             raise HTTPException(status_code=404, detail="No registrations found")
