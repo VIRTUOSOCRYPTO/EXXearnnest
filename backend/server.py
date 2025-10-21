@@ -7053,6 +7053,14 @@ async def register_for_inter_college_competition(
             {"$inc": {"experience_points": 25}}  # Registration bonus
         )
         
+        # Update user leaderboards after registration
+        try:
+            from gamification_service import update_user_leaderboards
+            await update_user_leaderboards(db, current_user["id"])
+            logger.info(f"✅ Updated leaderboards for user {current_user['id']} after inter-college registration")
+        except Exception as e:
+            logger.error(f"Failed to update leaderboards after inter-college registration: {str(e)}")
+        
         return {
             "message": "Successfully registered for inter-college competition",
             "competition_id": competition_id,
@@ -7822,6 +7830,14 @@ async def join_prize_challenge(
             {"id": current_user["id"]},
             {"$inc": {"experience_points": join_points}}
         )
+        
+        # Update user leaderboards after joining challenge
+        try:
+            from gamification_service import update_user_leaderboards
+            await update_user_leaderboards(db, current_user["id"])
+            logger.info(f"✅ Updated leaderboards for user {current_user['id']} after joining prize challenge")
+        except Exception as e:
+            logger.error(f"Failed to update leaderboards after joining prize challenge: {str(e)}")
         
         return {
             "message": "Successfully joined prize challenge",
@@ -17428,6 +17444,77 @@ async def get_super_admin_dashboard(
         logger.error(f"Get super admin dashboard error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get dashboard data")
 
+@api_router.get("/super-admin/campus-admins")
+@limiter.limit("30/minute")
+async def get_campus_admins_list(
+    request: Request,
+    status: Optional[str] = None,
+    college_name: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get list of all campus admins with detailed information"""
+    try:
+        db = await get_database()
+        
+        # Build query
+        query = {"admin_type": "campus_admin"}
+        if status:
+            query["status"] = status
+        if college_name:
+            query["college_name"] = college_name
+        
+        # Get total count
+        total_count = await db.campus_admins.count_documents(query)
+        
+        # Get paginated campus admins
+        skip = (page - 1) * limit
+        campus_admins_cursor = db.campus_admins.find(query).sort("appointed_at", -1).skip(skip).limit(limit)
+        campus_admins = await campus_admins_cursor.to_list(None)
+        
+        # Enrich with user details
+        for admin in campus_admins:
+            # Get user details
+            user = await get_user_by_id(admin["user_id"])
+            if user:
+                admin["full_name"] = user.get("full_name")
+                admin["email"] = user.get("email")
+                admin["university"] = user.get("university")
+            
+            # Get appointing admin details if appointed by someone
+            if admin.get("appointed_by"):
+                if isinstance(admin["appointed_by"], dict):
+                    admin["appointed_by_name"] = admin["appointed_by"].get("full_name", "Unknown")
+                else:
+                    appointer = await get_user_by_id(admin["appointed_by"])
+                    if appointer:
+                        admin["appointed_by_name"] = appointer.get("full_name", "Unknown")
+        
+        return {
+            "campus_admins": clean_mongo_doc(campus_admins),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            },
+            "summary": {
+                "total_campus_admins": total_count,
+                "by_status": {
+                    "active": await db.campus_admins.count_documents({**query, "status": "active"}),
+                    "suspended": await db.campus_admins.count_documents({**query, "status": "suspended"}),
+                    "revoked": await db.campus_admins.count_documents({**query, "status": "revoked"})
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get campus admins list error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get campus admins")
+
 @api_router.get("/super-admin/campus-admins/activities")
 @limiter.limit("30/minute")
 async def get_campus_admin_activities(
@@ -17861,6 +17948,143 @@ async def get_club_admins_overview(
     except Exception as e:
         logger.error(f"Get club admins overview error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to get club admins")
+
+@api_router.get("/super-admin/prize-challenges/{challenge_id}/participants")
+@limiter.limit("30/minute")
+async def get_prize_challenge_participants(
+    request: Request,
+    challenge_id: str,
+    page: int = 1,
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get list of all participants for a specific prize challenge"""
+    try:
+        db = await get_database()
+        
+        # Get challenge details
+        challenge = await db.prize_challenges.find_one({"id": challenge_id})
+        if not challenge:
+            raise HTTPException(status_code=404, detail="Challenge not found")
+        
+        # Get total participant count
+        total_count = await db.prize_challenge_participations.count_documents({"challenge_id": challenge_id})
+        
+        # Get paginated participants
+        skip = (page - 1) * limit
+        participants_cursor = db.prize_challenge_participations.find(
+            {"challenge_id": challenge_id}
+        ).sort("joined_at", -1).skip(skip).limit(limit)
+        participants = await participants_cursor.to_list(None)
+        
+        # Enrich with user details
+        for participant in participants:
+            user = await get_user_by_id(participant["user_id"])
+            if user:
+                participant["full_name"] = user.get("full_name")
+                participant["email"] = user.get("email")
+                participant["university"] = user.get("university")
+                participant["level"] = user.get("level", 1)
+                participant["current_streak"] = user.get("current_streak", 0)
+        
+        return {
+            "challenge": {
+                "id": challenge["id"],
+                "title": challenge["title"],
+                "description": challenge.get("description"),
+                "prize_type": challenge.get("prize_type"),
+                "total_prize_value": challenge.get("total_prize_value")
+            },
+            "participants": clean_mongo_doc(participants),
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get prize challenge participants error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get challenge participants")
+
+@api_router.get("/super-admin/inter-college/{competition_id}/participants")
+@limiter.limit("30/minute")
+async def get_inter_college_participants(
+    request: Request,
+    competition_id: str,
+    campus: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+):
+    """Get list of all participants for a specific inter-college competition"""
+    try:
+        db = await get_database()
+        
+        # Get competition details
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            raise HTTPException(status_code=404, detail="Competition not found")
+        
+        # Build query
+        query = {"competition_id": competition_id}
+        if campus:
+            query["campus"] = campus
+        
+        # Get total participant count
+        total_count = await db.campus_competition_participations.count_documents(query)
+        
+        # Get campus-wise breakdown
+        pipeline = [
+            {"$match": {"competition_id": competition_id}},
+            {"$group": {
+                "_id": "$campus",
+                "count": {"$sum": 1}
+            }}
+        ]
+        campus_breakdown_cursor = db.campus_competition_participations.aggregate(pipeline)
+        campus_breakdown = await campus_breakdown_cursor.to_list(None)
+        
+        # Get paginated participants
+        skip = (page - 1) * limit
+        participants_cursor = db.campus_competition_participations.find(query).sort("registered_at", -1).skip(skip).limit(limit)
+        participants = await participants_cursor.to_list(None)
+        
+        # Enrich with user details
+        for participant in participants:
+            user = await get_user_by_id(participant["user_id"])
+            if user:
+                participant["full_name"] = user.get("full_name")
+                participant["email"] = user.get("email")
+                participant["university"] = user.get("university")
+                participant["level"] = user.get("level", 1)
+        
+        return {
+            "competition": {
+                "id": competition["id"],
+                "title": competition["title"],
+                "description": competition.get("description"),
+                "prize_pool": competition.get("prize_pool"),
+                "competition_type": competition.get("competition_type")
+            },
+            "participants": clean_mongo_doc(participants),
+            "campus_breakdown": campus_breakdown,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_count": total_count,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get inter-college participants error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get competition participants")
 
 @api_router.get("/super-admin/alerts")
 @limiter.limit("30/minute")
