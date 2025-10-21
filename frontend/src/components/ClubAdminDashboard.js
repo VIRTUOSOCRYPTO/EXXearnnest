@@ -21,6 +21,7 @@ const ClubAdminDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [competitions, setCompetitions] = useState([]);
   const [challenges, setChallenges] = useState([]);
+  const [collegeEvents, setCollegeEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedEvent, setSelectedEvent] = useState({ id: null, type: null, title: null });
@@ -30,28 +31,46 @@ const ClubAdminDashboard = () => {
     fetchDashboardData();
     fetchCompetitions();
     fetchChallenges();
+    fetchCollegeEvents();
     
     // Set up auto-refresh every 30 seconds
     const interval = setInterval(() => {
       fetchDashboardData();
       fetchCompetitions();
       fetchChallenges();
+      fetchCollegeEvents();
     }, 30000);
     
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'registrations' && competitions.length > 0 && !selectedEvent.id) {
-      // Auto-select first competition when switching to registrations tab
-      const firstCompetition = competitions[0];
-      setSelectedEvent({
-        id: firstCompetition.id,
-        type: 'inter_college',
-        title: firstCompetition.title
-      });
+    if (activeTab === 'registrations' && !selectedEvent.id) {
+      // Auto-select first available event when switching to registrations tab
+      if (collegeEvents.length > 0) {
+        const firstEvent = collegeEvents[0];
+        setSelectedEvent({
+          id: firstEvent.id,
+          type: 'college_event',
+          title: firstEvent.title
+        });
+      } else if (competitions.length > 0) {
+        const firstCompetition = competitions[0];
+        setSelectedEvent({
+          id: firstCompetition.id,
+          type: 'inter_college',
+          title: firstCompetition.title
+        });
+      } else if (challenges.length > 0) {
+        const firstChallenge = challenges[0];
+        setSelectedEvent({
+          id: firstChallenge.id,
+          type: 'prize_challenge',
+          title: firstChallenge.title
+        });
+      }
     }
-  }, [activeTab, competitions]);
+  }, [activeTab, collegeEvents, competitions, challenges]);
 
   const fetchDashboardData = async () => {
     try {
@@ -91,6 +110,18 @@ const ClubAdminDashboard = () => {
       setChallenges(response.data.challenges || []);
     } catch (error) {
       console.error('Error fetching challenges:', error);
+    }
+  };
+
+  const fetchCollegeEvents = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/club-admin/college-events`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setCollegeEvents(response.data.events || []);
+    } catch (error) {
+      console.error('Error fetching college events:', error);
     }
   };
 
@@ -138,6 +169,18 @@ const ClubAdminDashboard = () => {
 
   const getEventOptions = () => {
     const options = [];
+    
+    // Add college events first
+    collegeEvents.forEach(event => {
+      options.push({
+        id: event.id,
+        type: 'college_event',
+        title: event.title,
+        label: `College Event: ${event.title}`
+      });
+    });
+    
+    // Add competitions
     competitions.forEach(comp => {
       options.push({
         id: comp.id,
@@ -146,6 +189,8 @@ const ClubAdminDashboard = () => {
         label: `Competition: ${comp.title}`
       });
     });
+    
+    // Add challenges
     challenges.forEach(challenge => {
       options.push({
         id: challenge.id,
@@ -154,6 +199,7 @@ const ClubAdminDashboard = () => {
         label: `Challenge: ${challenge.title}`
       });
     });
+    
     return options;
   };
 
