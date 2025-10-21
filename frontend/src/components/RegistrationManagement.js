@@ -28,27 +28,63 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [approvalModal, setApprovalModal] = useState({ open: false, registration: null, action: null });
   const [rejectionReason, setRejectionReason] = useState('');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  const [statusCounts, setStatusCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
+  const itemsPerPage = 50;
 
   useEffect(() => {
     if (eventId && eventType) {
       fetchRegistrations();
     }
-  }, [eventId, eventType]);
+  }, [eventId, eventType, currentPage, selectedCollege, selectedStatus, selectedType]);
 
   useEffect(() => {
-    applyFilters();
-  }, [registrations, selectedCollege, selectedStatus, selectedType, searchTerm]);
+    // Reset to page 1 when filters change
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [selectedCollege, selectedStatus, selectedType, searchTerm]);
+  
+  useEffect(() => {
+    // Apply search filter when search term or registrations change
+    applySearchFilter(registrations);
+  }, [searchTerm, registrations]);
 
   const fetchRegistrations = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}`, {
+      
+      // Build query params
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: itemsPerPage.toString()
+      });
+      
+      if (selectedCollege !== 'all') params.append('college', selectedCollege);
+      if (selectedStatus !== 'all') params.append('status', selectedStatus);
+      if (selectedType !== 'all') params.append('registration_type', selectedType);
+      
+      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
       setRegistrations(response.data.registrations || []);
       setCollegeStats(response.data.college_statistics || {});
+      setTotalCount(response.data.total_count || 0);
+      setTotalPages(response.data.total_pages || 1);
+      setHasNext(response.data.has_next || false);
+      setHasPrevious(response.data.has_previous || false);
+      setStatusCounts(response.data.status_counts || { pending: 0, approved: 0, rejected: 0 });
+      
+      // Apply client-side search filter
+      applySearchFilter(response.data.registrations || []);
     } catch (error) {
       console.error('Error fetching registrations:', error);
       alert('Failed to fetch registrations. Please check your permissions.');
@@ -57,35 +93,18 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
     }
   };
 
-  const applyFilters = () => {
-    let filtered = [...registrations];
-
-    // College filter
-    if (selectedCollege !== 'all') {
-      filtered = filtered.filter(reg => 
-        (reg.college || reg.user_college || reg.campus_name || '').toLowerCase().includes(selectedCollege.toLowerCase())
-      );
+  const applySearchFilter = (regs) => {
+    if (!searchTerm) {
+      setFilteredRegistrations(regs);
+      return;
     }
-
-    // Status filter
-    if (selectedStatus !== 'all') {
-      filtered = filtered.filter(reg => reg.status === selectedStatus);
-    }
-
-    // Registration type filter
-    if (selectedType !== 'all') {
-      filtered = filtered.filter(reg => reg.registration_type === selectedType);
-    }
-
-    // Search term filter
-    if (searchTerm) {
-      filtered = filtered.filter(reg => 
-        (reg.full_name || reg.user_name || reg.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (reg.email || reg.user_email || reg.team_leader_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (reg.usn || reg.team_leader_usn || '').toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
+    
+    const filtered = regs.filter(reg => 
+      (reg.full_name || reg.user_name || reg.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (reg.email || reg.user_email || reg.team_leader_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (reg.usn || reg.team_leader_usn || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
     setFilteredRegistrations(filtered);
   };
 
@@ -124,14 +143,30 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
     }
   };
 
-  const exportRegistrations = async () => {
+  const exportRegistrations = async (format = 'csv') => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}/export`, {
+      
+      // Build query params to get ALL registrations for export (not paginated)
+      const params = new URLSearchParams({
+        format: format
+      });
+      
+      if (selectedCollege !== 'all') params.append('college', selectedCollege);
+      if (selectedStatus !== 'all') params.append('status', selectedStatus);
+      if (selectedType !== 'all') params.append('registration_type', selectedType);
+      
+      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}/export?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
-      alert(`Export successful! ${response.data.total_registrations} registrations exported.`);
+      if (response.data.download_url) {
+        // Open the download URL in a new tab
+        window.open(response.data.download_url, '_blank');
+        alert(`Export successful! ${response.data.total_registrations} registrations exported to ${format.toUpperCase()}.`);
+      } else {
+        alert(`Export successful! ${response.data.total_registrations} registrations exported.`);
+      }
     } catch (error) {
       console.error('Error exporting registrations:', error);
       alert('Failed to export registrations. Please try again.');
@@ -198,14 +233,14 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">{registrations.length}</div>
+            <div className="text-2xl font-bold text-blue-600">{totalCount}</div>
             <div className="text-sm text-gray-600">Total Registrations</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-yellow-600">
-              {registrations.filter(r => r.status === 'pending').length}
+              {statusCounts.pending}
             </div>
             <div className="text-sm text-gray-600">Pending</div>
           </CardContent>
@@ -213,7 +248,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-green-600">
-              {registrations.filter(r => r.status === 'approved').length}
+              {statusCounts.approved}
             </div>
             <div className="text-sm text-gray-600">Approved</div>
           </CardContent>
@@ -221,7 +256,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
         <Card>
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-red-600">
-              {registrations.filter(r => r.status === 'rejected').length}
+              {statusCounts.rejected}
             </div>
             <div className="text-sm text-gray-600">Rejected</div>
           </CardContent>
@@ -416,6 +451,68 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
               </div>
             )}
           </div>
+          
+          {/* Pagination Controls */}
+          {totalCount > 0 && (
+            <div className="mt-6 flex items-center justify-between border-t pt-4">
+              <div className="text-sm text-gray-600">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} registrations
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={!hasPrevious}
+                  className="disabled:opacity-50"
+                >
+                  Previous
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={currentPage === pageNum ? "bg-blue-600" : ""}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={!hasNext}
+                  className="disabled:opacity-50"
+                >
+                  Next
+                </Button>
+              </div>
+              
+              <div className="text-sm text-gray-600">
+                Page {currentPage} of {totalPages}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
