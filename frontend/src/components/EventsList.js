@@ -30,7 +30,6 @@ const EventsList = () => {
   const navigate = useNavigate();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [registering, setRegistering] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [eventOverviewOpen, setEventOverviewOpen] = useState(false);
@@ -91,32 +90,6 @@ const EventsList = () => {
       console.error('Error fetching events:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const registerForEvent = async (eventId) => {
-    try {
-      setRegistering(true);
-      const response = await axios.post(`${API}/college-events/${eventId}/register`);
-      
-      // Update the event status locally with actual backend response
-      setEvents(prev => prev.map(event => 
-        event.id === eventId 
-          ? { 
-              ...event, 
-              is_registered: response.data.is_registered || true, 
-              registered_count: response.data.updated_count || (event.registered_count || 0) + 1,
-              current_participants: response.data.updated_count || (event.current_participants || 0) + 1
-            }
-          : event
-      ));
-
-      alert(`Successfully registered! ${response.data.message}`);
-    } catch (error) {
-      console.error('Registration error:', error);
-      alert(error.response?.data?.detail || 'Failed to register for event');
-    } finally {
-      setRegistering(false);
     }
   };
 
@@ -312,7 +285,7 @@ const EventsList = () => {
         <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
-            className="flex-1"
+            className="w-full"
             onClick={() => {
               setSelectedEvent(event);
               setEventOverviewOpen(true);
@@ -320,20 +293,6 @@ const EventsList = () => {
           >
             View Details
           </Button>
-
-          {event.registration_enabled && 
-           !event.is_registered && 
-           event.registered_count < (event.max_participants || Infinity) &&
-           (!event.registration_deadline || new Date(event.registration_deadline) > new Date()) && (
-            <Button
-              onClick={() => registerForEvent(event.id)}
-              disabled={registering}
-              className="flex-1 bg-green-600 hover:bg-green-700"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              {registering ? 'Registering...' : 'Register Now'}
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>
