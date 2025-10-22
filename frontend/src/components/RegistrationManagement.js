@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { 
   Users, Filter, Download, CheckCircle, XCircle, Clock, 
-  Search, Calendar, Building, Award, Trophy, User
+  Search, Calendar, Building, Award, Trophy, User, Eye, Phone, 
+  Mail, Hash, GraduationCap, MapPin, FileText, IdCard
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -28,6 +29,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [approvalModal, setApprovalModal] = useState({ open: false, registration: null, action: null });
   const [rejectionReason, setRejectionReason] = useState('');
+  const [detailsModal, setDetailsModal] = useState({ open: false, registration: null });
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -418,27 +420,38 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
                       {new Date(registration.registration_date).toLocaleDateString()}
                     </td>
                     <td className="p-3">
-                      {registration.status === 'pending' && (
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => setApprovalModal({ open: true, registration, action: 'approve' })}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setApprovalModal({ open: true, registration, action: 'reject' })}
-                            className="border-red-500 text-red-600 hover:bg-red-50"
-                          >
-                            <XCircle className="w-3 h-3 mr-1" />
-                            Reject
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDetailsModal({ open: true, registration })}
+                          className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          View Details
+                        </Button>
+                        {registration.status === 'pending' && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => setApprovalModal({ open: true, registration, action: 'approve' })}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setApprovalModal({ open: true, registration, action: 'reject' })}
+                              className="border-red-500 text-red-600 hover:bg-red-50"
+                            >
+                              <XCircle className="w-3 h-3 mr-1" />
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -567,6 +580,301 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registration Details Modal */}
+      <Dialog open={detailsModal.open} onOpenChange={(open) => !open && setDetailsModal({ open: false, registration: null })}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Registration Details
+            </DialogTitle>
+          </DialogHeader>
+          {detailsModal.registration && (
+            <div className="space-y-6">
+              {/* Status Badge */}
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <span className="text-sm text-gray-600">Registration Status</span>
+                  <div className="mt-1">{getStatusBadge(detailsModal.registration.status)}</div>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm text-gray-600">Registration Date</span>
+                  <div className="mt-1 font-medium">
+                    {new Date(detailsModal.registration.registration_date).toLocaleDateString('en-IN', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Registration Type */}
+              <div className="p-4 border rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  {getTypeIcon(detailsModal.registration.registration_type)}
+                  <h3 className="font-semibold text-lg capitalize">
+                    {detailsModal.registration.registration_type} Registration
+                  </h3>
+                </div>
+              </div>
+
+              {detailsModal.registration.registration_type === 'individual' ? (
+                // Individual Registration Details
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg border-b pb-2">Personal Information</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <User className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Full Name</div>
+                        <div className="font-medium">{detailsModal.registration.full_name || detailsModal.registration.user_name}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Mail className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Email</div>
+                        <div className="font-medium break-all">{detailsModal.registration.email || detailsModal.registration.user_email}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Phone className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Phone Number</div>
+                        <div className="font-medium">{detailsModal.registration.phone || detailsModal.registration.user_phone || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Hash className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">USN</div>
+                        <div className="font-medium">{detailsModal.registration.usn || 'N/A'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <h3 className="font-semibold text-lg border-b pb-2 mt-6">Academic Information</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Building className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">College</div>
+                        <div className="font-medium">{detailsModal.registration.college || detailsModal.registration.user_college}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <GraduationCap className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Branch/Department</div>
+                        <div className="font-medium">{detailsModal.registration.branch || detailsModal.registration.department || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Calendar className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Semester</div>
+                        <div className="font-medium">{detailsModal.registration.semester || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Calendar className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Year</div>
+                        <div className="font-medium">{detailsModal.registration.year || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    {detailsModal.registration.section && (
+                      <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                        <FileText className="w-5 h-5 text-blue-600 mt-1" />
+                        <div>
+                          <div className="text-sm text-gray-600">Section</div>
+                          <div className="font-medium">{detailsModal.registration.section}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {detailsModal.registration.student_id_url && (
+                      <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg col-span-2">
+                        <IdCard className="w-5 h-5 text-blue-600 mt-1" />
+                        <div className="flex-1">
+                          <div className="text-sm text-gray-600">Student ID Card</div>
+                          <a 
+                            href={detailsModal.registration.student_id_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline font-medium"
+                          >
+                            View Document
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                // Group Registration Details
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg border-b pb-2">Team Information</h3>
+                  
+                  <div className="flex items-start gap-3 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                    <Trophy className="w-6 h-6 text-blue-600 mt-1" />
+                    <div>
+                      <div className="text-sm text-gray-600">Team Name</div>
+                      <div className="font-bold text-xl text-blue-900">{detailsModal.registration.team_name}</div>
+                    </div>
+                  </div>
+
+                  <h3 className="font-semibold text-lg border-b pb-2 mt-6">Team Leader Information</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <User className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Leader Name</div>
+                        <div className="font-medium">{detailsModal.registration.team_leader_name}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Mail className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Leader Email</div>
+                        <div className="font-medium break-all">{detailsModal.registration.team_leader_email}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Phone className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Leader Phone</div>
+                        <div className="font-medium">{detailsModal.registration.team_leader_phone || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Hash className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Leader USN</div>
+                        <div className="font-medium">{detailsModal.registration.team_leader_usn || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Building className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">College</div>
+                        <div className="font-medium">{detailsModal.registration.campus_name || detailsModal.registration.college}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Users className="w-5 h-5 text-blue-600 mt-1" />
+                      <div>
+                        <div className="text-sm text-gray-600">Team Size</div>
+                        <div className="font-medium">{detailsModal.registration.team_size || (detailsModal.registration.team_members?.length || 0)} members</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {detailsModal.registration.team_members && detailsModal.registration.team_members.length > 0 && (
+                    <>
+                      <h3 className="font-semibold text-lg border-b pb-2 mt-6">Team Members</h3>
+                      <div className="space-y-3">
+                        {detailsModal.registration.team_members.map((member, index) => (
+                          <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                            <div className="flex items-center gap-2 mb-3">
+                              <User className="w-4 h-4 text-gray-600" />
+                              <span className="font-semibold">Member {index + 1}</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-gray-600">Name:</span>
+                                <span className="ml-2 font-medium">{member.name || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">USN:</span>
+                                <span className="ml-2 font-medium">{member.usn || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">Email:</span>
+                                <span className="ml-2 font-medium break-all">{member.email || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-600">Phone:</span>
+                                <span className="ml-2 font-medium">{member.phone || 'N/A'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Rejection Reason if rejected */}
+              {detailsModal.registration.rejection_reason && (
+                <div className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <XCircle className="w-5 h-5 text-red-600 mt-1" />
+                    <div>
+                      <div className="text-sm font-semibold text-red-900">Rejection Reason</div>
+                      <div className="text-sm text-red-800 mt-1">{detailsModal.registration.rejection_reason}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t">
+                {detailsModal.registration.status === 'pending' && (
+                  <>
+                    <Button
+                      onClick={() => {
+                        setDetailsModal({ open: false, registration: null });
+                        setApprovalModal({ open: true, registration: detailsModal.registration, action: 'approve' });
+                      }}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Approve Registration
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDetailsModal({ open: false, registration: null });
+                        setApprovalModal({ open: true, registration: detailsModal.registration, action: 'reject' });
+                      }}
+                      className="border-red-500 text-red-600 hover:bg-red-50"
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Reject Registration
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => setDetailsModal({ open: false, registration: null })}
+                  className="ml-auto"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
