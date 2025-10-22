@@ -25,6 +25,7 @@ const Budget = lazy(() => import('./components/Budget'));
 const FinancialGoals = lazy(() => import('./components/FinancialGoals'));
 const Recommendations = lazy(() => import('./components/Recommendations'));
 const Notifications = lazy(() => import('./components/Notifications'));
+const NotificationCenter = lazy(() => import('./components/NotificationCenter'));
 
 // Gamification Features - Lazy Loaded
 const GamificationProfile = lazy(() => import('./components/GamificationProfile'));
@@ -245,6 +246,11 @@ function App() {
                 path="/my-registrations" 
                 element={user ? <MyRegistrations /> : <Navigate to="/login" />} 
               />
+              <Route 
+                path="/notification-center" 
+                element={user ? <NotificationCenter /> : <Navigate to="/login" />} 
+              />
+
               <Route 
                 path="/gamification" 
                 element={user ? <GamificationProfile /> : <Navigate to="/login" />} 
