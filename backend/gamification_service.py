@@ -360,9 +360,12 @@ class GamificationService:
         """Update a specific leaderboard entry for a user"""
         score = await self._calculate_leaderboard_score(user, leaderboard_type, period)
         
+        # Get user_id - handle both "id" and "_id" fields
+        user_id = user.get("id") or str(user.get("_id"))
+        
         # Get previous entry to compare rank changes
         previous_entry = await self.db.leaderboards.find_one({
-            "user_id": user["_id"],
+            "user_id": user_id,
             "leaderboard_type": leaderboard_type,
             "period": period,
             "university": university
@@ -374,7 +377,7 @@ class GamificationService:
         # Update or create leaderboard entry
         await self.db.leaderboards.update_one(
             {
-                "user_id": user["_id"],
+                "user_id": user_id,
                 "leaderboard_type": leaderboard_type,
                 "period": period,
                 "university": university
@@ -395,7 +398,7 @@ class GamificationService:
         try:
             # Get new rank after recalculation
             updated_entry = await self.db.leaderboards.find_one({
-                "user_id": user["_id"],
+                "user_id": user_id,
                 "leaderboard_type": leaderboard_type,
                 "period": period,
                 "university": university
@@ -412,7 +415,7 @@ class GamificationService:
                 
                 # Send rank update notification
                 await notification_service.create_and_notify_in_app_notification(
-                    str(user["_id"]), {
+                    user_id, {
                         "type": "leaderboard_update",
                         "title": f"🏆 Leaderboard Updated!",
                         "message": f"You're now #{new_rank} in {leaderboard_name} with {score:.0f} points!",
@@ -433,7 +436,7 @@ class GamificationService:
                 if new_rank <= 3 and (not previous_rank or previous_rank > 3):
                     position_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}
                     await notification_service.create_and_notify_in_app_notification(
-                        str(user["_id"]), {
+                        user_id, {
                             "type": "top_rank_achieved",
                             "title": f"🎉 {position_emoji.get(new_rank, '🏆')} Top {new_rank} Achievement!",
                             "message": f"Congratulations! You've reached #{new_rank} in {leaderboard_name}!",
