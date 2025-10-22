@@ -373,6 +373,9 @@ const EventOverviewModal = ({ open, onClose, event }) => {
         eventId={event.id}
         eventType="college_event"
         eventTitle={event.title}
+        allowedRegistrationTypes={event.allowed_registration_types || ['individual']}
+        groupSizeMin={event.group_size_min || 2}
+        groupSizeMax={event.group_size_max || 5}
       />
     </>
   );
