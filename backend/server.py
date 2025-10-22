@@ -1560,6 +1560,42 @@ async def login_user(request: Request, login_data: UserLogin):
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(status_code=500, detail="Login failed")
 
+
+@api_router.post("/auth/refresh-token")
+@limiter.limit("20/minute")
+async def refresh_token(request: Request, current_user_id: str = Depends(get_current_user)):
+    """
+    Refresh JWT token before expiry (silent token refresh)
+    
+    This endpoint allows clients to refresh their JWT tokens without requiring login credentials.
+    Used for seamless authentication when tokens are about to expire.
+    """
+    try:
+        # Get user to verify they still exist and are active
+        user_doc = await get_user_by_id(current_user_id)
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if account is still active
+        if not user_doc.get("is_active", True):
+            raise HTTPException(status_code=401, detail="Account deactivated")
+        
+        # Create new JWT token with fresh expiry
+        new_token = create_jwt_token(current_user_id)
+        
+        logger.info(f"Token refreshed for user: {current_user_id}")
+        
+        return {
+            "token": new_token,
+            "message": "Token refreshed successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token refresh error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Token refresh failed")
+
 @api_router.post("/auth/password-strength")
 async def check_password_strength_endpoint(request: Request, password_data: dict):
     """Enhanced password strength checker with detailed feedback"""
@@ -1803,17 +1839,29 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
         
         # Budget validation logic for EXPENSES only
         if transaction_data.type == "expense":
-            # First try to find budget for current month, then fall back to any existing budget for this category
-            current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+            # Use the transaction's date to determine the budget month (not current month)
+            transaction_date = transaction_dict.get("date", datetime.now(timezone.utc))
+            if isinstance(transaction_date, str):
+                transaction_date = datetime.fromisoformat(transaction_date.replace('Z', '+00:00'))
+            transaction_month = transaction_date.strftime("%Y-%m")
             
-            # Find the budget for this category and month
+            # Find the budget for this category and transaction month
             budget = await db.budgets.find_one({
                 "user_id": user_id,
                 "category": transaction_dict["category"],
-                "month": current_month
+                "month": transaction_month
             })
             
-            # If no budget found for current month, try to find any budget for this category
+            # If no budget found for transaction month, try to find current month's budget
+            if not budget:
+                current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+                budget = await db.budgets.find_one({
+                    "user_id": user_id,
+                    "category": transaction_dict["category"],
+                    "month": current_month
+                })
+            
+            # If still no budget, try to find any budget for this category
             if not budget:
                 budget = await db.budgets.find_one({
                     "user_id": user_id,
@@ -1826,7 +1874,7 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 all_user_budgets = await db.budgets.find({"user_id": user_id}).to_list(None)
                 category_budgets = await db.budgets.find({"user_id": user_id, "category": transaction_dict["category"]}).to_list(None)
                 
-                logger.error(f"Budget lookup failed - user_id: {user_id}, category: '{transaction_dict['category']}', month: '{current_month}'")
+                logger.error(f"Budget lookup failed - user_id: {user_id}, category: '{transaction_dict['category']}', transaction_month: '{transaction_month}'")
                 logger.error(f"All user budgets: {len(all_user_budgets)}, Category budgets: {len(category_budgets)}")
                 
                 if category_budgets:
@@ -1834,7 +1882,7 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
                 
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"No budget allocated for '{transaction_dict['category']}' category. Please allocate budget first."
+                    detail=f"No budget allocated for '{transaction_dict['category']}' category for {transaction_month}. Please allocate budget first."
                 )
             
             # Check if expense exceeds remaining budget
@@ -5573,7 +5621,7 @@ async def upload_expense_receipt_endpoint(
     category: Optional[str] = None,
     user_id: str = Depends(get_current_user)
 ):
-    """Upload expense receipt with OCR processing"""
+    """Upload expense receipt with OCR processing (max 5MB)"""
     try:
         # Validate file type
         allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
@@ -5581,6 +5629,17 @@ async def upload_expense_receipt_endpoint(
         
         if file_extension not in allowed_extensions:
             raise HTTPException(status_code=400, detail="Invalid file type. Please upload JPG, PNG, or PDF files.")
+        
+        # Validate file size (5MB limit)
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+        content = await file.read()
+        file_size = len(content)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File size ({file_size / (1024*1024):.2f}MB) exceeds maximum limit of 5MB"
+            )
         
         # Create receipts directory if it doesn't exist
         receipts_dir = UPLOADS_DIR / "receipts"
@@ -5593,7 +5652,6 @@ async def upload_expense_receipt_endpoint(
         
         # Save file
         with open(file_path, "wb") as buffer:
-            content = await file.read()
             buffer.write(content)
         
         # Basic OCR processing (simple implementation)
@@ -20789,7 +20847,7 @@ async def upload_student_id(
     file: UploadFile,
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Upload student ID card"""
+    """Upload student ID card with size validation (max 5MB)"""
     try:
         # Validate file type
         allowed_extensions = ['.jpg', '.jpeg', '.png', '.pdf']
@@ -20800,6 +20858,22 @@ async def upload_student_id(
                 status_code=400, 
                 detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
             )
+        
+        # Validate file size (5MB limit)
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+        
+        # Read file content to check size
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File size ({file_size / (1024*1024):.2f}MB) exceeds maximum limit of 5MB"
+            )
+        
+        # Reset file pointer for save operation
+        await file.seek(0)
         
         # Save file
         file_url = await save_student_id_card(file, current_user["id"])
