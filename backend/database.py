@@ -20,12 +20,33 @@ def clean_mongo_doc(doc):
         return cleaned
     return doc
 
-# MongoDB connection
+# MongoDB connection with optimized pool settings
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 db_name = os.environ.get('DB_NAME', 'moneymojo_db')
 
-client = AsyncIOMotorClient(mongo_url)
+# Connection pool configuration for high concurrency
+# maxPoolSize: Maximum number of connections in the pool
+# minPoolSize: Minimum number of connections to maintain
+# maxIdleTimeMS: Close idle connections after this time
+# waitQueueTimeoutMS: Max time to wait for a connection from pool
+# serverSelectionTimeoutMS: Max time to wait for server selection
+client = AsyncIOMotorClient(
+    mongo_url,
+    maxPoolSize=50,  # Increase from default 100 to handle concurrent requests
+    minPoolSize=10,  # Keep minimum connections ready
+    maxIdleTimeMS=45000,  # Close idle connections after 45 seconds
+    waitQueueTimeoutMS=10000,  # Wait up to 10 seconds for a connection
+    serverSelectionTimeoutMS=5000,  # 5 second timeout for server selection
+    connectTimeoutMS=10000,  # 10 second connection timeout
+    socketTimeoutMS=45000,  # 45 second socket timeout
+    retryWrites=True,  # Retry writes on network errors
+    retryReads=True,  # Retry reads on network errors
+    w='majority',  # Write concern for data durability
+    journal=True  # Enable journaling for write durability
+)
 db = client[db_name]
+
+logger.info(f"MongoDB connection pool configured: maxPoolSize=50, minPoolSize=10")
 async def get_database():
     """Get database instance"""
     return db
