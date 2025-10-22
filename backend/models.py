@@ -2797,6 +2797,9 @@ class CollegeEvent(BaseModel):
     max_participants: Optional[int] = None
     current_participants: int = 0
     registration_fee: float = 0.0
+    allowed_registration_types: List[str] = ["individual"]  # Can contain "individual", "group", or both
+    group_size_min: Optional[int] = None  # Minimum team size if group registration allowed
+    group_size_max: Optional[int] = None  # Maximum team size if group registration allowed
     
     # Media and Resources
     banner_image: Optional[str] = None
@@ -2861,6 +2864,9 @@ class CollegeEventCreate(BaseModel):
     registration_required: bool = True
     max_participants: Optional[int] = None
     registration_fee: float = 0.0
+    allowed_registration_types: List[str] = ["individual"]
+    group_size_min: Optional[int] = None
+    group_size_max: Optional[int] = None
     banner_image: Optional[str] = None
     tags: List[str] = []
     rules: Optional[str] = None
@@ -2887,6 +2893,9 @@ class CollegeEventUpdate(BaseModel):
     registration_required: Optional[bool] = None
     max_participants: Optional[int] = None
     registration_fee: Optional[float] = None
+    allowed_registration_types: Optional[List[str]] = None
+    group_size_min: Optional[int] = None
+    group_size_max: Optional[int] = None
     banner_image: Optional[str] = None
     tags: Optional[List[str]] = None
     rules: Optional[str] = None
