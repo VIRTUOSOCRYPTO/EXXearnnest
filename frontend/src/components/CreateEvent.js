@@ -28,6 +28,9 @@ const CreateEvent = () => {
     selected_colleges: [],
     registration_enabled: true,
     max_participants: 100,
+    allowed_registration_types: ['individual'],
+    group_size_min: 2,
+    group_size_max: 5,
     organizer_name: user?.name || '',
     organizer_contact: user?.email || '',
     club_name: '',
@@ -113,6 +116,28 @@ const CreateEvent = () => {
     if (!formData.title || !formData.description || !formData.start_date || !formData.end_date) {
       alert('Please fill in all required fields');
       return;
+    }
+
+    // Validate registration type
+    if (formData.registration_enabled && formData.allowed_registration_types.length === 0) {
+      alert('Please select at least one registration type (Individual or Group)');
+      return;
+    }
+
+    // Validate group size if group registration is enabled
+    if (formData.allowed_registration_types.includes('group')) {
+      if (!formData.group_size_min || !formData.group_size_max) {
+        alert('Please specify minimum and maximum team size for group registration');
+        return;
+      }
+      if (formData.group_size_min > formData.group_size_max) {
+        alert('Minimum team size cannot be greater than maximum team size');
+        return;
+      }
+      if (formData.group_size_min < 2) {
+        alert('Minimum team size must be at least 2');
+        return;
+      }
     }
 
     // Validate dates
@@ -354,17 +379,114 @@ const CreateEvent = () => {
               </div>
 
               {formData.registration_enabled && (
-                <div>
-                  <label className="block text-sm font-medium mb-2">Maximum Participants</label>
-                  <input
-                    type="number"
-                    value={formData.max_participants}
-                    onChange={(e) => handleInputChange('max_participants', parseInt(e.target.value) || 0)}
-                    className="w-full md:w-48 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    min="1"
-                    max="10000"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Maximum Participants</label>
+                    <input
+                      type="number"
+                      value={formData.max_participants}
+                      onChange={(e) => handleInputChange('max_participants', parseInt(e.target.value) || 0)}
+                      className="w-full md:w-48 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      min="1"
+                      max="10000"
+                    />
+                  </div>
+
+                  {/* Registration Type Selection */}
+                  <div className="space-y-4 border-t pt-4">
+                    <label className="block text-sm font-medium mb-3">Registration Type *</label>
+                    
+                    <div className="space-y-3">
+                      {/* Individual Registration */}
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="regTypeIndividual"
+                          checked={formData.allowed_registration_types.includes('individual')}
+                          onChange={(e) => {
+                            const types = e.target.checked
+                              ? [...formData.allowed_registration_types, 'individual']
+                              : formData.allowed_registration_types.filter(t => t !== 'individual');
+                            handleInputChange('allowed_registration_types', types);
+                          }}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        <label htmlFor="regTypeIndividual" className="text-sm font-medium">
+                          Individual Registration
+                        </label>
+                      </div>
+
+                      {/* Group Registration */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            id="regTypeGroup"
+                            checked={formData.allowed_registration_types.includes('group')}
+                            onChange={(e) => {
+                              const types = e.target.checked
+                                ? [...formData.allowed_registration_types, 'group']
+                                : formData.allowed_registration_types.filter(t => t !== 'group');
+                              handleInputChange('allowed_registration_types', types);
+                            }}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          <label htmlFor="regTypeGroup" className="text-sm font-medium">
+                            Group/Team Registration
+                          </label>
+                        </div>
+
+                        {/* Group Size Configuration */}
+                        {formData.allowed_registration_types.includes('group') && (
+                          <div className="ml-7 p-4 bg-blue-50 rounded-lg space-y-3">
+                            <p className="text-sm text-gray-600 mb-3">
+                              Specify team size requirements:
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium mb-2">
+                                  Minimum Team Size
+                                </label>
+                                <input
+                                  type="number"
+                                  value={formData.group_size_min}
+                                  onChange={(e) => handleInputChange('group_size_min', parseInt(e.target.value) || 2)}
+                                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  min="2"
+                                  max={formData.group_size_max || 10}
+                                  placeholder="Min"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-2">
+                                  Maximum Team Size
+                                </label>
+                                <input
+                                  type="number"
+                                  value={formData.group_size_max}
+                                  onChange={(e) => handleInputChange('group_size_max', parseInt(e.target.value) || 5)}
+                                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  min={formData.group_size_min || 2}
+                                  max="20"
+                                  placeholder="Max"
+                                />
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">
+                              Teams must have between {formData.group_size_min} and {formData.group_size_max} members
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {formData.allowed_registration_types.length === 0 && (
+                      <p className="text-sm text-red-600 mt-2">
+                        ⚠️ Please select at least one registration type
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </CardContent>
