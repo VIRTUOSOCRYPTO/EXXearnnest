@@ -15,9 +15,10 @@ const useWebSocket = (channel = 'default', options = {}) => {
     onDisconnect,
     onError,
     autoReconnect = true,
-    reconnectInterval = 3000,
-    maxReconnectAttempts = 5,
-    heartbeatInterval = 30000 // Send heartbeat every 30 seconds
+    reconnectInterval = 1000, // Initial reconnect interval: 1 second
+    maxReconnectAttempts = 10, // Increased for better resilience
+    heartbeatInterval = 30000, // Send heartbeat every 30 seconds
+    maxReconnectInterval = 30000 // Max exponential backoff: 30 seconds
   } = options;
 
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
@@ -133,13 +134,25 @@ const useWebSocket = (channel = 'default', options = {}) => {
           onDisconnect();
         }
 
-        // Auto-reconnect logic (only if not a normal closure)
+        // Auto-reconnect logic with exponential backoff (only if not a normal closure)
         if (autoReconnect && reconnectAttempts < maxReconnectAttempts && event.code !== 1000) {
           setReconnectAttempts(prev => prev + 1);
+          
+          // Calculate exponential backoff: min(reconnectInterval * 2^attempts, maxReconnectInterval)
+          const backoffDelay = Math.min(
+            reconnectInterval * Math.pow(2, reconnectAttempts),
+            maxReconnectInterval
+          );
+          
+          console.log(`WebSocket reconnecting in ${backoffDelay}ms... (Attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+          
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log(`Attempting to reconnect... (${reconnectAttempts + 1}/${maxReconnectAttempts})`);
             connect();
-          }, reconnectInterval);
+          }, backoffDelay);
+        } else if (reconnectAttempts >= maxReconnectAttempts) {
+          console.error(`Max reconnect attempts (${maxReconnectAttempts}) reached. Giving up.`);
+          setConnectionStatus('Failed');
         }
       };
 
@@ -197,11 +210,30 @@ const useWebSocket = (channel = 'default', options = {}) => {
       connect();
     }
 
+    // Network status monitoring - reconnect when network comes back online
+    const handleOnline = () => {
+      console.log('Network connection restored, attempting to reconnect WebSocket...');
+      setReconnectAttempts(0); // Reset attempts when network is back
+      if (!isConnected && token) {
+        connect();
+      }
+    };
+
+    const handleOffline = () => {
+      console.log('Network connection lost');
+      setConnectionStatus('Offline');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     // Cleanup on unmount - CRITICAL FOR PREVENTING MEMORY LEAKS
     return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       cleanup();
     };
-  }, [connect, cleanup]);
+  }, [connect, cleanup, isConnected]);
 
   return {
     connectionStatus,
