@@ -11,8 +11,19 @@ import { Plus, Trash2, Upload, User, Users } from 'lucide-react';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-const RegistrationModal = ({ open, onClose, eventId, eventType, eventTitle }) => {
-  const [registrationType, setRegistrationType] = useState('individual');
+const RegistrationModal = ({ 
+  open, 
+  onClose, 
+  eventId, 
+  eventType, 
+  eventTitle,
+  allowedRegistrationTypes = ['individual', 'group'],
+  groupSizeMin = 2,
+  groupSizeMax = 5
+}) => {
+  // Set initial registration type based on what's allowed
+  const initialRegType = allowedRegistrationTypes.includes('individual') ? 'individual' : 'group';
+  const [registrationType, setRegistrationType] = useState(initialRegType);
   const [loading, setLoading] = useState(false);
   const [studentIdFile, setStudentIdFile] = useState(null);
   const [studentIdUrl, setStudentIdUrl] = useState('');
@@ -61,7 +72,8 @@ const RegistrationModal = ({ open, onClose, eventId, eventType, eventTitle }) =>
   };
   
   const addTeamMember = () => {
-    if (groupData.team_members.length < 4) {  // Max 5 total including leader
+    // Max team size is groupSizeMax (including leader, so -1 for additional members)
+    if (groupData.team_members.length < (groupSizeMax - 1)) {
       setGroupData(prev => ({
         ...prev,
         team_members: [...prev.team_members, { name: '', email: '', phone: '', usn: '', semester: '', year: '', branch: '' }],
@@ -71,7 +83,8 @@ const RegistrationModal = ({ open, onClose, eventId, eventType, eventTitle }) =>
   };
   
   const removeTeamMember = (index) => {
-    if (groupData.team_members.length > 1) {
+    // Min team size is groupSizeMin (including leader, so -1 for minimum additional members)
+    if (groupData.team_members.length > (groupSizeMin - 1)) {
       const newMembers = groupData.team_members.filter((_, i) => i !== index);
       setGroupData(prev => ({
         ...prev,
@@ -158,15 +171,19 @@ const RegistrationModal = ({ open, onClose, eventId, eventType, eventTitle }) =>
         </DialogHeader>
         
         <Tabs value={registrationType} onValueChange={setRegistrationType}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="individual" className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Individual
-            </TabsTrigger>
-            <TabsTrigger value="group" className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Group
-            </TabsTrigger>
+          <TabsList className={`grid w-full ${allowedRegistrationTypes.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {allowedRegistrationTypes.includes('individual') && (
+              <TabsTrigger value="individual" className="flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Individual
+              </TabsTrigger>
+            )}
+            {allowedRegistrationTypes.includes('group') && (
+              <TabsTrigger value="group" className="flex items-center gap-2">
+                <Users className="w-4 h-4" />
+                Group ({groupSizeMin}-{groupSizeMax} members)
+              </TabsTrigger>
+            )}
           </TabsList>
           
           <form onSubmit={handleSubmit}>
