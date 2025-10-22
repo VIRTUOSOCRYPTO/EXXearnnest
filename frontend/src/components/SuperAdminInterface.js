@@ -13,9 +13,10 @@ import {
   Building, Mail, Phone, Calendar, Award, Trophy, Flag,
   Activity, BarChart3, TrendingUp, AlertTriangle, Search,
   UserCheck, Crown, Target, Bell, Filter, Download,
-  Pause, Play, Ban, RotateCcw, Plus, Edit
+  Pause, Play, Ban, RotateCcw, Plus, Edit, ClipboardList
 } from 'lucide-react';
 import useAdminWebSocket from '../hooks/useAdminWebSocket';
+import RegistrationManagement from './RegistrationManagement';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -77,6 +78,11 @@ const SuperAdminInterface = () => {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  // Registration Management State
+  const [allEvents, setAllEvents] = useState([]);
+  const [selectedEventForRegistrations, setSelectedEventForRegistrations] = useState({ id: '', type: '', title: '' });
+  const [registrationsLoading, setRegistrationsLoading] = useState(false);
 
   // Review State
   const [reviewDecision, setReviewDecision] = useState('approve');
@@ -163,6 +169,8 @@ const SuperAdminInterface = () => {
       // Competition tab - no data fetching needed for now
     } else if (activeTab === "challenges") {
       // Challenge tab - no data fetching needed for now
+    } else if (activeTab === "registrations") {
+      fetchAllEvents();
     } else if (activeTab === "audit") {
       fetchAuditLogs();
     } else if (activeTab === "alerts") {
@@ -344,6 +352,53 @@ const SuperAdminInterface = () => {
     }
   };
 
+  const fetchAllEvents = async () => {
+    try {
+      setRegistrationsLoading(true);
+      const token = localStorage.getItem('token');
+      
+      // Super Admin: Fetch only inter-college competitions and prize challenges
+      const [competitionsRes, challengesRes] = await Promise.all([
+        axios.get(`${API}/inter-college/competitions`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => ({ data: { competitions: [] } })),
+        axios.get(`${API}/prize-challenges`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => ({ data: { challenges: [] } }))
+      ]);
+
+      const competitions = competitionsRes.data.competitions || [];
+      const challenges = challengesRes.data.challenges || [];
+
+      // Format events for dropdown - Super Admin sees competitions and challenges only
+      const formattedEvents = [
+        ...competitions.map(c => ({
+          id: c.id,
+          type: 'inter_college',
+          title: `Inter-College Competition: ${c.title}`,
+          name: c.title
+        })),
+        ...challenges.map(ch => ({
+          id: ch.id,
+          type: 'prize_challenge',
+          title: `Prize Challenge: ${ch.title}`,
+          name: ch.title
+        }))
+      ];
+
+      setAllEvents(formattedEvents);
+      
+      // Auto-select first event if available
+      if (formattedEvents.length > 0 && !selectedEventForRegistrations.id) {
+        setSelectedEventForRegistrations(formattedEvents[0]);
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setRegistrationsLoading(false);
+    }
+  };
+
   const handleCreateCompetition = async () => {
     setCreatingCompetition(true);
     try {
@@ -517,11 +572,12 @@ const SuperAdminInterface = () => {
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="requests">Admin Requests</TabsTrigger>
             <TabsTrigger value="oversight">Campus Admins</TabsTrigger>
             <TabsTrigger value="club-admins">Club Admins</TabsTrigger>
+            <TabsTrigger value="registrations">Registrations</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
             <TabsTrigger value="alerts">Alerts</TabsTrigger>
           </TabsList>
@@ -1317,6 +1373,61 @@ const SuperAdminInterface = () => {
                 )}
               </div>
             )}
+          </TabsContent>
+
+          {/* Registrations Tab */}
+          <TabsContent value="registrations" className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-3">
+                  <ClipboardList className="w-6 h-6 text-blue-600" />
+                  <h2 className="text-xl font-semibold">Registration Management</h2>
+                </div>
+                <Button onClick={fetchAllEvents} variant="outline" size="sm">
+                  <Activity className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border p-4">
+                <label className="block text-sm font-medium mb-2">Select Inter-College Competition or Prize Challenge</label>
+                <select
+                  value={selectedEventForRegistrations.id || ''}
+                  onChange={(e) => {
+                    const event = allEvents.find(ev => ev.id === e.target.value);
+                    if (event) {
+                      setSelectedEventForRegistrations(event);
+                    }
+                  }}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">Select a competition or challenge...</option>
+                  {allEvents.map(event => (
+                    <option key={`${event.type}-${event.id}`} value={event.id}>
+                      {event.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedEventForRegistrations.id ? (
+                <RegistrationManagement 
+                  eventId={selectedEventForRegistrations.id}
+                  eventType={selectedEventForRegistrations.type}
+                  eventTitle={selectedEventForRegistrations.name}
+                />
+              ) : (
+                <Card>
+                  <CardContent className="p-12 text-center">
+                    <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">No Competition/Challenge Selected</h3>
+                    <p className="text-gray-600">
+                      Select an inter-college competition or prize challenge from the dropdown above to view and manage registrations
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </TabsContent>
 
           {/* Audit Logs Tab */}
