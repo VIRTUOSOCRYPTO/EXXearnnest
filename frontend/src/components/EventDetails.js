@@ -11,6 +11,7 @@ import {
   CalendarDays, 
   MapPin, 
   Users, 
+  User,
   Award, 
   Tag, 
   Clock, 
@@ -539,6 +540,22 @@ const EventDetails = () => {
                       />
                     </div>
                   )}
+                  
+                  {/* Registration Type Information */}
+                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    {event.allowed_registration_types?.includes('individual') && (
+                      <div className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                        <User className="w-4 h-4" />
+                        Individual
+                      </div>
+                    )}
+                    {event.allowed_registration_types?.includes('group') && (
+                      <div className="flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
+                        <Users className="w-4 h-4" />
+                        Group ({event.group_size_min || 2}-{event.group_size_max || 5} members)
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 <Button
@@ -767,6 +784,9 @@ const EventDetails = () => {
           eventId={event.id}
           eventTitle={event.title}
           eventType="college_event"
+          allowedRegistrationTypes={event.allowed_registration_types || ['individual']}
+          groupSizeMin={event.group_size_min || 2}
+          groupSizeMax={event.group_size_max || 5}
         />
       )}
     </div>
