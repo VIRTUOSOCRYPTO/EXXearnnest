@@ -12,8 +12,9 @@ import {
   Plus, Settings, BarChart3, Clock, CheckCircle, AlertCircle,
   FileText, GraduationCap, Building, User, Shield, Activity,
   TrendingUp, UserCheck, Flag, Eye, Edit, Trash, AlertTriangle,
-  Check, X, Ban
+  Check, X, Ban, ClipboardList
 } from 'lucide-react';
+import RegistrationManagement from './RegistrationManagement';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -61,6 +62,10 @@ const CampusAdminDashboard = () => {
   const [registrationsLoading, setRegistrationsLoading] = useState(false);
   const [showRegistrationsModal, setShowRegistrationsModal] = useState(false);
 
+  // Registration Management State
+  const [allEvents, setAllEvents] = useState([]);
+  const [selectedEventForRegistrations, setSelectedEventForRegistrations] = useState({ id: '', type: '', title: '' });
+
   useEffect(() => {
     fetchDashboardData();
     fetchCompetitions();
@@ -86,6 +91,8 @@ const CampusAdminDashboard = () => {
       fetchMyClubAdmins();
     } else if (activeTab === "college-events") {
       fetchCollegeEvents();
+    } else if (activeTab === "registrations") {
+      fetchAllEventsForRegistrations();
     }
   }, [activeTab]);
 
@@ -159,6 +166,39 @@ const CampusAdminDashboard = () => {
       }
     } finally {
       setCollegeEventsLoading(false);
+    }
+  };
+
+  const fetchAllEventsForRegistrations = async () => {
+    try {
+      setRegistrationsLoading(true);
+      const token = localStorage.getItem('token');
+      
+      // Campus Admin: Fetch only college events created by campus admin
+      const eventsRes = await axios.get(`${API}/campus-admin/college-events`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).catch(() => ({ data: { events: [] } }));
+
+      const collegeEvents = eventsRes.data.events || [];
+
+      // Format events for dropdown - Campus Admin sees only their college events
+      const formattedEvents = collegeEvents.map(e => ({
+        id: e.id,
+        type: 'college_event',
+        title: e.title,
+        name: e.title
+      }));
+
+      setAllEvents(formattedEvents);
+      
+      // Auto-select first event if available
+      if (formattedEvents.length > 0 && !selectedEventForRegistrations.id) {
+        setSelectedEventForRegistrations(formattedEvents[0]);
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setRegistrationsLoading(false);
     }
   };
 
@@ -1167,9 +1207,10 @@ const CampusAdminDashboard = () => {
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="college-events">College Events</TabsTrigger>
+          <TabsTrigger value="registrations">Registrations</TabsTrigger>
           <TabsTrigger value="club-admins">Club Admins</TabsTrigger>
         </TabsList>
 
@@ -1179,6 +1220,60 @@ const CampusAdminDashboard = () => {
 
         <TabsContent value="college-events" className="space-y-6">
           {renderCollegeEvents()}
+        </TabsContent>
+
+        <TabsContent value="registrations" className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <ClipboardList className="w-6 h-6 text-blue-600" />
+                <h2 className="text-xl font-semibold">Registration Management</h2>
+              </div>
+              <Button onClick={fetchAllEventsForRegistrations} variant="outline" size="sm">
+                <Activity className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border p-4">
+              <label className="block text-sm font-medium mb-2">Select College Event</label>
+              <select
+                value={selectedEventForRegistrations.id || ''}
+                onChange={(e) => {
+                  const event = allEvents.find(ev => ev.id === e.target.value);
+                  if (event) {
+                    setSelectedEventForRegistrations(event);
+                  }
+                }}
+                className="w-full p-2 border border-gray-300 rounded-md"
+              >
+                <option value="">Select a college event...</option>
+                {allEvents.map(event => (
+                  <option key={`${event.type}-${event.id}`} value={event.id}>
+                    {event.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedEventForRegistrations.id ? (
+              <RegistrationManagement 
+                eventId={selectedEventForRegistrations.id}
+                eventType={selectedEventForRegistrations.type}
+                eventTitle={selectedEventForRegistrations.name}
+              />
+            ) : (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <ClipboardList className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No College Event Selected</h3>
+                  <p className="text-gray-600">
+                    Select a college event from the dropdown above to view and manage registrations
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="club-admins" className="space-y-6">
