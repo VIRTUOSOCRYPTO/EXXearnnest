@@ -130,6 +130,53 @@ async def get_registrations_for_event(
     # Fetch registrations
     registrations = await db[collection_name].find(query).to_list(length=1000)
     
+    # For inter_college events, also fetch from campus_competition_participations (simple registrations)
+    if event_type == "inter_college":
+        participation_query = {"competition_id": event_id}
+        
+        # Apply campus filter if provided
+        if filters and filters.get("college"):
+            participation_query["campus"] = filters["college"]
+        
+        participations = await db.campus_competition_participations.find(participation_query).to_list(length=1000)
+        
+        # Convert participations to registration format and enrich with user data
+        for participation in participations:
+            user_id = participation.get("user_id")
+            if user_id:
+                user = await db.users.find_one({"id": user_id})
+                if user:
+                    # Get status - check multiple possible field names
+                    status = participation.get("status") or participation.get("registration_status", "approved")
+                    if status == "registered":
+                        status = "approved"  # Map 'registered' to 'approved' for display
+                    
+                    # Convert participation to registration format
+                    reg_item = {
+                        "id": participation.get("id"),
+                        "competition_id": event_id,
+                        "user_id": user_id,
+                        "registration_type": "individual",
+                        "status": status,
+                        "campus_name": participation.get("campus", user.get("university", "Unknown")),
+                        "college": participation.get("campus", user.get("university", "Unknown")),
+                        # Fields for display in frontend
+                        "full_name": user.get("full_name", ""),
+                        "user_name": user.get("full_name", ""),
+                        "email": user.get("email", ""),
+                        "user_email": user.get("email", ""),
+                        "phone": user.get("phone", "") or "",
+                        "usn": user.get("student_id", "") or user.get("usn", "") or "",
+                        # Also keep admin_ prefixed fields for compatibility
+                        "admin_name": user.get("full_name", ""),
+                        "admin_email": user.get("email", ""),
+                        "admin_phone": user.get("phone", "") or "",
+                        "admin_usn": user.get("student_id", "") or user.get("usn", "") or "",
+                        "registration_date": participation.get("registered_at") or participation.get("joined_at") or participation.get("created_at"),
+                        "created_at": participation.get("registered_at") or participation.get("created_at")
+                    }
+                    registrations.append(reg_item)
+    
     # Remove MongoDB _id fields
     for reg in registrations:
         if "_id" in reg:
