@@ -128,12 +128,8 @@ All endpoints (except registration/login) require JWT authentication via Bearer 
     }
 )
 
-# Serve static files for uploads, avatars, and exports
+# Serve static files for uploads
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
-os.makedirs("/app/avatars", exist_ok=True)
-app.mount("/avatars", StaticFiles(directory="/app/avatars"), name="avatars")
-os.makedirs("/app/exports", exist_ok=True)
-app.mount("/exports", StaticFiles(directory="/app/exports"), name="exports")
 
 # Create API router
 api_router = APIRouter(prefix="/api")
@@ -1829,62 +1825,6 @@ async def update_user_profile(request: Request, updated_data: UserUpdate, user_i
     except Exception as e:
         logger.error(f"Profile update error: {str(e)}")
         raise HTTPException(status_code=500, detail="Profile update failed")
-
-
-@api_router.post("/user/avatar")
-@limiter.limit("5/minute")
-async def upload_avatar(
-    request: Request,
-    file: UploadFile,
-    user_id: str = Depends(get_current_user)
-):
-    """Upload user profile avatar"""
-    try:
-        # Validate file type
-        allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
-        file_ext = os.path.splitext(file.filename)[1].lower()
-        
-        if file_ext not in allowed_extensions:
-            raise HTTPException(status_code=400, detail="Only JPG, PNG, and WebP images are allowed")
-        
-        # Validate file size (max 5MB)
-        file.file.seek(0, 2)  # Seek to end
-        file_size = file.file.tell()  # Get position (file size)
-        file.file.seek(0)  # Reset to beginning
-        
-        if file_size > 5 * 1024 * 1024:
-            raise HTTPException(status_code=400, detail=f"File size ({file_size / (1024*1024):.1f}MB) exceeds 5MB limit")
-        
-        # Create avatars directory
-        avatars_dir = "/app/avatars"
-        os.makedirs(avatars_dir, exist_ok=True)
-        
-        # Generate unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        unique_filename = f"avatar_{user_id}_{timestamp}{file_ext}"
-        filepath = os.path.join(avatars_dir, unique_filename)
-        
-        # Save file
-        with open(filepath, "wb") as f:
-            content = await file.read()
-            f.write(content)
-        
-        # Update user profile with avatar path
-        avatar_url = f"/avatars/{unique_filename}"
-        await update_user(user_id, {"avatar": avatar_url})
-        
-        return {
-            "message": "Avatar uploaded successfully",
-            "avatar_url": avatar_url
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Avatar upload error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Avatar upload failed")
-
-
 
 # Transaction Routes
 @api_router.post("/transactions", response_model=Transaction)
@@ -11369,62 +11309,49 @@ async def get_group_challenge_details(request: Request, challenge_id: str, curre
 async def get_notifications(
     request: Request, 
     current_user: Dict[str, Any] = Depends(get_current_user_dict),
-    page: int = 1,
+    skip: int = 0,
     limit: int = 20,
-    unread_only: bool = False,
-    read_only: bool = False,
-    type: Optional[str] = None
+    unread_only: bool = False
 ):
     """
-    Get user's notifications with pagination and filtering
+    Get user's notifications with pagination
     
     ENHANCED WITH:
-    - Pagination support (page/limit)
-    - Filter by unread/read notifications
-    - Filter by notification type
+    - Pagination support (skip/limit)
+    - Filter by unread notifications
     - Optimized N+1 query resolution
     """
     try:
         user_id = current_user.get("id")
-        skip = (page - 1) * limit
-        
-        # Build query filter
-        query = {"user_id": user_id}
-        if unread_only:
-            query["is_read"] = False
-        elif read_only:
-            query["is_read"] = True
-        
-        if type:
-            query["type"] = type
+
+        # Use optimized pagination function (fixes N+1 query problem)
+        paginated_notifications = await get_notifications_paginated(
+            user_id=user_id,
+            skip=skip,
+            limit=limit,
+            unread_only=unread_only
+        )
+
         
         # Get notifications with filter
         db = await get_database()
-        total = await db.notifications.count_documents(query)
-        
-        notifications = await db.notifications.find(query).sort(
-            "created_at", -1
-        ).skip(skip).limit(limit).to_list(length=limit)
-        
-        # Count unread notifications (always return this)
+    
         unread_count = await db.notifications.count_documents({
             "user_id": user_id,
             "is_read": False
         })
         
-        has_more = (skip + limit) < total
-        total_pages = (total + limit - 1) // limit
         
         return {
-            "notifications": notifications,
+            "notifications": paginated_notifications["data"],
             "unread_count": unread_count,
-            "has_more": has_more,
             "pagination": {
-                "total": total,
-                "page": page,
+                "total": paginated_notifications["total"],
+                "skip": skip,
                 "limit": limit,
-                "total_pages": total_pages,
-                "has_more": has_more
+                "has_more": paginated_notifications["has_more"],
+                "page": paginated_notifications["page"],
+                "total_pages": paginated_notifications["total_pages"]
             }
         }
         
@@ -11494,55 +11421,6 @@ async def mark_all_notifications_read(request: Request, current_user: Dict[str, 
     except Exception as e:
         logger.error(f"Mark all notifications read error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to mark all notifications as read")
-
-@api_router.delete("/notifications/{notification_id}")
-@limiter.limit("30/minute")
-async def delete_notification(request: Request, notification_id: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
-    """Delete a specific notification"""
-    try:
-        db = await get_database()
-        user_id = current_user.get("id")
-        
-        # Delete notification (only if it belongs to the user)
-        result = await db.notifications.delete_one({
-            "id": notification_id,
-            "user_id": user_id
-        })
-        
-        if result.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Notification not found")
-        
-        return {
-            "message": "Notification deleted successfully"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Delete notification error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete notification")
-
-@api_router.delete("/notifications/clear-all")
-@limiter.limit("5/minute")
-async def clear_all_notifications(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
-    """Clear all notifications for the user"""
-    try:
-        db = await get_database()
-        user_id = current_user.get("id")
-        
-        # Delete all notifications for this user
-        result = await db.notifications.delete_many({
-            "user_id": user_id
-        })
-        
-        return {
-            "message": "All notifications cleared",
-            "deleted_count": result.deleted_count
-        }
-        
-    except Exception as e:
-        logger.error(f"Clear all notifications error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to clear notifications")
 
 
 @api_router.get("/leaderboards/campus/{leaderboard_type}")
