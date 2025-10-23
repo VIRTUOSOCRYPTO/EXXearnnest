@@ -7958,7 +7958,7 @@ async def get_prize_challenge_leaderboard(
                     "progress_percentage": progress_percentage,
                     "is_completed": participant.get("participation_status") == "completed",
                     "joined_at": participant["joined_at"],
-                    "is_current_user": participant["user_id"] == current_user
+                    "is_current_user": participant["user_id"] == current_user["id"]
                 }
                 leaderboard.append(leaderboard_entry)
         
@@ -20708,6 +20708,14 @@ async def approve_reject_registration(
         try:
             notification_service = await get_notification_service()
             
+            # Map event type to correct ID field name
+            event_id_field_map = {
+                "college_event": "event_id",
+                "prize_challenge": "challenge_id",
+                "inter_college": "competition_id"
+            }
+            id_field = event_id_field_map.get(event_type, "event_id")
+            
             # Get event details for notification
             event_collection_map = {
                 "college_event": "college_events",
@@ -20716,15 +20724,14 @@ async def approve_reject_registration(
             }
             event_collection = event_collection_map.get(event_type)
             event_details = await db[event_collection].find_one({
-                "id": registration.get(f"{event_type.replace('_', '')}_id" if event_type != "college_event" else "event_id")
+                "id": registration.get(id_field)
             }) if event_collection else {}
             
             event_title = event_details.get("title", "Event") if event_details else "Event"
             
             if approval_data.action == "approve":
-                # Build event ID key based on event type
-                event_id_key = 'event_id' if event_type == 'college_event' else f"{event_type.replace('_', '')}_id"
-                event_id_value = registration.get(event_id_key)
+                # Get event ID value using the correct field name
+                event_id_value = registration.get(id_field)
                 
                 await notification_service.create_and_notify_in_app_notification(registration["user_id"], {
                     "type": "registration_approved",
