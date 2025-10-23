@@ -84,7 +84,10 @@ const InterCollegeCompetitions = () => {
 
   const fetchLeaderboard = async (competitionId) => {
     try {
-      const response = await axios.get(`${API}/inter-college/competitions/${competitionId}/leaderboard`);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API}/inter-college/competitions/${competitionId}/leaderboard`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       setLeaderboard(response.data);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
@@ -229,7 +232,7 @@ const InterCollegeCompetitions = () => {
           <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
             <Users className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
             <div className="text-xs sm:text-sm font-medium mb-1">Campus Rank</div>
-            <div className="text-xs text-gray-600 break-words leading-tight">#{competition.campus_rank || 'N/A'}</div>
+            <div className="text-xs text-gray-600 break-words leading-tight">#{competition.campus_rank > 0 ? competition.campus_rank : 'N/A'}</div>
           </div>
           <div className="text-center p-2 sm:p-3 bg-gray-50 rounded-lg">
             <Target className="w-4 h-4 sm:w-5 sm:h-5 mx-auto mb-1 text-gray-600" />
