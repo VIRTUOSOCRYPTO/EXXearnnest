@@ -99,8 +99,14 @@ async def get_registrations_for_event(
     if not collection_name:
         return []
     
-    # Build query
-    query = {f"{event_type.replace('_', '')}_id" if event_type != "college_event" else "event_id": event_id}
+    # Build query - map event type to correct ID field name
+    event_id_field_map = {
+        "college_event": "event_id",
+        "prize_challenge": "challenge_id",
+        "inter_college": "competition_id"
+    }
+    id_field = event_id_field_map.get(event_type, "event_id")
+    query = {id_field: event_id}
     
     if filters:
         # Add college filter
@@ -130,7 +136,7 @@ async def get_registrations_for_event(
     # Fetch registrations
     registrations = await db[collection_name].find(query).to_list(length=1000)
     
-    # For inter_college events, also fetch from campus_competition_participations (simple registrations)
+    # For inter_college events, fetch from campus_competition_participations (direct joins)
     if event_type == "inter_college":
         participation_query = {"competition_id": event_id}
         
@@ -174,6 +180,72 @@ async def get_registrations_for_event(
                         "admin_usn": user.get("student_id", "") or user.get("usn", "") or "",
                         "registration_date": participation.get("registered_at") or participation.get("joined_at") or participation.get("created_at"),
                         "created_at": participation.get("registered_at") or participation.get("created_at")
+                    }
+                    registrations.append(reg_item)
+    
+    # For prize_challenge events, fetch from prize_challenge_participations (direct joins)
+    if event_type == "prize_challenge":
+        participation_query = {"challenge_id": event_id}
+        
+        # Apply status filter if provided
+        if filters and filters.get("status"):
+            # Map status filter to participation_status
+            if filters["status"] == "approved":
+                participation_query["participation_status"] = {"$in": ["active", "completed"]}
+            elif filters["status"] == "pending":
+                participation_query["participation_status"] = "pending"
+            elif filters["status"] == "rejected":
+                participation_query["participation_status"] = "rejected"
+        
+        participations = await db.prize_challenge_participations.find(participation_query).to_list(length=1000)
+        
+        # Convert participations to registration format and enrich with user data
+        for participation in participations:
+            user_id = participation.get("user_id")
+            if user_id:
+                user = await db.users.find_one({"id": user_id})
+                if user:
+                    # Map participation_status to registration status
+                    part_status = participation.get("participation_status", "active")
+                    if part_status in ["active", "completed"]:
+                        status = "approved"
+                    elif part_status == "pending":
+                        status = "pending"
+                    else:
+                        status = "rejected"
+                    
+                    # Apply college filter if provided
+                    user_college = user.get("university", "Unknown")
+                    if filters and filters.get("college") and user_college != filters["college"]:
+                        continue
+                    
+                    # Convert participation to registration format
+                    reg_item = {
+                        "id": participation.get("id"),
+                        "challenge_id": event_id,
+                        "user_id": user_id,
+                        "registration_type": "individual",
+                        "status": status,
+                        "campus_name": user_college,
+                        "college": user_college,
+                        # Fields for display in frontend
+                        "full_name": user.get("full_name", ""),
+                        "user_name": user.get("full_name", ""),
+                        "email": user.get("email", ""),
+                        "user_email": user.get("email", ""),
+                        "phone": user.get("phone", "") or "",
+                        "usn": user.get("student_id", "") or user.get("usn", "") or "",
+                        # Also keep admin_ prefixed fields for compatibility
+                        "admin_name": user.get("full_name", ""),
+                        "admin_email": user.get("email", ""),
+                        "admin_phone": user.get("phone", "") or "",
+                        "admin_usn": user.get("student_id", "") or user.get("usn", "") or "",
+                        "registration_date": participation.get("joined_at") or participation.get("created_at"),
+                        "created_at": participation.get("joined_at") or participation.get("created_at"),
+                        # Additional prize challenge info
+                        "current_progress": participation.get("current_progress", 0),
+                        "progress_percentage": participation.get("progress_percentage", 0),
+                        "current_rank": participation.get("current_rank")
                     }
                     registrations.append(reg_item)
     
