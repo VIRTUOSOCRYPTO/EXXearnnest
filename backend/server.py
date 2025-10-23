@@ -7404,9 +7404,9 @@ async def get_competition_teams(
 async def get_inter_college_leaderboard(
     request: Request,
     competition_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Get inter-college competition leaderboard"""
+    """Get inter-college competition leaderboard (accessible to all authenticated users)"""
     try:
         db = await get_database()
         
@@ -7429,7 +7429,7 @@ async def get_inter_college_leaderboard(
             campus["campus_rank"] = idx + 1
         
         # Get user's campus and individual stats
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         user_campus = user.get("university") if user else None
         
         user_participation = None
@@ -20582,6 +20582,7 @@ async def register_for_competition_detailed(
 
 # Club Admin - View Registrations
 @api_router.get("/club-admin/registrations/{event_type}/{event_id}")
+@api_router.get("/super-admin/registrations/{event_type}/{event_id}")
 async def get_event_registrations(
     event_type: str,  # "college_event", "prize_challenge", "inter_college"
     event_id: str,
@@ -20592,7 +20593,7 @@ async def get_event_registrations(
     limit: int = 50,
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Get all registrations for an event with filters and pagination"""
+    """Get all registrations for an event with filters and pagination (Club Admin and Super Admin)"""
     try:
         db = await get_database()
         
@@ -20643,14 +20644,15 @@ async def get_event_registrations(
         print(f"Error fetching registrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch registrations")
 
-# Club Admin - Approve/Reject Registration
+# Club Admin / Super Admin - Approve/Reject Registration
 @api_router.post("/club-admin/registrations/{event_type}/approve-reject")
+@api_router.post("/super-admin/registrations/{event_type}/approve-reject")
 async def approve_reject_registration(
     event_type: str,
     approval_data: RegistrationApproval,
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Approve or reject a registration"""
+    """Approve or reject a registration (Club Admin and Super Admin)"""
     try:
         db = await get_database()
         
@@ -20772,8 +20774,9 @@ async def approve_reject_registration(
         print(f"Error processing approval: {e}")
         raise HTTPException(status_code=500, detail="Failed to process approval")
 
-# Club Admin - Export Registrations in Multiple Formats
+# Club Admin / Super Admin - Export Registrations in Multiple Formats
 @api_router.get("/club-admin/registrations/{event_type}/{event_id}/export")
+@api_router.get("/super-admin/registrations/{event_type}/{event_id}/export")
 async def export_registrations(
     event_type: str,
     event_id: str,
@@ -20783,7 +20786,7 @@ async def export_registrations(
     registration_type: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Export registrations in multiple formats (CSV, Excel, PDF, DOCX) with filters"""
+    """Export registrations in multiple formats (CSV, Excel, PDF, DOCX) with filters (Club Admin and Super Admin)"""
     try:
         db = await get_database()
         
