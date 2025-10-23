@@ -73,7 +73,10 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
       if (selectedStatus !== 'all') params.append('status', selectedStatus);
       if (selectedType !== 'all') params.append('registration_type', selectedType);
       
-      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}?${params.toString()}`, {
+      // Use super-admin endpoint if user is super admin, otherwise use club-admin endpoint
+      const endpoint = user?.admin_level === 'super_admin' ? 'super-admin' : 'club-admin';
+      
+      const response = await axios.get(`${API}/${endpoint}/registrations/${eventType}/${eventId}?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -124,7 +127,10 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
         reason: action === 'reject' ? rejectionReason : undefined
       };
 
-      await axios.post(`${API}/club-admin/registrations/${eventType}/approve-reject`, requestData, {
+      // Use super-admin endpoint if user is super admin, otherwise use club-admin endpoint
+      const endpoint = user?.admin_level === 'super_admin' ? 'super-admin' : 'club-admin';
+
+      await axios.post(`${API}/${endpoint}/registrations/${eventType}/approve-reject`, requestData, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -158,7 +164,10 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
       if (selectedStatus !== 'all') params.append('status', selectedStatus);
       if (selectedType !== 'all') params.append('registration_type', selectedType);
       
-      const response = await axios.get(`${API}/club-admin/registrations/${eventType}/${eventId}/export?${params.toString()}`, {
+      // Use super-admin endpoint if user is super admin, otherwise use club-admin endpoint
+      const endpoint = user?.admin_level === 'super_admin' ? 'super-admin' : 'club-admin';
+      
+      const response = await axios.get(`${API}/${endpoint}/registrations/${eventType}/${eventId}/export?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
