@@ -2,10 +2,12 @@ import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import './App.css';
+import './styles/enhancements.css';
 import pushNotificationService from './services/pushNotificationService';
 import { Toaster } from 'sonner';
 
-// Always load these critical components (Login, Register, Dashboard, Navigation, Footer)
+// Always load these critical components (LandingPage, Login, Register, Dashboard, Navigation, Footer)
+import LandingPage from './components/LandingPage';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -427,7 +429,7 @@ function App() {
               
               <Route 
                 path="/" 
-                element={<Navigate to={user ? "/dashboard" : "/login"} />} 
+                element={user ? <Navigate to="/dashboard" /> : <LandingPage />} 
               />
               </Routes>
             </Suspense>
