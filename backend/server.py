@@ -20527,8 +20527,14 @@ async def register_for_prize_challenge_detailed(
         if existing:
             raise HTTPException(status_code=400, detail="Already registered")
         
-        # Validate required fields
-        required_fields = ["full_name", "email", "phone_number", "college", "usn", "semester", "year", "branch"]
+        # Get user's phone number from profile if not provided
+        phone_number = registration_data.get("phone_number")
+        if not phone_number:
+            user = await db.users.find_one({"id": current_user["id"]})
+            phone_number = user.get("phone_number") if user else None
+        
+        # Validate required fields (removed usn, using phone_number from profile)
+        required_fields = ["full_name", "email", "college", "semester", "year", "branch"]
         missing_fields = [f for f in required_fields if not registration_data.get(f)]
         
         if missing_fields:
@@ -20537,15 +20543,20 @@ async def register_for_prize_challenge_detailed(
                 detail=f"Missing required fields: {', '.join(missing_fields)}"
             )
         
+        if not phone_number:
+            raise HTTPException(
+                status_code=400,
+                detail="Phone number is required. Please update your profile."
+            )
+        
         # Create registration
         registration = PrizeChallengeRegistration(
             challenge_id=challenge_id,
             user_id=current_user["id"],
             full_name=registration_data["full_name"],
             email=registration_data["email"],
-            phone_number=registration_data["phone_number"],
+            phone_number=phone_number,
             college=registration_data["college"],
-            usn=registration_data["usn"],
             semester=registration_data["semester"],
             year=registration_data["year"],
             branch=registration_data["branch"],
@@ -20594,8 +20605,16 @@ async def register_for_competition_detailed(
         if existing:
             raise HTTPException(status_code=400, detail="Already registered")
         
+        # Get user's phone number from profile if not provided
+        user = await db.users.find_one({"id": current_user["id"]})
+        user_phone = user.get("phone_number") if user else None
+        
         # Create registration
         reg_type = registration_data.get("registration_type", "admin")
+        
+        # Auto-populate phone numbers from user profile if not provided
+        team_leader_phone = registration_data.get("team_leader_phone") or user_phone
+        admin_phone = registration_data.get("admin_phone") or user_phone
         
         registration = InterCollegeRegistration(
             competition_id=competition_id,
@@ -20603,14 +20622,13 @@ async def register_for_competition_detailed(
             registration_type=reg_type,
             admin_name=registration_data.get("admin_name"),
             admin_email=registration_data.get("admin_email"),
-            admin_phone=registration_data.get("admin_phone"),
+            admin_phone=admin_phone,
             campus_name=registration_data.get("campus_name"),
             team_name=registration_data.get("team_name"),
             team_type=registration_data.get("team_type"),
             team_leader_name=registration_data.get("team_leader_name"),
-            team_leader_usn=registration_data.get("team_leader_usn"),
             team_leader_email=registration_data.get("team_leader_email"),
-            team_leader_phone=registration_data.get("team_leader_phone"),
+            team_leader_phone=team_leader_phone,
             team_leader_semester=registration_data.get("team_leader_semester"),
             team_leader_year=registration_data.get("team_leader_year"),
             team_leader_branch=registration_data.get("team_leader_branch"),
@@ -20880,13 +20898,13 @@ async def export_registrations(
         format_lower = format.lower()
         
         if format_lower == "csv":
-            file_path = await export_registrations_to_csv(registrations, event_name)
+            file_path = await export_registrations_to_csv(registrations, event_name, event_type)
         elif format_lower == "excel" or format_lower == "xlsx":
-            file_path = await export_registrations_to_excel(registrations, event_name)
+            file_path = await export_registrations_to_excel(registrations, event_name, event_type)
         elif format_lower == "pdf":
-            file_path = await export_registrations_to_pdf(registrations, event_name)
+            file_path = await export_registrations_to_pdf(registrations, event_name, event_type)
         elif format_lower == "docx" or format_lower == "word":
-            file_path = await export_registrations_to_docx(registrations, event_name)
+            file_path = await export_registrations_to_docx(registrations, event_name, event_type)
         else:
             raise HTTPException(status_code=400, detail="Unsupported format. Use: csv, excel, pdf, docx")
         
