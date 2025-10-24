@@ -7,7 +7,7 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
-import { Trophy, Users, Calendar, Award, Target, Medal, Star, Edit, Trash2, Plus, X } from 'lucide-react';
+import { Trophy, Users, Calendar, Award, Target, Medal, Star, Edit, Trash2, Plus, X, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -717,6 +717,17 @@ const InterCollegeCompetitions = () => {
 
   const LeaderboardContent = ({ leaderboard }) => (
     <div className="space-y-6">
+      {/* Reputation Points Info */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200">
+        <div className="flex items-start gap-2">
+          <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <span className="font-semibold text-blue-900">Campus Reputation Points:</span>
+            <span className="text-gray-700"> Calculated based on rank position, active participation, and performance. These points contribute to your campus reputation in the Campus Dashboard.</span>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Campus Leaderboard */}
         <div>
@@ -766,9 +777,9 @@ const InterCollegeCompetitions = () => {
                     <div className={`font-bold ${
                       campus.campus === user?.university ? 'text-blue-700 text-lg' : 'text-blue-600'
                     }`}>
-                      {campus.campus_total_score || 0}
+                      {campus.campus_reputation_points || 0}
                     </div>
-                    <div className="text-xs text-gray-500">points</div>
+                    <div className="text-xs text-gray-500">reputation pts</div>
                   </div>
                 </div>
               </div>
