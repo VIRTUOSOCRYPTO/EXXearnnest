@@ -417,18 +417,18 @@ class TimelineService:
     async def _get_user_friends(self, user_id: str) -> List[Dict[str, Any]]:
         """Get user's friends list"""
         try:
-            # Get friendships where user is involved
+            # Get friendships where user is involved (FIXED: use user1_id/user2_id)
             friendships = await self.db.friendships.find({
                 "$or": [
-                    {"user_id": user_id},
-                    {"friend_id": user_id}
+                    {"user1_id": user_id},
+                    {"user2_id": user_id}
                 ],
-                "status": "accepted"
+                "status": "active"
             }).to_list(None)
             
             friend_ids = []
             for friendship in friendships:
-                friend_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
+                friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
                 friend_ids.append(friend_id)
             
             # Get friend user details
