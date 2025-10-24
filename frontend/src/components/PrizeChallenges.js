@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
 import { Gift, Clock, Zap, Star, Target, Award, TrendingUp, Calendar, Users, DollarSign, Trophy, Crown, Edit, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -40,6 +41,7 @@ const PrizeChallenges = () => {
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [leaderboard, setLeaderboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [joining, setJoining] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [editingChallenge, setEditingChallenge] = useState(null);
@@ -72,10 +74,20 @@ const PrizeChallenges = () => {
           : challenge
       ));
 
-      alert(`Successfully registered! ${response.data.message || 'You have been registered for this challenge.'}`);
+      // Show success toast
+      toast.success('🎉 Successfully Registered!', {
+        description: response.data.message || 'You have been registered for this challenge.',
+        duration: 4000,
+      });
+      
+      // Refresh challenges to get updated data
+      fetchChallenges();
     } catch (error) {
       console.error('Join challenge error:', error);
-      alert(error.response?.data?.detail || 'Failed to register for challenge');
+      toast.error('❌ Registration Failed', {
+        description: error.response?.data?.detail || 'Failed to register for challenge. Please try again.',
+        duration: 4000,
+      });
     } finally {
       setJoining(false);
     }
@@ -83,10 +95,18 @@ const PrizeChallenges = () => {
 
   const fetchLeaderboard = async (challengeId) => {
     try {
+      setLoadingLeaderboard(true);
+      setLeaderboard(null); // Clear previous leaderboard
       const response = await axios.get(`${API}/prize-challenges/${challengeId}/leaderboard`);
       setLeaderboard(response.data);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      toast.error('Failed to load leaderboard', {
+        description: error.response?.data?.detail || 'Could not fetch leaderboard data',
+        duration: 3000,
+      });
+    } finally {
+      setLoadingLeaderboard(false);
     }
   };
 
@@ -355,7 +375,20 @@ const PrizeChallenges = () => {
                   <span className="break-words">{selectedChallenge?.title} - Leaderboard</span>
                 </DialogTitle>
               </DialogHeader>
-              {leaderboard && <LeaderboardContent leaderboard={leaderboard} />}
+              {loadingLeaderboard ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+                  <span className="ml-3 text-gray-600">Loading leaderboard...</span>
+                </div>
+              ) : leaderboard ? (
+                <LeaderboardContent leaderboard={leaderboard} />
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No leaderboard data available</p>
+                  <p className="text-sm mt-2">Participants will appear here once they start progressing</p>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
 
