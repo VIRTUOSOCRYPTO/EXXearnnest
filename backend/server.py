@@ -1816,6 +1816,8 @@ async def update_user_profile(request: Request, updated_data: UserUpdate, user_i
             update_data["bio"] = sanitize_input(update_data["bio"])
         if "location" in update_data:
             update_data["location"] = sanitize_input(update_data["location"])
+        if "phone" in update_data:
+            update_data["phone"] = sanitize_input(update_data["phone"])
         
         if update_data:
             await update_user(user_id, update_data)
@@ -20760,6 +20762,20 @@ async def approve_reject_registration(
             {"id": approval_data.registration_id},
             {"$set": update_data}
         )
+        
+        # If approved, update user profile with phone number from registration
+        if approval_data.action == "approve":
+            phone_number = registration.get("phone") or registration.get("user_phone")
+            if phone_number and registration.get("user_id"):
+                try:
+                    await db.users.update_one(
+                        {"id": registration["user_id"]},
+                        {"$set": {"phone": phone_number}}
+                    )
+                    print(f"Updated user phone number: {registration['user_id']} -> {phone_number}")
+                except Exception as e:
+                    print(f"Failed to update user phone number: {e}")
+                    # Continue execution even if phone update fails
         
         # If approved for prize challenge, create participation record
         if approval_data.action == "approve" and event_type == "prize_challenge":
