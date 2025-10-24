@@ -1603,7 +1603,6 @@ const CampusAdminDashboard = () => {
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-gray-600 mb-2">
                             <div><strong>Email:</strong> {registration.user_email}</div>
                             <div><strong>College:</strong> {registration.user_college}</div>
-                            <div><strong>USN:</strong> {registration.usn || 'N/A'}</div>
                             <div><strong>Phone:</strong> {registration.phone_number || 'N/A'}</div>
                             <div><strong>Year:</strong> {registration.year || 'N/A'}</div>
                             <div><strong>Branch:</strong> {registration.branch || 'N/A'}</div>
