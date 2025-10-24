@@ -1929,7 +1929,7 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             try:
                 competition_participations = await db.campus_competition_participations.find({
                     "user_id": user_id,
-                    "registration_status": "active"
+                    "registration_status": {"$in": ["registered", "active"]}
                 }).to_list(None)
                 
                 for participation in competition_participations:
@@ -2026,7 +2026,7 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             try:
                 competition_participations = await db.campus_competition_participations.find({
                     "user_id": user_id,
-                    "registration_status": "active"
+                    "registration_status": {"$in": ["registered", "active"]}
                 }).to_list(None)
                 
                 for participation in competition_participations:
@@ -9010,7 +9010,7 @@ async def update_competition_progress():
         logger.error(f"Update competition progress error: {str(e)}")
 
 async def update_single_competition_progress(competition_id: str):
-    """Update progress for a single competition"""
+    """Update progress for a single competition - matches prize challenge logic"""
     try:
         db = await get_database()
         
@@ -9020,28 +9020,65 @@ async def update_single_competition_progress(competition_id: str):
         
         participants = await db.campus_competition_participations.find({
             "competition_id": competition_id,
-            "registration_status": "active"
+            "registration_status": {"$in": ["registered", "active"]}
         }).to_list(None)
         
         competition_type = competition["competition_type"]
         target_metric = competition["target_metric"]
+        target_value = competition.get("target_value", 0)
         
+        # Calculate progress for all participants and sort by score
+        participant_scores = []
         for participant in participants:
             user_id = participant["user_id"]
-            campus = participant["campus"]
             
-            # Calculate new score based on competition type
+            # Calculate new score based on competition type (same logic as prize challenges)
             new_score = await calculate_competition_score(user_id, competition_type, target_metric, participant["registered_at"])
             
-            # Update individual score
+            # Calculate progress percentage
+            progress_percentage = 0.0
+            if target_value and target_value > 0:
+                progress_percentage = min((new_score / target_value) * 100, 100.0)
+            
+            # Check if target is completed
+            is_completed = new_score >= target_value if target_value else False
+            
+            participant_scores.append({
+                "_id": participant["_id"],
+                "user_id": user_id,
+                "campus": participant["campus"],
+                "score": new_score,
+                "progress_percentage": progress_percentage,
+                "is_completed": is_completed
+            })
+        
+        # Sort by score descending to calculate ranks
+        participant_scores.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Update each participant with score, rank, and progress
+        for rank, participant_data in enumerate(participant_scores, start=1):
+            update_data = {
+                "individual_score": participant_data["score"],
+                "campus_contribution": participant_data["score"],
+                "current_progress": participant_data["score"],
+                "progress_percentage": participant_data["progress_percentage"],
+                "current_rank": rank,
+                "last_updated": datetime.now(timezone.utc)
+            }
+            
+            # Mark as completed if target reached
+            if participant_data["is_completed"]:
+                # Only update status if not already completed
+                existing = await db.campus_competition_participations.find_one({"_id": participant_data["_id"]})
+                if existing and existing.get("registration_status") != "completed":
+                    update_data["registration_status"] = "completed"
+                    
+                    # Award completion reward if applicable
+                    await award_competition_completion(competition_id, participant_data["user_id"], rank)
+            
             await db.campus_competition_participations.update_one(
-                {"_id": participant["_id"]},
-                {
-                    "$set": {
-                        "individual_score": new_score,
-                        "campus_contribution": new_score
-                    }
-                }
+                {"_id": participant_data["_id"]},
+                {"$set": update_data}
             )
         
         # Update campus totals
@@ -9051,48 +9088,64 @@ async def update_single_competition_progress(competition_id: str):
         logger.error(f"Update single competition progress error: {str(e)}")
 
 async def calculate_competition_score(user_id: str, competition_type: str, target_metric: str, start_date: datetime) -> float:
-    """Calculate user's score for competition based on type"""
+    """Calculate user's score for competition based on type - matches prize challenge logic"""
     try:
         db = await get_database()
         score = 0.0
         
-        if competition_type == "campus_savings":
-            if target_metric == "total_savings":
-                # Calculate net savings since competition start
-                income_pipeline = [
-                    {"$match": {"user_id": user_id, "type": "income", "timestamp": {"$gte": start_date}}},
-                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-                ]
-                income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
-                total_income = income_result[0]["total"] if income_result else 0.0
-                
-                expense_pipeline = [
-                    {"$match": {"user_id": user_id, "type": "expense", "timestamp": {"$gte": start_date}}},
-                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-                ]
-                expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
-                total_expenses = expense_result[0]["total"] if expense_result else 0.0
-                
-                score = max(0, total_income - total_expenses)
+        # Handle savings-based competitions (matches prize challenge logic)
+        if competition_type in ["campus_savings", "savings", "individual", "savings_based"] or target_metric in ["total_savings", "amount_saved", "savings_amount", "savings_based"]:
+            # Calculate savings progress (income - expenses since competition start)
+            # Use 'date' field which is the actual field name in transactions
+            income_pipeline = [
+                {"$match": {"user_id": user_id, "type": "income", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+            total_income = income_result[0]["total"] if income_result else 0.0
+            
+            expense_pipeline = [
+                {"$match": {"user_id": user_id, "type": "expense", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
+            total_expenses = expense_result[0]["total"] if expense_result else 0.0
+            
+            score = max(0, total_income - total_expenses)
         
-        elif competition_type == "campus_streak":
-            if target_metric == "average_streak":
+        elif competition_type in ["campus_streak", "streak"]:
+            if target_metric in ["average_streak", "days_streak"]:
                 user = await db.users.find_one({"id": user_id})
                 score = float(user.get("current_streak", 0)) if user else 0.0
         
-        elif competition_type == "campus_referrals":
-            if target_metric == "referral_count":
+        elif competition_type in ["campus_referrals", "referrals"]:
+            if target_metric in ["referral_count", "referrals_made"]:
                 referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
-                score = float(referral_program.get("successful_referrals", 0)) if referral_program else 0.0
+                if referral_program:
+                    # Count successful referrals since competition start
+                    recent_referrals = await db.referred_users.count_documents({
+                        "referrer_id": user_id,
+                        "status": "completed",
+                        "completed_at": {"$gte": start_date}
+                    })
+                    score = float(recent_referrals)
         
-        elif competition_type == "campus_goals":
-            if target_metric == "goals_completed":
+        elif competition_type in ["campus_goals", "goals"]:
+            if target_metric in ["goals_completed"]:
                 completed_goals = await db.financial_goals.count_documents({
                     "user_id": user_id,
                     "is_completed": True,
                     "updated_at": {"$gte": start_date}
                 })
                 score = float(completed_goals)
+        
+        elif competition_type == "engagement":
+            # Count transactions, logins, or other engagement metrics
+            transaction_count = await db.transactions.count_documents({
+                "user_id": user_id,
+                "date": {"$gte": start_date}
+            })
+            score = float(transaction_count)
         
         return score
         
@@ -9121,7 +9174,7 @@ async def update_campus_leaderboards(competition_id: str):
             campus_participants = await db.campus_competition_participations.find({
                 "competition_id": competition_id,
                 "campus": campus,
-                "registration_status": "active"
+                "registration_status": {"$in": ["registered", "active"]}
             }).to_list(None)
             
             if not campus_participants:
@@ -9361,6 +9414,111 @@ async def award_prize_challenge_completion(challenge_id: str, user_id: str, rank
         
     except Exception as e:
         logger.error(f"Award prize challenge completion error: {str(e)}")
+
+async def award_competition_completion(competition_id: str, user_id: str, rank: int):
+    """Award prizes for inter-college competition completion - similar to prize challenges"""
+    try:
+        db = await get_database()
+        
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            return
+        
+        prize_distribution = competition.get("prize_distribution", {})
+        participation_rewards = competition.get("participation_rewards", {})
+        
+        # Determine prize based on rank
+        prize_key = f"{rank}st" if rank == 1 else f"{rank}nd" if rank == 2 else f"{rank}rd" if rank == 3 else f"{rank}th"
+        
+        # Check if this rank has a prize
+        prize_amount = 0
+        reward_type = "monetary"
+        
+        if prize_key in prize_distribution:
+            prize_amount = float(prize_distribution[prize_key])
+        elif str(rank) in prize_distribution:
+            prize_amount = float(prize_distribution[str(rank)])
+        elif "participation" in participation_rewards:
+            # Award participation reward
+            reward_info = participation_rewards["participation"]
+            prize_amount = float(reward_info.get("amount", reward_info.get("points", 0)))
+            reward_type = reward_info.get("type", "points")
+        
+        if prize_amount <= 0 and reward_type == "monetary":
+            return
+        
+        # Get user details for campus reputation
+        user = await get_user_by_id(user_id)
+        campus = user.get("university") if user else None
+        
+        # Create reward record in individual_rewards array
+        reward_record = {
+            "id": str(uuid.uuid4()),
+            "competition_id": competition_id,
+            "user_id": user_id,
+            "reward_type": reward_type,
+            "reward_value": prize_amount,
+            "reward_rank": rank,
+            "awarded_at": datetime.now(timezone.utc),
+            "status": "pending"
+        }
+        
+        # Update participation record with reward
+        await db.campus_competition_participations.update_one(
+            {"competition_id": competition_id, "user_id": user_id},
+            {
+                "$push": {"individual_rewards": reward_record},
+                "$set": {"reward_eligibility.completion": True}
+            }
+        )
+        
+        # Add campus reputation points if applicable
+        if campus and "campus_reputation_points" in competition:
+            rep_points = competition["campus_reputation_points"]
+            rank_points = rep_points.get(prize_key, rep_points.get(str(rank), 0))
+            if rank_points > 0:
+                await add_campus_reputation_points(
+                    campus, 
+                    int(rank_points), 
+                    "inter_college_competition", 
+                    competition_id, 
+                    "competition_completion", 
+                    user_id
+                )
+        
+        # Award achievement points to user
+        if prize_amount > 0:
+            await db.users.update_one(
+                {"id": user_id},
+                {"$inc": {"achievement_points": int(prize_amount / 10)}}  # 1 point per 10 INR
+            )
+        
+        # Notify user
+        notification_title = f"🏆 Competition Reward - Rank #{rank}!"
+        notification_message = f"Congratulations! You finished #{rank} in '{competition['title']}' competition"
+        
+        if reward_type == "monetary":
+            notification_message += f" and earned ₹{prize_amount:,.0f}!"
+        elif reward_type == "points":
+            notification_message += f" and earned {prize_amount:,.0f} points!"
+        
+        await notification_service.create_and_notify_in_app_notification(
+            user_id=user_id,
+            notification_type="competition_reward",
+            title=notification_title,
+            message=notification_message,
+            priority="high",
+            action_url="/campus/competitions",
+            metadata={
+                "competition_id": competition_id,
+                "rank": rank,
+                "reward_amount": prize_amount,
+                "reward_type": reward_type
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Award competition completion error: {str(e)}")
 
 # ===== INTER-COLLEGE COMPETITION AUTOMATION SYSTEM =====
 
