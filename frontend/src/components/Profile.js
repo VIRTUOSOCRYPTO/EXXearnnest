@@ -21,7 +21,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
-    phone: '',
+    phone_number: '',
     skills: '',
     availability_hours: 10,
     location: '',
@@ -34,7 +34,7 @@ const Profile = () => {
     if (user) {
       setFormData({
         full_name: user.full_name || '',
-        phone: user.phone || '',
+        phone_number: user.phone_number || '',
         skills: Array.isArray(user.skills) ? user.skills.join(', ') : '',
         availability_hours: user.availability_hours || 10,
         location: user.location || '',
@@ -140,10 +140,10 @@ const Profile = () => {
                   <span className="text-sm text-gray-600">{getStudentLevelDisplay(user?.student_level)}</span>
                 </div>
                 
-                {user?.phone && (
+                {user?.phone_number && (
                   <div className="flex items-center gap-3">
                     <PhoneIcon className="w-5 h-5 text-gray-400" />
-                    <span className="text-sm text-gray-600">{user.phone}</span>
+                    <span className="text-sm text-gray-600">{user.phone_number}</span>
                   </div>
                 )}
                 
@@ -200,8 +200,8 @@ const Profile = () => {
                     </label>
                     <input
                       type="tel"
-                      name="phone"
-                      value={formData.phone}
+                      name="phone_number"
+                      value={formData.phone_number}
                       onChange={handleChange}
                       className="input-modern"
                       placeholder="+91 1234567890"
@@ -318,7 +318,7 @@ const Profile = () => {
                   </div>
                   <div>
                     <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Phone Number</h4>
-                    <p className="text-gray-900">{user?.phone || 'Not provided'}</p>
+                    <p className="text-gray-900">{user?.phone_number || 'Not provided'}</p>
                   </div>
                 </div>
 
