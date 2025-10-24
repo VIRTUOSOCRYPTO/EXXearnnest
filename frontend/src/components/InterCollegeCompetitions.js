@@ -46,6 +46,7 @@ const InterCollegeCompetitions = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [editingCompetition, setEditingCompetition] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [leaderboardCompetitionId, setLeaderboardCompetitionId] = useState(null);
 
   useEffect(() => {
     fetchCompetitions();
@@ -278,13 +279,22 @@ const InterCollegeCompetitions = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <Dialog>
+          <Dialog 
+            open={leaderboardCompetitionId === competition.id} 
+            onOpenChange={(open) => {
+              if (!open) {
+                setLeaderboardCompetitionId(null);
+                setLeaderboard(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 variant="outline"
                 className="w-full sm:flex-1"
                 onClick={() => {
                   setSelectedCompetition(competition);
+                  setLeaderboardCompetitionId(competition.id);
                   fetchLeaderboard(competition.id);
                 }}
               >
@@ -718,30 +728,44 @@ const InterCollegeCompetitions = () => {
             {leaderboard.campus_leaderboard?.map((campus, index) => (
               <div
                 key={campus.campus}
-                className={`p-3 rounded-lg border ${
+                className={`p-3 rounded-lg border-2 transition-all ${
                   campus.campus === user?.university 
-                    ? 'bg-blue-50 border-blue-200' 
-                    : 'bg-gray-50'
+                    ? 'bg-gradient-to-r from-blue-100 to-cyan-100 border-blue-400 shadow-lg ring-2 ring-blue-300 ring-offset-2' 
+                    : 'bg-gray-50 border-gray-200'
                 }`}
               >
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                      index === 0 ? 'bg-yellow-400' : 
-                      index === 1 ? 'bg-gray-300' : 
-                      index === 2 ? 'bg-orange-300' : 'bg-gray-200'
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md ${
+                      campus.campus === user?.university 
+                        ? 'bg-blue-500 text-white ring-2 ring-blue-300' 
+                        : index === 0 ? 'bg-yellow-400 text-yellow-900' 
+                        : index === 1 ? 'bg-gray-300 text-gray-700' 
+                        : index === 2 ? 'bg-orange-300 text-orange-900' 
+                        : 'bg-gray-200 text-gray-600'
                     }`}>
                       {index + 1}
                     </div>
                     <div>
-                      <div className="font-medium">{campus.campus}</div>
-                      <div className="text-sm text-gray-600">
+                      <div className={`font-medium flex items-center gap-2 ${
+                        campus.campus === user?.university ? 'font-bold text-blue-900' : ''
+                      }`}>
+                        {campus.campus}
+                        {campus.campus === user?.university && (
+                          <Badge className="bg-blue-600 text-white text-xs">🏫 Your Campus</Badge>
+                        )}
+                      </div>
+                      <div className={`text-sm ${
+                        campus.campus === user?.university ? 'text-blue-700 font-medium' : 'text-gray-600'
+                      }`}>
                         {campus.total_participants} participants
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-blue-600">
+                    <div className={`font-bold ${
+                      campus.campus === user?.university ? 'text-blue-700 text-lg' : 'text-blue-600'
+                    }`}>
                       {campus.campus_total_score || 0}
                     </div>
                     <div className="text-xs text-gray-500">points</div>
@@ -762,28 +786,44 @@ const InterCollegeCompetitions = () => {
             {leaderboard.top_individuals?.map((participant, index) => (
               <div
                 key={participant.user_id}
-                className={`p-3 rounded-lg border ${
+                className={`p-3 rounded-lg border-2 transition-all ${
                   participant.user_id === user?.id 
-                    ? 'bg-purple-50 border-purple-200' 
-                    : 'bg-gray-50'
+                    ? 'bg-gradient-to-r from-purple-100 to-pink-100 border-purple-400 shadow-lg ring-2 ring-purple-300 ring-offset-2' 
+                    : 'bg-gray-50 border-gray-200'
                 }`}
               >
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                      index === 0 ? 'bg-yellow-400' : 
-                      index === 1 ? 'bg-gray-300' : 
-                      index === 2 ? 'bg-orange-300' : 'bg-gray-200'
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md ${
+                      participant.user_id === user?.id 
+                        ? 'bg-purple-500 text-white ring-2 ring-purple-300' 
+                        : index === 0 ? 'bg-yellow-400 text-yellow-900' 
+                        : index === 1 ? 'bg-gray-300 text-gray-700' 
+                        : index === 2 ? 'bg-orange-300 text-orange-900' 
+                        : 'bg-gray-200 text-gray-600'
                     }`}>
                       {index + 1}
                     </div>
                     <div>
-                      <div className="font-medium">{participant.user_name}</div>
-                      <div className="text-sm text-gray-600">{participant.campus}</div>
+                      <div className={`font-medium flex items-center gap-2 ${
+                        participant.user_id === user?.id ? 'font-bold text-purple-900' : ''
+                      }`}>
+                        {participant.user_name}
+                        {participant.user_id === user?.id && (
+                          <Badge className="bg-purple-600 text-white text-xs">👤 You</Badge>
+                        )}
+                      </div>
+                      <div className={`text-sm ${
+                        participant.user_id === user?.id ? 'text-purple-700 font-medium' : 'text-gray-600'
+                      }`}>
+                        {participant.campus}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-purple-600">
+                    <div className={`font-bold ${
+                      participant.user_id === user?.id ? 'text-purple-700 text-lg' : 'text-purple-600'
+                    }`}>
                       {participant.individual_score || 0}
                     </div>
                     <div className="text-xs text-gray-500">points</div>
