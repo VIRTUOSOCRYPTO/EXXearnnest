@@ -14254,14 +14254,14 @@ async def get_habit_tracking_status(
         # Get friends for social pressure
         friends = await db.friendships.find({
             "$or": [
-                {"user_id": user_id, "status": "active"},
-                {"friend_id": user_id, "status": "active"}
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
             ]
         }).to_list(None)
         
         friend_ids = []
         for friendship in friends:
-            friend_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
+            friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
             friend_ids.append(friend_id)
         
         # Get friends' habit performance for social comparison
@@ -14438,14 +14438,14 @@ async def get_weekly_recap(
         # Get friends for comparison
         friends = await db.friendships.find({
             "$or": [
-                {"user_id": user_id, "status": "active"},
-                {"friend_id": user_id, "status": "active"}
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
             ]
         }).to_list(None)
         
         friend_ids = []
         for friendship in friends:
-            friend_id = friendship["friend_id"] if friendship["user_id"] == user_id else friendship["user_id"]
+            friend_id = friendship["user2_id"] if friendship["user1_id"] == user_id else friendship["user1_id"]
             friend_ids.append(friend_id)
         
         # Get friends' weekly performance
@@ -16212,18 +16212,18 @@ async def get_friends_activities_endpoint(
         # Get user's friends
         friendships = await db.friendships.find({
             "$or": [
-                {"user_id": user_id},
-                {"friend_id": user_id}
+                {"user1_id": user_id},
+                {"user2_id": user_id}
             ],
-            "status": "accepted"
+            "status": "active"
         }).to_list(length=None)
         
         friend_ids = []
         for friendship in friendships:
-            if friendship.get("user_id") == user_id:
-                friend_ids.append(friendship.get("friend_id"))
+            if friendship.get("user1_id") == user_id:
+                friend_ids.append(friendship.get("user2_id"))
             else:
-                friend_ids.append(friendship.get("user_id"))
+                friend_ids.append(friendship.get("user1_id"))
         
         if not friend_ids:
             return {"activities": [], "message": "No friends yet! Add friends to see their activities."}
@@ -16306,18 +16306,18 @@ async def get_friends_timeline_endpoint(
         # Get friends list
         friendships = await db.friendships.find({
             "$or": [
-                {"user_id": user_id},
-                {"friend_id": user_id}
+                {"user1_id": user_id},
+                {"user2_id": user_id}
             ],
-            "status": "accepted"
+            "status": "active"
         }).to_list(length=None)
         
         friend_ids = []
         for friendship in friendships:
-            if friendship.get("user_id") == user_id:
-                friend_ids.append(friendship.get("friend_id"))
+            if friendship.get("user1_id") == user_id:
+                friend_ids.append(friendship.get("user2_id"))
             else:
-                friend_ids.append(friendship.get("user_id"))
+                friend_ids.append(friendship.get("user1_id"))
         
         # Include user's own activities
         all_user_ids = friend_ids + [user_id]
@@ -16604,18 +16604,18 @@ async def get_engagement_friend_activities_endpoint(
         # Get friends
         friendships = await db.friendships.find({
             "$or": [
-                {"user_id": user_id},
-                {"friend_id": user_id}
+                {"user1_id": user_id},
+                {"user2_id": user_id}
             ],
-            "status": "accepted"
+            "status": "active"
         }).to_list(length=None)
         
         friend_ids = []
         for friendship in friendships:
-            if friendship.get("user_id") == user_id:
-                friend_ids.append(friendship.get("friend_id"))
+            if friendship.get("user1_id") == user_id:
+                friend_ids.append(friendship.get("user2_id"))
             else:
-                friend_ids.append(friendship.get("user_id"))
+                friend_ids.append(friendship.get("user1_id"))
         
         if not friend_ids:
             return {
@@ -20150,8 +20150,8 @@ async def get_public_campus_battle():
 
 # 2. ANONYMOUS SPENDING INSIGHTS
 @api_router.get("/insights/campus-spending/{campus}")
-async def get_campus_spending_insights(campus: str, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
-    """Get anonymous spending insights for a specific campus"""
+async def get_campus_spending_insights(campus: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
+    """Get anonymous spending insights for a specific campus (accessible to all authenticated users)"""
     try:
         # Get all users from this campus
         campus_users = await db.users.find(
@@ -20549,8 +20549,8 @@ async def get_campus_battle_arena(current_user: Dict[str, Any] = Depends(get_cur
         raise HTTPException(status_code=500, detail="Failed to get battle arena data")
 
 @api_router.get("/insights/spending/{campus}")
-async def get_campus_spending_insights(campus: str, current_user: Dict[str, Any] = Depends(get_current_super_admin)):
-    """Get spending insights for a specific campus"""
+async def get_campus_spending_insights_static(campus: str, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
+    """Get pre-populated spending insights for a specific campus (static/demo data)"""
     try:
         # Get campus spending insights
         insight = await db.campus_spending_insights.find_one({"campus": campus})
