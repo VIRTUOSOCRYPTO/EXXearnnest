@@ -8,6 +8,7 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: EmailStr
     full_name: str
+    phone_number: Optional[str] = None  # Phone number field
     role: str  # "Student", "Professional", "Other" - MANDATORY
     student_level: str  # "undergraduate", "graduate", "high_school"
     university: Optional[str] = None  # For campus integration
@@ -24,6 +25,17 @@ class User(BaseModel):
             raise ValueError('At least one valid skill is required')
         
         return valid_skills
+    
+    @validator('phone_number')
+    def validate_phone_number(cls, v):
+        if v:
+            # Remove spaces and dashes
+            phone = v.strip().replace(' ', '').replace('-', '')
+            # Check if it's a valid phone number format (10-15 digits)
+            if not re.match(r'^\+?\d{10,15}$', phone):
+                raise ValueError('Phone number must be 10-15 digits')
+        return v
+    
     availability_hours: int = 10  # hours per week
     location: str  # MANDATORY - cannot be empty, must be valid location format
     bio: Optional[str] = None
@@ -88,6 +100,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str
+    phone_number: str  # MANDATORY - Phone number field
     role: str  # MANDATORY
     student_level: str
     university: Optional[str] = None  # For campus integration
@@ -95,6 +108,17 @@ class UserCreate(BaseModel):
     availability_hours: int = 10
     location: str  # MANDATORY
     bio: Optional[str] = None
+
+    @validator('phone_number')
+    def validate_phone_number(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Phone number is required')
+        # Remove spaces and dashes
+        phone = v.strip().replace(' ', '').replace('-', '')
+        # Check if it's a valid phone number format (10-15 digits)
+        if not re.match(r'^\+?\d{10,15}$', phone):
+            raise ValueError('Phone number must be 10-15 digits')
+        return v
 
     @validator('role')
     def validate_role(cls, v):
@@ -2905,6 +2929,7 @@ class CollegeEventUpdate(BaseModel):
 
 class EventRegistration(BaseModel):
     """Model for event registrations"""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     event_id: str
     user_id: str
@@ -2916,7 +2941,7 @@ class EventRegistration(BaseModel):
     rejection_reason: Optional[str] = None
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
-    
+
     # Individual registration details
     registration_type: str = "individual"  # "individual" or "group"
     usn: Optional[str] = None
@@ -2926,7 +2951,7 @@ class EventRegistration(BaseModel):
     branch: Optional[str] = None
     section: Optional[str] = None
     student_id_card_url: Optional[str] = None
-    
+
     # Group registration details
     team_name: Optional[str] = None
     team_leader_name: Optional[str] = None
@@ -2935,9 +2960,8 @@ class EventRegistration(BaseModel):
     team_leader_phone: Optional[str] = None
     team_size: Optional[int] = None
     team_members: List[Dict[str, Any]] = []  # Full member details with USN, email, phone, etc.
-    
-    additional_info: Optional[Dict[str, Any]] = None
 
+    additional_info: Optional[Dict[str, Any]] = None
 
 
 class PrizeChallengeRegistration(BaseModel):
@@ -2954,9 +2978,8 @@ class PrizeChallengeRegistration(BaseModel):
     # Student details
     full_name: str
     email: str
-    phone_number: str
+    phone_number: str  # Replaced USN with phone number
     college: str
-    usn: str
     semester: int = Field(ge=1, le=8)
     year: int = Field(ge=1, le=4)
     branch: str
@@ -2995,9 +3018,8 @@ class InterCollegeRegistration(BaseModel):
     team_type: Optional[str] = None  # "team_leader" (creating new team) or "join_team" (joining existing)
     existing_team_id: Optional[str] = None
     team_leader_name: Optional[str] = None
-    team_leader_usn: Optional[str] = None
     team_leader_email: Optional[str] = None
-    team_leader_phone: Optional[str] = None
+    team_leader_phone: Optional[str] = None  # Primary identifier - replaced USN
     team_leader_semester: Optional[int] = None
     team_leader_year: Optional[int] = None
     team_leader_branch: Optional[str] = None
@@ -3006,7 +3028,7 @@ class InterCollegeRegistration(BaseModel):
     max_team_size: Optional[int] = Field(None, le=5)
     
     # Team members (for team_leader type)
-    team_members: List[Dict[str, Any]] = []  # Full member details
+    team_members: List[Dict[str, Any]] = []  # Full member details - phone instead of USN
     
     # Performance tracking
     campus_score: float = 0.0
