@@ -1909,6 +1909,32 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             # Update group challenge progress
             await update_group_challenge_progress(user_id)
             
+            # 🔥 UPDATE PRIZE CHALLENGE PROGRESS
+            # Get all active prize challenges the user is participating in
+            try:
+                prize_participations = await db.prize_challenge_participations.find({
+                    "user_id": user_id,
+                    "participation_status": "active"
+                }).to_list(None)
+                
+                for participation in prize_participations:
+                    await update_single_prize_challenge_progress(participation["challenge_id"])
+            except Exception as e:
+                logger.error(f"Failed to update prize challenge progress: {e}")
+            
+            # 🔥 UPDATE INTER-COLLEGE COMPETITION PROGRESS
+            # Get all active competitions the user is participating in
+            try:
+                competition_participations = await db.campus_competition_participations.find({
+                    "user_id": user_id,
+                    "registration_status": "active"
+                }).to_list(None)
+                
+                for participation in competition_participations:
+                    await update_single_competition_progress(participation["competition_id"])
+            except Exception as e:
+                logger.error(f"Failed to update competition progress: {e}")
+            
             # Enhanced Gamification hooks for expense transactions - Phase 1
             gamification = await get_gamification_service()
             streak_result = await gamification.update_user_streak(user_id)
@@ -1979,6 +2005,32 @@ async def create_transaction_endpoint(request: Request, transaction_data: Transa
             
             # Update group challenge progress
             await update_group_challenge_progress(user_id)
+            
+            # 🔥 UPDATE PRIZE CHALLENGE PROGRESS
+            # Get all active prize challenges the user is participating in
+            try:
+                prize_participations = await db.prize_challenge_participations.find({
+                    "user_id": user_id,
+                    "participation_status": "active"
+                }).to_list(None)
+                
+                for participation in prize_participations:
+                    await update_single_prize_challenge_progress(participation["challenge_id"])
+            except Exception as e:
+                logger.error(f"Failed to update prize challenge progress: {e}")
+            
+            # 🔥 UPDATE INTER-COLLEGE COMPETITION PROGRESS
+            # Get all active competitions the user is participating in
+            try:
+                competition_participations = await db.campus_competition_participations.find({
+                    "user_id": user_id,
+                    "registration_status": "active"
+                }).to_list(None)
+                
+                for participation in competition_participations:
+                    await update_single_competition_progress(participation["competition_id"])
+            except Exception as e:
+                logger.error(f"Failed to update competition progress: {e}")
             
             # Enhanced Gamification hooks for income transactions - Phase 1
             gamification = await get_gamification_service()
