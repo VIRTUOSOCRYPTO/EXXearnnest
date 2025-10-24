@@ -7521,7 +7521,7 @@ async def get_inter_college_leaderboard(
                 "title": competition["title"],
                 "competition_type": competition["competition_type"],
                 "target_metric": competition["target_metric"],
-                "status": competition["status"],
+                "status": competition.get("status", "active"),
                 "end_date": competition["end_date"]
             },
             "campus_leaderboard": campus_leaderboards,
@@ -7537,8 +7537,10 @@ async def get_inter_college_leaderboard(
         }
         
     except Exception as e:
+        import traceback
         logger.error(f"Get inter-college leaderboard error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to get leaderboard: {str(e)}")
 
 @api_router.post("/inter-college/competitions/{competition_id}/complete")
 @limiter.limit("5/minute")
@@ -8036,7 +8038,7 @@ async def get_prize_challenge_leaderboard(
                 "prize_type": challenge["prize_type"],
                 "total_prize_value": challenge["total_prize_value"],
                 "end_date": challenge["end_date"],
-                "status": challenge["status"]
+                "status": challenge.get("status", "active")
             },
             "leaderboard": leaderboard[:50],  # Top 50
             "user_stats": {
@@ -8050,8 +8052,10 @@ async def get_prize_challenge_leaderboard(
         }
         
     except Exception as e:
+        import traceback
         logger.error(f"Get prize challenge leaderboard error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get leaderboard")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to get leaderboard: {str(e)}")
 
 
 # ===== CRUD OPERATIONS FOR COMPETITIONS =====
