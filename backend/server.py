@@ -7474,13 +7474,15 @@ async def get_inter_college_leaderboard(
             "competition_id": competition_id
         }).sort("campus_total_score", -1).to_list(None)
         
-        # Update ranks
+        # Update ranks and remove MongoDB _id field
         for idx, campus in enumerate(campus_leaderboards):
             await db.campus_leaderboards.update_one(
                 {"_id": campus["_id"]},
                 {"$set": {"campus_rank": idx + 1}}
             )
             campus["campus_rank"] = idx + 1
+            # Remove MongoDB ObjectId to prevent serialization errors
+            campus.pop("_id", None)
         
         # Get user's campus and individual stats
         user = await get_user_by_id(current_user["id"])
@@ -7495,6 +7497,10 @@ async def get_inter_college_leaderboard(
                 "user_id": current_user["id"]
             })
             
+            # Remove MongoDB ObjectId from user_participation
+            if user_participation:
+                user_participation.pop("_id", None)
+            
             user_campus_stats = next((c for c in campus_leaderboards if c["campus"] == user_campus), None)
             user_campus_rank = user_campus_stats["campus_rank"] if user_campus_stats else None
         
@@ -7503,9 +7509,11 @@ async def get_inter_college_leaderboard(
             "competition_id": competition_id
         }).sort("individual_score", -1).limit(20).to_list(None)
         
-        # Enhance with user details
+        # Enhance with user details and remove MongoDB _id
         enhanced_individuals = []
         for participant in top_individuals:
+            # Remove MongoDB ObjectId
+            participant.pop("_id", None)
             user_detail = await get_user_by_id(participant["user_id"])
             if user_detail:
                 enhanced_individuals.append({
