@@ -107,7 +107,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
     const filtered = regs.filter(reg => 
       (reg.full_name || reg.user_name || reg.team_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (reg.email || reg.user_email || reg.team_leader_email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (reg.usn || reg.team_leader_usn || '').toLowerCase().includes(searchTerm.toLowerCase())
+      (reg.phone || reg.user_phone || reg.team_leader_phone || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
     
     setFilteredRegistrations(filtered);
@@ -280,7 +280,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
           <div className="flex flex-wrap gap-4 items-center">
             <div className="flex-1 min-w-60">
               <Input
-                placeholder="Search by name, email, or USN..."
+                placeholder="Search by name, email, or Phone Number..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full"
@@ -378,7 +378,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
                   <th className="text-left p-3">Name/Team</th>
                   <th className="text-left p-3">Email</th>
                   <th className="text-left p-3">College</th>
-                  <th className="text-left p-3">USN</th>
+                  <th className="text-left p-3">Phone Number</th>
                   <th className="text-left p-3">Status</th>
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Actions</th>
@@ -415,7 +415,7 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
                       {registration.college || registration.user_college || registration.campus_name}
                     </td>
                     <td className="p-3">
-                      {registration.usn || registration.team_leader_usn}
+                      {registration.phone || registration.user_phone || registration.team_leader_phone || 'N/A'}
                     </td>
                     <td className="p-3">
                       {getStatusBadge(registration.status)}
@@ -658,14 +658,6 @@ const RegistrationManagement = ({ eventId, eventType, eventTitle }) => {
                       <div>
                         <div className="text-sm text-gray-600">Phone Number</div>
                         <div className="font-medium">{detailsModal.registration.phone || detailsModal.registration.user_phone || 'N/A'}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                      <Hash className="w-5 h-5 text-blue-600 mt-1" />
-                      <div>
-                        <div className="text-sm text-gray-600">USN</div>
-                        <div className="font-medium">{detailsModal.registration.usn || 'N/A'}</div>
                       </div>
                     </div>
                   </div>
