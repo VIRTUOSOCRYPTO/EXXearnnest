@@ -210,6 +210,7 @@ class UserLogin(BaseModel):
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
+    phone: Optional[str] = None
     role: Optional[str] = None
     skills: Optional[List[str]] = None
     availability_hours: Optional[int] = None 
