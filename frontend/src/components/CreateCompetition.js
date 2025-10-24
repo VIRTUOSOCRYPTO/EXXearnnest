@@ -45,11 +45,6 @@ const CreateCompetition = () => {
       second: 30,
       third: 20
     },
-    campus_reputation_points: {
-      first: 100,
-      second: 75,
-      third: 50
-    },
     participation_rewards: {
       points: 10,
       badge: 'Participant'
@@ -557,45 +552,6 @@ const CreateCompetition = () => {
                         onChange={(e) => handleNestedChange('prize_distribution', 'third', parseInt(e.target.value))}
                         min="0"
                         max="100"
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Campus Reputation Points</Label>
-                  <div className="grid grid-cols-3 gap-4 mt-1">
-                    <div>
-                      <Label htmlFor="first_points" className="text-sm">1st Place</Label>
-                      <Input
-                        id="first_points"
-                        type="number"
-                        value={formData.campus_reputation_points.first}
-                        onChange={(e) => handleNestedChange('campus_reputation_points', 'first', parseInt(e.target.value))}
-                        min="0"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="second_points" className="text-sm">2nd Place</Label>
-                      <Input
-                        id="second_points"
-                        type="number"
-                        value={formData.campus_reputation_points.second}
-                        onChange={(e) => handleNestedChange('campus_reputation_points', 'second', parseInt(e.target.value))}
-                        min="0"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="third_points" className="text-sm">3rd Place</Label>
-                      <Input
-                        id="third_points"
-                        type="number"
-                        value={formData.campus_reputation_points.third}
-                        onChange={(e) => handleNestedChange('campus_reputation_points', 'third', parseInt(e.target.value))}
-                        min="0"
                         className="mt-1"
                       />
                     </div>
