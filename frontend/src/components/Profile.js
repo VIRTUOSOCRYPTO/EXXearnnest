@@ -8,7 +8,8 @@ import {
   AcademicCapIcon,
   UserIcon,
   StarIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  PhoneIcon
 } from '@heroicons/react/24/outline';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -20,6 +21,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
+    phone: '',
     skills: '',
     availability_hours: 10,
     location: '',
@@ -32,6 +34,7 @@ const Profile = () => {
     if (user) {
       setFormData({
         full_name: user.full_name || '',
+        phone: user.phone || '',
         skills: Array.isArray(user.skills) ? user.skills.join(', ') : '',
         availability_hours: user.availability_hours || 10,
         location: user.location || '',
@@ -137,6 +140,13 @@ const Profile = () => {
                   <span className="text-sm text-gray-600">{getStudentLevelDisplay(user?.student_level)}</span>
                 </div>
                 
+                {user?.phone && (
+                  <div className="flex items-center gap-3">
+                    <PhoneIcon className="w-5 h-5 text-gray-400" />
+                    <span className="text-sm text-gray-600">{user.phone}</span>
+                  </div>
+                )}
+                
                 {user?.location && (
                   <div className="flex items-center gap-3">
                     <MapPinIcon className="w-5 h-5 text-gray-400" />
@@ -184,6 +194,22 @@ const Profile = () => {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="input-modern"
+                      placeholder="+91 1234567890"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Student Level
@@ -290,6 +316,13 @@ const Profile = () => {
                     <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Full Name</h4>
                     <p className="text-gray-900">{user?.full_name || 'Not provided'}</p>
                   </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Phone Number</h4>
+                    <p className="text-gray-900">{user?.phone || 'Not provided'}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Student Level</h4>
                     <p className="text-gray-900">{getStudentLevelDisplay(user?.student_level)}</p>
