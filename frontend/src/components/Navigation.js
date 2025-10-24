@@ -38,6 +38,10 @@ const Navigation = () => {
   const [isCampusOpen, setIsCampusOpen] = useState(false);
   const [isViralOpen, setIsViralOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  // Mobile sub-menu states
+  const [isMobileCampusOpen, setIsMobileCampusOpen] = useState(false);
+  const [isMobileViralOpen, setIsMobileViralOpen] = useState(false);
+  const [isMobileAdminOpen, setIsMobileAdminOpen] = useState(false);
   const navRef = useRef(null);
 
   const navItems = [
@@ -75,7 +79,6 @@ const Navigation = () => {
     { path: '/inter-college-competitions', label: 'Inter-College Competitions', icon: TrophyIcon },
     { path: '/prize-challenges', label: 'Prize Challenges', icon: SparklesIcon },
     { path: '/events', label: 'College Events', icon: CalendarDaysIcon },
-    { path: '/campus-reputation', label: 'Campus Reputation', icon: TrophyIcon },
   ];
 
   // Admin navigation items (conditionally shown based on admin_level)
@@ -106,6 +109,9 @@ const Navigation = () => {
 
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
+    setIsMobileCampusOpen(false);
+    setIsMobileViralOpen(false);
+    setIsMobileAdminOpen(false);
   };
 
   const closeAllDropdowns = () => {
@@ -547,130 +553,181 @@ const Navigation = () => {
                 );
               })}
 
-              {/* Campus Section */}
+              {/* Campus Section - Collapsible */}
               <div className="border-t border-gray-100 pt-4 mt-4">
-                <div className="px-4 pb-2">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                    <BuildingOffice2Icon className="w-4 h-4" />
-                    Campus Features
-                  </h3>
-                </div>
-                {campusItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
-                  
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={closeMobileMenu}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-
-              {/* Viral Features Section */}
-              <div className="border-t border-gray-100 pt-4 mt-4">
-                <div className="px-4 pb-2">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                    <FireIcon className="w-4 h-4" />
-                    🔥 Viral Features
-                  </h3>
-                </div>
-                {viralItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
-                  
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={closeMobileMenu}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'bg-orange-100 text-orange-700'
-                          : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
-                      }`}
-                      {...(item.public ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                    >
-                      <Icon className="w-5 h-5" />
-                      {item.label}
-                      {item.public && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-1 rounded-full">Public</span>}
-                    </Link>
-                  );
-                })}
-              </div>
-
-              {/* Admin Section */}
-              <div className="border-t border-gray-100 pt-4 mt-4">
-                <div className="px-4 pb-2">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                    <BuildingOffice2Icon className="w-4 h-4" />
-                    Admin
-                  </h3>
-                </div>
-                {adminItems.map((item) => {
-                  // Show based on user admin_level
-                  const userAdminLevel = user?.admin_level || 'user';
-                  
-                  // Show "Request Campus Admin Access" for non-admins
-                  if (item.showForNonAdmins && (userAdminLevel === 'user' || !user?.is_admin)) {
-                    const Icon = item.icon;
-                    const isActive = location.pathname === item.path;
-                    return (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        onClick={closeMobileMenu}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                          isActive
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                        }`}
-                      >
-                        <Icon className="w-5 h-5" />
-                        {item.label}
-                      </Link>
-                    );
-                  }
-                  
-                  // Show specific dashboards based on admin level
-                  if (item.requiredLevel) {
-                    // Show only matching dashboard for specific admin level
-                    if (userAdminLevel === item.requiredLevel || 
-                        (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user' && userAdminLevel !== 'super_admin')) {
+                <button
+                  onClick={() => setIsMobileCampusOpen(!isMobileCampusOpen)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
+                >
+                  <div className="flex items-center gap-2">
+                    <BuildingOffice2Icon className="w-5 h-5 text-purple-600" />
+                    <span>Campus Features</span>
+                  </div>
+                  <svg 
+                    className={`w-4 h-4 transition-transform duration-200 ${isMobileCampusOpen ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {/* Campus Sub-menu */}
+                <div className={`overflow-hidden transition-all duration-300 ${isMobileCampusOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <div className="pl-4 pt-2 space-y-1">
+                    {campusItems.map((item) => {
                       const Icon = item.icon;
                       const isActive = location.pathname === item.path;
+                      
                       return (
                         <Link
                           key={item.path}
                           to={item.path}
                           onClick={closeMobileMenu}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                             isActive
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
                           }`}
                         >
-                          <Icon className="w-5 h-5" />
+                          <Icon className="w-4 h-4" />
                           {item.label}
                         </Link>
                       );
-                    }
-                    
-                    return null;
-                  }
-                  
-                  return null;
-                })}
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Viral Features Section - Collapsible */}
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <button
+                  onClick={() => setIsMobileViralOpen(!isMobileViralOpen)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
+                >
+                  <div className="flex items-center gap-2">
+                    <FireIcon className="w-5 h-5 text-orange-600" />
+                    <span>🔥 Viral Features</span>
+                  </div>
+                  <svg 
+                    className={`w-4 h-4 transition-transform duration-200 ${isMobileViralOpen ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {/* Viral Sub-menu */}
+                <div className={`overflow-hidden transition-all duration-300 ${isMobileViralOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <div className="pl-4 pt-2 space-y-1">
+                    {viralItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = location.pathname === item.path;
+                      
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          onClick={closeMobileMenu}
+                          className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isActive
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'text-gray-600 hover:text-orange-600 hover:bg-orange-50'
+                          }`}
+                          {...(item.public ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                        >
+                          <Icon className="w-4 h-4" />
+                          <span className="flex-1">{item.label}</span>
+                          {item.public && <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">Public</span>}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Admin Section - Collapsible */}
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <button
+                  onClick={() => setIsMobileAdminOpen(!isMobileAdminOpen)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
+                >
+                  <div className="flex items-center gap-2">
+                    <BuildingOffice2Icon className="w-5 h-5 text-blue-600" />
+                    <span>Admin</span>
+                  </div>
+                  <svg 
+                    className={`w-4 h-4 transition-transform duration-200 ${isMobileAdminOpen ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {/* Admin Sub-menu */}
+                <div className={`overflow-hidden transition-all duration-300 ${isMobileAdminOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <div className="pl-4 pt-2 space-y-1">
+                    {adminItems.map((item) => {
+                      // Show based on user admin_level
+                      const userAdminLevel = user?.admin_level || 'user';
+                      
+                      // Show "Request Campus Admin Access" for non-admins
+                      if (item.showForNonAdmins && (userAdminLevel === 'user' || !user?.is_admin)) {
+                        const Icon = item.icon;
+                        const isActive = location.pathname === item.path;
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            onClick={closeMobileMenu}
+                            className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                              isActive
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                            {item.label}
+                          </Link>
+                        );
+                      }
+                      
+                      // Show specific dashboards based on admin level
+                      if (item.requiredLevel) {
+                        // Show only matching dashboard for specific admin level
+                        if (userAdminLevel === item.requiredLevel || 
+                            (item.requiredLevel === 'any_admin' && userAdminLevel !== 'user' && userAdminLevel !== 'super_admin')) {
+                          const Icon = item.icon;
+                          const isActive = location.pathname === item.path;
+                          return (
+                            <Link
+                              key={item.path}
+                              to={item.path}
+                              onClick={closeMobileMenu}
+                              className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                isActive
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                              }`}
+                            >
+                              <Icon className="w-4 h-4" />
+                              {item.label}
+                            </Link>
+                          );
+                        }
+                        
+                        return null;
+                      }
+                      
+                      return null;
+                    })}
+                  </div>
+                </div>
               </div>
               
               {/* Profile Section */}
