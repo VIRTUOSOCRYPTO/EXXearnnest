@@ -9362,6 +9362,394 @@ async def award_prize_challenge_completion(challenge_id: str, user_id: str, rank
     except Exception as e:
         logger.error(f"Award prize challenge completion error: {str(e)}")
 
+# ===== INTER-COLLEGE COMPETITION AUTOMATION SYSTEM =====
+
+async def update_inter_college_competitions_progress():
+    """Background function to update inter-college competition progress - runs periodically"""
+    try:
+        db = await get_database()
+        
+        # Get all active inter-college competitions
+        active_competitions = await db.inter_college_competitions.find({
+            "status": "active",
+            "start_date": {"$lte": datetime.now(timezone.utc)},
+            "end_date": {"$gte": datetime.now(timezone.utc)}
+        }).to_list(None)
+        
+        logger.info(f"📊 Updating progress for {len(active_competitions)} active inter-college competitions")
+        
+        for competition in active_competitions:
+            await update_single_inter_college_progress(competition["id"])
+            
+    except Exception as e:
+        logger.error(f"Update inter-college competitions progress error: {str(e)}")
+
+async def update_single_inter_college_progress(competition_id: str):
+    """Update progress for a single inter-college competition"""
+    try:
+        db = await get_database()
+        
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            return
+        
+        # Get all participants
+        participants = await db.campus_competition_participations.find({
+            "competition_id": competition_id
+        }).to_list(None)
+        
+        if not participants:
+            return
+        
+        competition_type = competition.get("competition_type", "savings")  # savings, streak, goals, engagement
+        target_value = competition.get("target_value", 0)
+        
+        for participant in participants:
+            user_id = participant["user_id"]
+            
+            # Calculate new progress based on competition type
+            new_progress = await calculate_inter_college_progress(
+                user_id, competition_type, participant.get("joined_at", competition["start_date"])
+            )
+            
+            # Calculate progress percentage
+            progress_percentage = min(100, (new_progress / target_value) * 100) if target_value > 0 else 0
+            
+            # Determine current rank among all participants
+            current_rank = await calculate_participant_rank(competition_id, user_id, new_progress)
+            
+            update_data = {
+                "current_progress": new_progress,
+                "progress_percentage": progress_percentage,
+                "current_rank": current_rank,
+                "last_updated": datetime.now(timezone.utc)
+            }
+            
+            # Update participation record
+            await db.campus_competition_participations.update_one(
+                {"_id": participant["_id"]},
+                {"$set": update_data}
+            )
+        
+        # Update campus leaderboard scores
+        await update_campus_competition_leaderboard(competition_id)
+        
+        logger.info(f"✅ Updated progress for {len(participants)} participants in competition {competition_id}")
+        
+    except Exception as e:
+        logger.error(f"Update single inter-college progress error: {str(e)}")
+
+async def calculate_inter_college_progress(user_id: str, competition_type: str, start_date: datetime) -> float:
+    """Calculate user's progress for inter-college competition based on competition type"""
+    try:
+        db = await get_database()
+        progress = 0.0
+        
+        if competition_type == "savings":
+            # Calculate savings progress (income - expenses since competition start)
+            income_pipeline = [
+                {"$match": {"user_id": user_id, "type": "income", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+            total_income = income_result[0]["total"] if income_result else 0.0
+            
+            expense_pipeline = [
+                {"$match": {"user_id": user_id, "type": "expense", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
+            total_expenses = expense_result[0]["total"] if expense_result else 0.0
+            
+            progress = max(0, total_income - total_expenses)
+        
+        elif competition_type == "streak":
+            # Get current streak from user profile
+            user = await db.users.find_one({"id": user_id})
+            progress = float(user.get("current_streak", 0)) if user else 0.0
+        
+        elif competition_type == "goals":
+            # Count goals completed since competition start
+            completed_goals = await db.financial_goals.count_documents({
+                "user_id": user_id,
+                "is_completed": True,
+                "updated_at": {"$gte": start_date}
+            })
+            progress = float(completed_goals)
+        
+        elif competition_type == "referrals":
+            # Count successful referrals since competition start
+            recent_referrals = await db.referred_users.count_documents({
+                "referrer_id": user_id,
+                "status": "completed",
+                "completed_at": {"$gte": start_date}
+            })
+            progress = float(recent_referrals)
+        
+        elif competition_type == "engagement":
+            # Count total transactions/activities since competition start
+            transaction_count = await db.transactions.count_documents({
+                "user_id": user_id,
+                "date": {"$gte": start_date}
+            })
+            progress = float(transaction_count)
+        
+        elif competition_type == "income":
+            # Total income earned since competition start
+            income_pipeline = [
+                {"$match": {"user_id": user_id, "type": "income", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+            progress = income_result[0]["total"] if income_result else 0.0
+        
+        return progress
+        
+    except Exception as e:
+        logger.error(f"Calculate inter-college progress error: {str(e)}")
+        return 0.0
+
+async def calculate_participant_rank(competition_id: str, user_id: str, current_progress: float) -> int:
+    """Calculate participant's current rank based on progress"""
+    try:
+        db = await get_database()
+        
+        # Count participants with higher progress
+        higher_count = await db.campus_competition_participations.count_documents({
+            "competition_id": competition_id,
+            "current_progress": {"$gt": current_progress}
+        })
+        
+        return higher_count + 1
+        
+    except Exception as e:
+        logger.error(f"Calculate participant rank error: {str(e)}")
+        return 0
+
+async def update_campus_competition_leaderboard(competition_id: str):
+    """Update campus-level leaderboard for competition"""
+    try:
+        db = await get_database()
+        
+        # Get all participants grouped by campus
+        pipeline = [
+            {"$match": {"competition_id": competition_id}},
+            {"$group": {
+                "_id": "$campus",
+                "total_progress": {"$sum": "$current_progress"},
+                "avg_progress": {"$avg": "$current_progress"},
+                "participant_count": {"$sum": 1},
+                "top_progress": {"$max": "$current_progress"}
+            }},
+            {"$sort": {"total_progress": -1}}
+        ]
+        
+        campus_stats = await db.campus_competition_participations.aggregate(pipeline).to_list(None)
+        
+        # Update campus leaderboard
+        for rank, campus_stat in enumerate(campus_stats, 1):
+            await db.campus_leaderboards.update_one(
+                {"competition_id": competition_id, "campus": campus_stat["_id"]},
+                {
+                    "$set": {
+                        "total_progress": campus_stat["total_progress"],
+                        "average_progress": campus_stat["avg_progress"],
+                        "participant_count": campus_stat["participant_count"],
+                        "top_individual_progress": campus_stat["top_progress"],
+                        "current_rank": rank,
+                        "last_updated": datetime.now(timezone.utc)
+                    }
+                },
+                upsert=True
+            )
+        
+    except Exception as e:
+        logger.error(f"Update campus competition leaderboard error: {str(e)}")
+
+async def auto_complete_expired_competitions():
+    """Automatically complete competitions that have ended"""
+    try:
+        db = await get_database()
+        
+        # Find competitions that ended but not completed
+        expired_competitions = await db.inter_college_competitions.find({
+            "status": "active",
+            "end_date": {"$lt": datetime.now(timezone.utc)}
+        }).to_list(None)
+        
+        logger.info(f"🏁 Auto-completing {len(expired_competitions)} expired competitions")
+        
+        for competition in expired_competitions:
+            await auto_complete_competition(competition["id"])
+            
+    except Exception as e:
+        logger.error(f"Auto complete expired competitions error: {str(e)}")
+
+async def auto_complete_competition(competition_id: str):
+    """Automatically complete a competition and award points"""
+    try:
+        db = await get_database()
+        
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition or competition.get("status") == "completed":
+            return
+        
+        # Get all participants sorted by progress
+        participants = await db.campus_competition_participations.find({
+            "competition_id": competition_id
+        }).sort("current_progress", -1).to_list(None)
+        
+        if not participants:
+            logger.warning(f"No participants found for competition {competition_id}")
+            return
+        
+        # Build final rankings with user details
+        final_rankings = []
+        for participant in participants:
+            user = await get_user_by_id(participant["user_id"])
+            if user:
+                final_rankings.append({
+                    "user_id": participant["user_id"],
+                    "campus": user.get("university", "Unknown"),
+                    "score": participant.get("current_progress", 0),
+                    "rank": len(final_rankings) + 1
+                })
+        
+        # Award campus reputation points
+        await award_competition_reputation(competition_id, final_rankings)
+        
+        # Award individual achievement points to participants
+        await award_inter_college_individual_points(competition_id, final_rankings)
+        
+        # Update competition status
+        await db.inter_college_competitions.update_one(
+            {"id": competition_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "completed_at": datetime.now(timezone.utc),
+                    "completed_by": {"auto_completion": True},
+                    "final_rankings": final_rankings[:10],  # Store top 10
+                    "total_participants": len(participants),
+                    "reputation_points_awarded": True,
+                    "individual_points_awarded": True
+                }
+            }
+        )
+        
+        # Send completion notifications to all participants
+        await send_competition_completion_notifications(competition_id, competition["title"], final_rankings)
+        
+        logger.info(f"✅ Auto-completed competition {competition_id} with {len(participants)} participants")
+        
+    except Exception as e:
+        logger.error(f"Auto complete competition error: {str(e)}")
+
+async def award_inter_college_individual_points(competition_id: str, participant_rankings: list):
+    """Award individual achievement and experience points to competition participants"""
+    try:
+        db = await get_database()
+        
+        competition = await db.inter_college_competitions.find_one({"id": competition_id})
+        if not competition:
+            return
+        
+        # Point structure for individual rewards
+        individual_points_structure = {
+            1: 500,   # 1st place
+            2: 300,   # 2nd place
+            3: 200,   # 3rd place
+            "top_10": 100,  # 4th-10th place
+            "participation": 50  # All other participants
+        }
+        
+        for participant in participant_rankings:
+            user_id = participant["user_id"]
+            rank = participant["rank"]
+            
+            # Determine points based on rank
+            if rank == 1:
+                points = individual_points_structure[1]
+            elif rank == 2:
+                points = individual_points_structure[2]
+            elif rank == 3:
+                points = individual_points_structure[3]
+            elif rank <= 10:
+                points = individual_points_structure["top_10"]
+            else:
+                points = individual_points_structure["participation"]
+            
+            # Award both achievement_points and experience_points
+            await db.users.update_one(
+                {"id": user_id},
+                {
+                    "$inc": {
+                        "achievement_points": points,
+                        "experience_points": points
+                    }
+                }
+            )
+            
+            # Create reward record for tracking
+            reward_record = {
+                "id": str(uuid.uuid4()),
+                "competition_id": competition_id,
+                "competition_title": competition["title"],
+                "user_id": user_id,
+                "reward_type": "individual_points",
+                "achievement_points": points,
+                "experience_points": points,
+                "rank": rank,
+                "awarded_at": datetime.now(timezone.utc),
+                "reason": f"Rank #{rank} in Inter-College Competition"
+            }
+            await db.competition_individual_rewards.insert_one(reward_record)
+            
+            # Send notification
+            await create_notification(
+                user_id,
+                "competition_reward",
+                f"🏆 Competition Completed!",
+                f"You finished #{rank} in '{competition['title']}' and earned {points} points!",
+                action_url="/competitions",
+                related_id=competition_id
+            )
+        
+        logger.info(f"✅ Awarded individual points to {len(participant_rankings)} participants in competition {competition_id}")
+        
+    except Exception as e:
+        logger.error(f"Award inter-college individual points error: {str(e)}")
+
+async def send_competition_completion_notifications(competition_id: str, competition_title: str, rankings: list):
+    """Send completion notifications to all participants"""
+    try:
+        # Top 3 get special notifications
+        for participant in rankings[:3]:
+            rank = participant["rank"]
+            emoji = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉"
+            await create_notification(
+                participant["user_id"],
+                "competition_complete",
+                f"{emoji} Top {rank} Achievement!",
+                f"Congratulations! You finished #{rank} in '{competition_title}'! Check your rewards.",
+                action_url="/competitions",
+                related_id=competition_id
+            )
+        
+        # Others get general completion notification
+        for participant in rankings[3:]:
+            await create_notification(
+                participant["user_id"],
+                "competition_complete",
+                f"Competition Completed!",
+                f"'{competition_title}' has ended. You finished #{participant['rank']}. Great effort!",
+                action_url="/competitions",
+                related_id=competition_id
+            )
+        
+    except Exception as e:
+        logger.error(f"Send competition completion notifications error: {str(e)}")
+
 async def add_campus_reputation_points(campus: str, points: int, category: str, source_id: str, source_type: str = "challenge", user_id: str = None, reason: str = None):
     """Add reputation points to a campus"""
     try:
@@ -16438,6 +16826,24 @@ async def startup_performance_services():
             scheduled_for=datetime.now(timezone.utc) + timedelta(hours=1)
         )
         logger.info("✅ Periodic maintenance scheduled")
+        
+        # Schedule inter-college competition progress updates (every 5 minutes)
+        await background_processor.create_and_add_task(
+            "inter_college_progress_update",
+            update_inter_college_competitions_progress,
+            priority=TaskPriority.MEDIUM,
+            scheduled_for=datetime.now(timezone.utc) + timedelta(minutes=5)
+        )
+        logger.info("✅ Inter-college competition progress tracking scheduled")
+        
+        # Schedule auto-completion check for expired competitions (every 10 minutes)
+        await background_processor.create_and_add_task(
+            "auto_complete_competitions",
+            auto_complete_expired_competitions,
+            priority=TaskPriority.HIGH,
+            scheduled_for=datetime.now(timezone.utc) + timedelta(minutes=10)
+        )
+        logger.info("✅ Auto-completion of expired competitions scheduled")
         
         logger.info("🚀 Performance optimization services initialized successfully")
         
