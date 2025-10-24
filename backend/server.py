@@ -7474,13 +7474,56 @@ async def get_inter_college_leaderboard(
             "competition_id": competition_id
         }).sort("campus_total_score", -1).to_list(None)
         
-        # Update ranks and remove MongoDB _id field
+        # Get reputation rewards configuration from competition
+        reputation_config = competition.get("campus_reputation_points", {
+            "1": 100,  # 1st place
+            "2": 70,   # 2nd place
+            "3": 50,   # 3rd place
+            "4-10": 30,  # 4th to 10th place
+            "participation": 10  # Beyond 10th place
+        })
+        
+        # Calculate max score for performance bonus calculation
+        max_score = max([c.get("campus_total_score", 0) for c in campus_leaderboards], default=1)
+        
+        # Update ranks and calculate reputation points
         for idx, campus in enumerate(campus_leaderboards):
+            rank = idx + 1
+            
+            # Determine base reputation points based on rank
+            if rank == 1:
+                base_points = int(reputation_config.get("1", 100))
+            elif rank == 2:
+                base_points = int(reputation_config.get("2", 70))
+            elif rank == 3:
+                base_points = int(reputation_config.get("3", 50))
+            elif rank <= 10:
+                base_points = int(reputation_config.get("4-10", 30))
+            else:
+                base_points = int(reputation_config.get("participation", 10))
+            
+            # Calculate participation multiplier (encourages higher participation)
+            # Formula: 1 + (active_participants / 50) capped at 2x
+            active_participants = campus.get("active_participants", 0)
+            participation_multiplier = min(1 + (active_participants / 50), 2.0)
+            
+            # Calculate performance bonus (0-50 points based on score relative to max)
+            campus_score = campus.get("campus_total_score", 0)
+            performance_bonus = int((campus_score / max_score) * 50) if max_score > 0 else 0
+            
+            # Total campus reputation points
+            campus_reputation_points = int((base_points * participation_multiplier) + performance_bonus)
+            
+            # Update database with rank and reputation points
             await db.campus_leaderboards.update_one(
                 {"_id": campus["_id"]},
-                {"$set": {"campus_rank": idx + 1}}
+                {"$set": {
+                    "campus_rank": rank,
+                    "campus_reputation_points": campus_reputation_points
+                }}
             )
-            campus["campus_rank"] = idx + 1
+            campus["campus_rank"] = rank
+            campus["campus_reputation_points"] = campus_reputation_points
             # Remove MongoDB ObjectId to prevent serialization errors
             campus.pop("_id", None)
         
@@ -8779,32 +8822,140 @@ async def get_my_created_events(
 @limiter.limit("20/minute")
 async def get_campus_reputation_leaderboard(
     request: Request,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Get campus reputation leaderboard"""
+    """Get campus reputation leaderboard (accessible to all authenticated users)"""
     try:
         db = await get_database()
         
-        # Get all campus reputation records
-        campus_reputations = await db.campus_reputations.find({}).sort("total_reputation_points", -1).to_list(None)
+        # Get all universities
+        universities = await db.universities.find({}).to_list(None)
+        
+        campus_reputations = []
+        
+        for university in universities:
+            campus_name = university.get("name") or university.get("short_name")
+            
+            # Check if campus reputation record exists
+            campus_rep = await db.campus_reputations.find_one({"campus": campus_name})
+            
+            # Calculate campus statistics from actual data
+            # 1. Get student statistics
+            campus_users = await db.users.find({"university": campus_name}).to_list(None)
+            total_students = len(campus_users)
+            active_students = len([u for u in campus_users if u.get("is_active", True)])
+            
+            # 2. Calculate competition wins and participation
+            competition_wins = await db.campus_leaderboards.count_documents({
+                "campus": campus_name,
+                "campus_rank": {"$lte": 3}  # Top 3 positions
+            })
+            
+            competition_participation = await db.campus_leaderboards.count_documents({
+                "campus": campus_name
+            })
+            
+            # 3. Get total reputation points from campus leaderboards
+            campus_competition_data = await db.campus_leaderboards.find({
+                "campus": campus_name
+            }).to_list(None)
+            
+            total_competition_reputation = sum([
+                c.get("campus_reputation_points", 0) for c in campus_competition_data
+            ])
+            
+            # 4. Calculate financial literacy points (based on user savings/goals)
+            financial_points = 0
+            for user in campus_users:
+                # Points from savings (1 point per 1000 saved)
+                financial_points += int(user.get("net_savings", 0) / 1000)
+                # Bonus for goals completed
+                goals_completed = await db.financial_goals.count_documents({
+                    "user_id": user.get("id"),
+                    "status": "completed"
+                })
+                financial_points += goals_completed * 5
+            
+            # 5. Calculate social engagement points
+            social_points = 0
+            for user in campus_users:
+                # Points from referrals
+                referral_program = await db.referral_programs.find_one({"referrer_id": user.get("id")})
+                if referral_program:
+                    social_points += referral_program.get("successful_referrals", 0) * 10
+            
+            # 6. Calculate academic performance (streaks, goals, transactions)
+            academic_points = 0
+            for user in campus_users:
+                academic_points += user.get("current_streak", 0)
+                academic_points += user.get("achievement_points", 0) // 10
+            
+            # Calculate total reputation points
+            total_reputation_points = (
+                total_competition_reputation +
+                financial_points +
+                social_points +
+                academic_points
+            )
+            
+            # Monthly points (last 30 days)
+            thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+            monthly_transactions = await db.reputation_transactions.find({
+                "campus": campus_name,
+                "created_at": {"$gte": thirty_days_ago},
+                "transaction_type": "earned"
+            }).to_list(None)
+            monthly_reputation_points = sum([t.get("points", 0) for t in monthly_transactions])
+            
+            # Get ambassadors count
+            ambassadors_count = await db.campus_ambassadors.count_documents({
+                "university": campus_name,
+                "status": "active"
+            })
+            
+            # Build campus reputation object
+            campus_data = {
+                "campus": campus_name,
+                "total_reputation_points": total_reputation_points,
+                "monthly_reputation_points": monthly_reputation_points,
+                "current_rank": 0,  # Will be set after sorting
+                "previous_rank": campus_rep.get("previous_rank", 0) if campus_rep else 0,
+                "academic_performance": academic_points,
+                "financial_literacy": financial_points,
+                "social_engagement": social_points,
+                "competition_wins": competition_wins,
+                "innovation_points": total_competition_reputation,
+                "total_students": total_students,
+                "active_students": active_students,
+                "ambassador_count": ambassadors_count,
+                "total_active_students": active_students,
+                "average_student_score": (total_reputation_points / max(total_students, 1)),
+                "community_engagement": social_points,
+                "last_updated": datetime.now(timezone.utc)
+            }
+            
+            campus_reputations.append(campus_data)
+        
+        # Sort by total reputation points
+        campus_reputations.sort(key=lambda x: x["total_reputation_points"], reverse=True)
         
         # Update ranks
         for idx, campus in enumerate(campus_reputations):
-            new_rank = idx + 1
-            if campus.get("current_rank") != new_rank:
-                await db.campus_reputations.update_one(
-                    {"_id": campus["_id"]},
-                    {"$set": {"current_rank": new_rank, "previous_rank": campus.get("current_rank", new_rank)}}
-                )
-                campus["current_rank"] = new_rank
+            campus["current_rank"] = idx + 1
+            # Update or create campus reputation record in database
+            await db.campus_reputations.update_one(
+                {"campus": campus["campus"]},
+                {"$set": campus},
+                upsert=True
+            )
         
         # Get user's campus
-        user = await get_user_by_id(current_user)
+        user = await get_user_by_id(current_user["id"])
         user_campus = user.get("university") if user else None
         user_campus_stats = None
         
         if user_campus:
-            user_campus_stats = await db.campus_reputations.find_one({"campus": user_campus})
+            user_campus_stats = next((c for c in campus_reputations if c["campus"] == user_campus), None)
         
         # Get recent reputation transactions for context
         recent_transactions = await db.reputation_transactions.find({}).sort("created_at", -1).limit(20).to_list(None)
@@ -8818,7 +8969,9 @@ async def get_campus_reputation_leaderboard(
         }
         
     except Exception as e:
+        import traceback
         logger.error(f"Get campus reputation error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to get campus reputation")
 
 @api_router.get("/campus/reputation/{campus_name}")
@@ -8826,9 +8979,9 @@ async def get_campus_reputation_leaderboard(
 async def get_campus_reputation_details(
     request: Request,
     campus_name: str,
-    current_user: Dict[str, Any] = Depends(get_current_super_admin)
+    current_user: Dict[str, Any] = Depends(get_current_user_dict)
 ):
-    """Get detailed reputation information for a specific campus (Super Admin ONLY)"""
+    """Get detailed reputation information for a specific campus (accessible to all users)"""
     try:
         db = await get_database()
         
@@ -9204,9 +9357,41 @@ async def update_campus_leaderboards(competition_id: str):
         # Sort campuses by score
         campus_scores.sort(key=lambda x: x["score"], reverse=True)
         
-        # Update leaderboards
+        # Get reputation rewards configuration from competition
+        reputation_config = competition.get("campus_reputation_points", {
+            "1": 100, "2": 70, "3": 50, "4-10": 30, "participation": 10
+        })
+        
+        # Calculate max score for performance bonus
+        max_score = max([c["score"] for c in campus_scores], default=1)
+        
+        # Update leaderboards with reputation points
         for idx, campus_data in enumerate(campus_scores):
             rank = idx + 1
+            
+            # Determine base reputation points based on rank
+            if rank == 1:
+                base_points = int(reputation_config.get("1", 100))
+            elif rank == 2:
+                base_points = int(reputation_config.get("2", 70))
+            elif rank == 3:
+                base_points = int(reputation_config.get("3", 50))
+            elif rank <= 10:
+                base_points = int(reputation_config.get("4-10", 30))
+            else:
+                base_points = int(reputation_config.get("participation", 10))
+            
+            # Calculate participation multiplier
+            active_participants = campus_data["active_participants"]
+            participation_multiplier = min(1 + (active_participants / 50), 2.0)
+            
+            # Calculate performance bonus
+            campus_score = campus_data["score"]
+            performance_bonus = int((campus_score / max_score) * 50) if max_score > 0 else 0
+            
+            # Total campus reputation points
+            campus_reputation_points = int((base_points * participation_multiplier) + performance_bonus)
+            
             await db.campus_leaderboards.update_one(
                 {"competition_id": competition_id, "campus": campus_data["campus"]},
                 {
@@ -9214,6 +9399,7 @@ async def update_campus_leaderboards(competition_id: str):
                         "campus_total_score": campus_data["score"],
                         "campus_average_score": campus_data["score"] / max(1, campus_data["participants"]),
                         "campus_rank": rank,
+                        "campus_reputation_points": campus_reputation_points,
                         "total_participants": campus_data["participants"],
                         "active_participants": campus_data["active_participants"],
                         "last_updated": datetime.now(timezone.utc)
