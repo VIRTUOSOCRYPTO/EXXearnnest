@@ -9232,24 +9232,25 @@ async def calculate_prize_challenge_progress(user_id: str, challenge_category: s
         db = await get_database()
         progress = 0.0
         
-        if challenge_category == "savings":
-            if target_metric == "amount_saved":
-                # Same logic as competition savings
-                income_pipeline = [
-                    {"$match": {"user_id": user_id, "type": "income", "timestamp": {"$gte": start_date}}},
-                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-                ]
-                income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
-                total_income = income_result[0]["total"] if income_result else 0.0
-                
-                expense_pipeline = [
-                    {"$match": {"user_id": user_id, "type": "expense", "timestamp": {"$gte": start_date}}},
-                    {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
-                ]
-                expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
-                total_expenses = expense_result[0]["total"] if expense_result else 0.0
-                
-                progress = max(0, total_income - total_expenses)
+        # Handle both "savings" and "individual" with "savings_amount" or "savings_based" metrics
+        if challenge_category in ["savings", "individual", "savings_based"] or target_metric in ["amount_saved", "savings_amount", "savings_based"]:
+            # Calculate savings progress (income - expenses since challenge start)
+            # Use 'date' field which is the actual field name in transactions
+            income_pipeline = [
+                {"$match": {"user_id": user_id, "type": "income", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            income_result = await db.transactions.aggregate(income_pipeline).to_list(None)
+            total_income = income_result[0]["total"] if income_result else 0.0
+            
+            expense_pipeline = [
+                {"$match": {"user_id": user_id, "type": "expense", "date": {"$gte": start_date}}},
+                {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+            ]
+            expense_result = await db.transactions.aggregate(expense_pipeline).to_list(None)
+            total_expenses = expense_result[0]["total"] if expense_result else 0.0
+            
+            progress = max(0, total_income - total_expenses)
         
         elif challenge_category == "streak":
             if target_metric == "days_streak":
