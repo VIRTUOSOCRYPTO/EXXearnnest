@@ -56,7 +56,7 @@ const InterCollegeCompetitions = lazy(() => import('./components/InterCollegeCom
 const PrizeChallenges = lazy(() => import('./components/PrizeChallenges'));
 const CreateCompetition = lazy(() => import('./components/CreateCompetition'));
 const CreateChallenge = lazy(() => import('./components/CreateChallenge'));
-const CampusReputation = lazy(() => import('./components/CampusReputation'));
+// Removed: CampusReputation component
 
 // Admin System - Lazy Loaded
 const CampusAdminRequest = lazy(() => import('./components/CampusAdminRequest'));
@@ -340,10 +340,6 @@ function App() {
               <Route 
                 path="/create-challenge" 
                 element={user ? <CreateChallenge /> : <Navigate to="/login" />} 
-              />
-              <Route 
-                path="/campus-reputation" 
-                element={user ? <CampusReputation /> : <Navigate to="/login" />} 
               />
 
               {/* Admin Verification System Routes */}
