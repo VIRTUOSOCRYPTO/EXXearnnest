@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
@@ -21,12 +21,51 @@ const RegistrationModal = ({
   groupSizeMin = 2,
   groupSizeMax = 5
 }) => {
+  // Determine if this event type uses phone instead of USN
+  const usePhoneInsteadOfUSN = ['prize_challenge', 'inter_college'].includes(eventType);
+  
   // Set initial registration type based on what's allowed
   const initialRegType = allowedRegistrationTypes.includes('individual') ? 'individual' : 'group';
   const [registrationType, setRegistrationType] = useState(initialRegType);
   const [loading, setLoading] = useState(false);
   const [studentIdFile, setStudentIdFile] = useState(null);
   const [studentIdUrl, setStudentIdUrl] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
+  
+  // Fetch user profile to auto-populate phone number
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!usePhoneInsteadOfUSN) return; // Only fetch for prize_challenge and inter_college
+      
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          const response = await axios.get(`${API}/user/profile`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setUserProfile(response.data);
+          
+          // Auto-populate phone number if available
+          if (response.data.phone_number) {
+            setIndividualData(prev => ({
+              ...prev,
+              phone_number: response.data.phone_number
+            }));
+            setGroupData(prev => ({
+              ...prev,
+              team_leader_phone: response.data.phone_number
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user profile:', error);
+      }
+    };
+    
+    if (open) {
+      fetchUserProfile();
+    }
+  }, [open, usePhoneInsteadOfUSN]);
   
   // Individual registration state
   const [individualData, setIndividualData] = useState({
@@ -214,16 +253,24 @@ const RegistrationModal = ({
                     value={individualData.phone_number}
                     onChange={(e) => handleIndividualChange('phone_number', e.target.value)}
                     required
+                    readOnly={usePhoneInsteadOfUSN}
+                    placeholder={usePhoneInsteadOfUSN ? "Auto-populated from profile" : ""}
+                    className={usePhoneInsteadOfUSN ? "bg-gray-50" : ""}
                   />
+                  {usePhoneInsteadOfUSN && (
+                    <p className="text-xs text-gray-500 mt-1">Phone number from your profile</p>
+                  )}
                 </div>
-                <div>
-                  <Label>USN/Roll Number *</Label>
-                  <Input
-                    value={individualData.usn}
-                    onChange={(e) => handleIndividualChange('usn', e.target.value)}
-                    required
-                  />
-                </div>
+                {!usePhoneInsteadOfUSN && (
+                  <div>
+                    <Label>USN/Roll Number *</Label>
+                    <Input
+                      value={individualData.usn}
+                      onChange={(e) => handleIndividualChange('usn', e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
                 <div>
                   <Label>College *</Label>
                   <Input
@@ -333,16 +380,24 @@ const RegistrationModal = ({
                       value={groupData.team_leader_phone}
                       onChange={(e) => handleGroupChange('team_leader_phone', e.target.value)}
                       required
+                      readOnly={usePhoneInsteadOfUSN}
+                      placeholder={usePhoneInsteadOfUSN ? "Auto-populated from profile" : ""}
+                      className={usePhoneInsteadOfUSN ? "bg-gray-50" : ""}
                     />
+                    {usePhoneInsteadOfUSN && (
+                      <p className="text-xs text-gray-500 mt-1">Phone number from your profile</p>
+                    )}
                   </div>
-                  <div>
-                    <Label>Leader USN *</Label>
-                    <Input
-                      value={groupData.team_leader_usn}
-                      onChange={(e) => handleGroupChange('team_leader_usn', e.target.value)}
-                      required
-                    />
-                  </div>
+                  {!usePhoneInsteadOfUSN && (
+                    <div>
+                      <Label>Leader USN *</Label>
+                      <Input
+                        value={groupData.team_leader_usn}
+                        onChange={(e) => handleGroupChange('team_leader_usn', e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
                   <div>
                     <Label>Leader Branch *</Label>
                     <Input
@@ -425,12 +480,14 @@ const RegistrationModal = ({
                         onChange={(e) => handleMemberChange(index, 'phone', e.target.value)}
                         required
                       />
-                      <Input
-                        placeholder="USN *"
-                        value={member.usn}
-                        onChange={(e) => handleMemberChange(index, 'usn', e.target.value)}
-                        required
-                      />
+                      {!usePhoneInsteadOfUSN && (
+                        <Input
+                          placeholder="USN *"
+                          value={member.usn}
+                          onChange={(e) => handleMemberChange(index, 'usn', e.target.value)}
+                          required
+                        />
+                      )}
                       <Input
                         placeholder="Branch *"
                         value={member.branch}
