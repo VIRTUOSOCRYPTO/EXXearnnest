@@ -1189,16 +1189,34 @@ async def get_friends_with_details_optimized(user_id: str, limit: int = 50):
     """
     Get friends list with user details using aggregation (fixes N+1 query problem)
     Instead of fetching each friend's details separately, use aggregation pipeline
+    
+    FIXED: Handles bidirectional friendship structure (user1_id/user2_id)
     """
     pipeline = [
-        # Match user's friendships
-        {"$match": {"user_id": user_id, "status": "active"}},
+        # Match user's friendships - handle bidirectional structure
+        {"$match": {
+            "$or": [
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
+            ]
+        }},
         
         # Sort by creation date
         {"$sort": {"created_at": -1}},
         
         # Limit results
         {"$limit": limit},
+        
+        # Add computed field for friend_id (the other user in the friendship)
+        {"$addFields": {
+            "friend_id": {
+                "$cond": {
+                    "if": {"$eq": ["$user1_id", user_id]},
+                    "then": "$user2_id",
+                    "else": "$user1_id"
+                }
+            }
+        }},
         
         # Lookup friend user details
         {"$lookup": {
@@ -1209,7 +1227,10 @@ async def get_friends_with_details_optimized(user_id: str, limit: int = 50):
         }},
         
         # Unwind friend details
-        {"$unwind": "$friend_details"},
+        {"$unwind": {
+            "path": "$friend_details",
+            "preserveNullAndEmptyArrays": True
+        }},
         
         # Lookup gamification data
         {"$lookup": {
@@ -1226,7 +1247,7 @@ async def get_friends_with_details_optimized(user_id: str, limit: int = 50):
             "friend_id": 1,
             "created_at": 1,
             "connection_type": 1,
-            "points_earned": 1,
+            "points_earned": {"$ifNull": ["$friendship_points", 0]},
             "friend": {
                 "id": "$friend_details.id",
                 "full_name": "$friend_details.full_name",
