@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
 import { Trophy, Users, Calendar, Award, Target, Medal, Star, Edit, Trash2, Plus, X } from 'lucide-react';
+import { toast } from 'sonner';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -40,6 +41,7 @@ const InterCollegeCompetitions = () => {
   const [selectedCompetition, setSelectedCompetition] = useState(null);
   const [leaderboard, setLeaderboard] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [editingCompetition, setEditingCompetition] = useState(null);
@@ -73,10 +75,20 @@ const InterCollegeCompetitions = () => {
           : comp
       ));
 
-      alert(`Successfully registered! ${response.data.message || 'You have been registered for this competition.'}`);
+      // Show success toast
+      toast.success('🎉 Successfully Registered!', {
+        description: response.data.message || 'You have been registered for this competition.',
+        duration: 4000,
+      });
+      
+      // Refresh competitions to get updated data
+      fetchCompetitions();
     } catch (error) {
       console.error('Registration error:', error);
-      alert(error.response?.data?.detail || 'Failed to register for competition');
+      toast.error('❌ Registration Failed', {
+        description: error.response?.data?.detail || 'Failed to register for competition. Please try again.',
+        duration: 4000,
+      });
     } finally {
       setRegistering(false);
     }
@@ -84,6 +96,8 @@ const InterCollegeCompetitions = () => {
 
   const fetchLeaderboard = async (competitionId) => {
     try {
+      setLoadingLeaderboard(true);
+      setLeaderboard(null); // Clear previous leaderboard
       const token = localStorage.getItem('token');
       const response = await axios.get(`${API}/inter-college/competitions/${competitionId}/leaderboard`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -91,6 +105,12 @@ const InterCollegeCompetitions = () => {
       setLeaderboard(response.data);
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
+      toast.error('Failed to load leaderboard', {
+        description: error.response?.data?.detail || 'Could not fetch leaderboard data',
+        duration: 3000,
+      });
+    } finally {
+      setLoadingLeaderboard(false);
     }
   };
 
@@ -279,7 +299,20 @@ const InterCollegeCompetitions = () => {
                   <span className="break-words">{selectedCompetition?.title} - Leaderboard</span>
                 </DialogTitle>
               </DialogHeader>
-              {leaderboard && <LeaderboardContent leaderboard={leaderboard} />}
+              {loadingLeaderboard ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  <span className="ml-3 text-gray-600">Loading leaderboard...</span>
+                </div>
+              ) : leaderboard ? (
+                <LeaderboardContent leaderboard={leaderboard} />
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg font-medium">No leaderboard data available</p>
+                  <p className="text-sm mt-2">Participants will appear here once they start progressing</p>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
 
