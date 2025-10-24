@@ -31,6 +31,7 @@ const Register = () => {
     password: '',
     confirmPassword: '',
     full_name: '',
+    phone_number: '',
     role: '',
     location: '',
     student_level: 'undergraduate',
@@ -235,6 +236,15 @@ const Register = () => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(formData.email)) {
           setError('Please enter a valid email address');
+          return false;
+        }
+        if (!formData.phone_number || !formData.phone_number.trim()) {
+          setError('Phone number is required');
+          return false;
+        }
+        const phone = formData.phone_number.replace(/[^0-9+]/g, '');
+        if (!/^\+?\d{10,15}$/.test(phone)) {
+          setError('Phone number must be 10-15 digits');
           return false;
         }
         if (formData.password !== formData.confirmPassword) {
@@ -463,6 +473,21 @@ const Register = () => {
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all bg-white/50"
                     placeholder="Enter your email"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    name="phone_number"
+                    value={formData.phone_number}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all bg-white/50"
+                    placeholder="Enter your phone number (10-15 digits)"
                     required
                   />
                 </div>
