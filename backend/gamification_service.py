@@ -1008,21 +1008,20 @@ class GamificationService:
 
     async def _get_user_friends(self, user_id: str) -> List[str]:
         """Get list of user's friend IDs"""
-        # This would integrate with your friendship system
-        # For now, returning empty list - implement based on your friendship model
+        # FIXED: Use correct friendship schema (user1_id/user2_id)
         friendships = await self.db.friendships.find({
             "$or": [
-                {"user_id": user_id, "status": "active"},
-                {"friend_id": user_id, "status": "active"}
+                {"user1_id": user_id, "status": "active"},
+                {"user2_id": user_id, "status": "active"}
             ]
         }).to_list(None)
         
         friend_ids = []
         for friendship in friendships:
-            if friendship["user_id"] == user_id:
-                friend_ids.append(friendship["friend_id"])
+            if friendship["user1_id"] == user_id:
+                friend_ids.append(friendship["user2_id"])
             else:
-                friend_ids.append(friendship["user_id"])
+                friend_ids.append(friendship["user1_id"])
         
         return friend_ids
 
