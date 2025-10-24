@@ -289,7 +289,7 @@ async def get_college_statistics(registrations: List[Dict[str, Any]]) -> Dict[st
     
     return college_stats
 
-async def export_registrations_to_csv(registrations: List[Dict[str, Any]], event_name: str) -> str:
+async def export_registrations_to_csv(registrations: List[Dict[str, Any]], event_name: str, event_type: str = "college_event") -> str:
     """Export registrations to CSV file"""
     import csv
     import io
@@ -300,18 +300,34 @@ async def export_registrations_to_csv(registrations: List[Dict[str, Any]], event
     # Create CSV content
     output = io.StringIO()
     
+    # Determine if this event type should use Phone Number instead of USN
+    use_phone_instead_of_usn = event_type in ["prize_challenge", "inter_college"]
+    
     # Determine fields based on registration type
     if registrations[0].get("registration_type") == "group":
-        fieldnames = [
-            "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
-            "Leader Email", "Leader Phone", "Leader USN", "Team Size", 
-            "College", "Branch", "Semester", "Year"
-        ]
+        if use_phone_instead_of_usn:
+            fieldnames = [
+                "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
+                "Leader Email", "Leader Phone", "Team Size", 
+                "College", "Branch", "Semester", "Year"
+            ]
+        else:
+            fieldnames = [
+                "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
+                "Leader Email", "Leader Phone", "Leader USN", "Team Size", 
+                "College", "Branch", "Semester", "Year"
+            ]
     else:
-        fieldnames = [
-            "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
-            "USN", "College", "Branch", "Section", "Semester", "Year"
-        ]
+        if use_phone_instead_of_usn:
+            fieldnames = [
+                "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
+                "College", "Branch", "Section", "Semester", "Year"
+            ]
+        else:
+            fieldnames = [
+                "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
+                "USN", "College", "Branch", "Section", "Semester", "Year"
+            ]
     
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
@@ -326,13 +342,14 @@ async def export_registrations_to_csv(registrations: List[Dict[str, Any]], event
                 "Team Leader": reg.get("team_leader_name", ""),
                 "Leader Email": reg.get("team_leader_email", ""),
                 "Leader Phone": reg.get("team_leader_phone", ""),
-                "Leader USN": reg.get("team_leader_usn", ""),
                 "Team Size": reg.get("team_size", ""),
                 "College": reg.get("college", reg.get("user_college", "")),
                 "Branch": reg.get("team_leader_branch", reg.get("branch", "")),
                 "Semester": reg.get("team_leader_semester", reg.get("semester", "")),
                 "Year": reg.get("team_leader_year", reg.get("year", ""))
             }
+            if not use_phone_instead_of_usn:
+                row["Leader USN"] = reg.get("team_leader_usn", "")
         else:
             row = {
                 "Registration ID": reg.get("id", ""),
@@ -341,13 +358,14 @@ async def export_registrations_to_csv(registrations: List[Dict[str, Any]], event
                 "Name": reg.get("full_name", reg.get("user_name", "")),
                 "Email": reg.get("email", reg.get("user_email", "")),
                 "Phone": reg.get("phone_number", ""),
-                "USN": reg.get("usn", ""),
                 "College": reg.get("college", reg.get("user_college", "")),
                 "Branch": reg.get("branch", ""),
                 "Section": reg.get("section", ""),
                 "Semester": reg.get("semester", ""),
                 "Year": reg.get("year", "")
             }
+            if not use_phone_instead_of_usn:
+                row["USN"] = reg.get("usn", "")
         writer.writerow(row)
     
     # Save to file
@@ -362,7 +380,7 @@ async def export_registrations_to_csv(registrations: List[Dict[str, Any]], event
     return f"/exports/{filename}"
 
 
-async def export_registrations_to_excel(registrations: List[Dict[str, Any]], event_name: str) -> str:
+async def export_registrations_to_excel(registrations: List[Dict[str, Any]], event_name: str, event_type: str = "college_event") -> str:
     """Export registrations to Excel file"""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
@@ -385,18 +403,34 @@ async def export_registrations_to_excel(registrations: List[Dict[str, Any]], eve
         bottom=Side(style='thin')
     )
     
+    # Determine if this event type should use Phone Number instead of USN
+    use_phone_instead_of_usn = event_type in ["prize_challenge", "inter_college"]
+    
     # Determine fields based on registration type
     if registrations[0].get("registration_type") == "group":
-        headers = [
-            "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
-            "Leader Email", "Leader Phone", "Leader USN", "Team Size", 
-            "College", "Branch", "Semester", "Year"
-        ]
+        if use_phone_instead_of_usn:
+            headers = [
+                "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
+                "Leader Email", "Leader Phone", "Team Size", 
+                "College", "Branch", "Semester", "Year"
+            ]
+        else:
+            headers = [
+                "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
+                "Leader Email", "Leader Phone", "Leader USN", "Team Size", 
+                "College", "Branch", "Semester", "Year"
+            ]
     else:
-        headers = [
-            "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
-            "USN", "College", "Branch", "Section", "Semester", "Year"
-        ]
+        if use_phone_instead_of_usn:
+            headers = [
+                "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
+                "College", "Branch", "Section", "Semester", "Year"
+            ]
+        else:
+            headers = [
+                "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
+                "USN", "College", "Branch", "Section", "Semester", "Year"
+            ]
     
     # Write headers
     for col, header in enumerate(headers, 1):
@@ -417,13 +451,16 @@ async def export_registrations_to_excel(registrations: List[Dict[str, Any]], eve
                 reg.get("team_leader_name", ""),
                 reg.get("team_leader_email", ""),
                 reg.get("team_leader_phone", ""),
-                reg.get("team_leader_usn", ""),
+            ]
+            if not use_phone_instead_of_usn:
+                data.append(reg.get("team_leader_usn", ""))
+            data.extend([
                 reg.get("team_size", ""),
                 reg.get("college", reg.get("user_college", "")),
                 reg.get("team_leader_branch", reg.get("branch", "")),
                 reg.get("team_leader_semester", reg.get("semester", "")),
                 reg.get("team_leader_year", reg.get("year", ""))
-            ]
+            ])
         else:
             data = [
                 reg.get("id", ""),
@@ -432,13 +469,16 @@ async def export_registrations_to_excel(registrations: List[Dict[str, Any]], eve
                 reg.get("full_name", reg.get("user_name", "")),
                 reg.get("email", reg.get("user_email", "")),
                 reg.get("phone_number", ""),
-                reg.get("usn", ""),
+            ]
+            if not use_phone_instead_of_usn:
+                data.append(reg.get("usn", ""))
+            data.extend([
                 reg.get("college", reg.get("user_college", "")),
                 reg.get("branch", ""),
                 reg.get("section", ""),
                 reg.get("semester", ""),
                 reg.get("year", "")
-            ]
+            ])
         
         for col, value in enumerate(data, 1):
             cell = ws.cell(row=row_num, column=col, value=value)
@@ -467,7 +507,7 @@ async def export_registrations_to_excel(registrations: List[Dict[str, Any]], eve
     return f"/exports/{filename}"
 
 
-async def export_registrations_to_pdf(registrations: List[Dict[str, Any]], event_name: str) -> str:
+async def export_registrations_to_pdf(registrations: List[Dict[str, Any]], event_name: str, event_type: str = "college_event") -> str:
     """Export registrations to PDF file"""
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter, A4, landscape
@@ -502,12 +542,21 @@ async def export_registrations_to_pdf(registrations: List[Dict[str, Any]], event
     elements.append(title)
     elements.append(Spacer(1, 20))
     
+    # Determine if this event type should use Phone Number instead of USN
+    use_phone_instead_of_usn = event_type in ["prize_challenge", "inter_college"]
+    
     # Determine headers based on registration type
     if registrations[0].get("registration_type") == "group":
-        headers = [
-            "Reg ID", "Date", "Status", "Team Name", "Leader", 
-            "Email", "Phone", "USN", "Size", "College"
-        ]
+        if use_phone_instead_of_usn:
+            headers = [
+                "Reg ID", "Date", "Status", "Team Name", "Leader", 
+                "Email", "Phone", "Size", "College"
+            ]
+        else:
+            headers = [
+                "Reg ID", "Date", "Status", "Team Name", "Leader", 
+                "Email", "Phone", "USN", "Size", "College"
+            ]
         data = [headers]
         for reg in registrations:
             row = [
@@ -518,16 +567,25 @@ async def export_registrations_to_pdf(registrations: List[Dict[str, Any]], event
                 reg.get("team_leader_name", "")[:15],
                 reg.get("team_leader_email", "")[:25],
                 reg.get("team_leader_phone", ""),
-                reg.get("team_leader_usn", ""),
+            ]
+            if not use_phone_instead_of_usn:
+                row.append(reg.get("team_leader_usn", ""))
+            row.extend([
                 str(reg.get("team_size", "")),
                 reg.get("college", reg.get("user_college", ""))[:20]
-            ]
+            ])
             data.append(row)
     else:
-        headers = [
-            "Reg ID", "Date", "Status", "Name", "Email", "Phone", 
-            "USN", "College", "Branch", "Semester"
-        ]
+        if use_phone_instead_of_usn:
+            headers = [
+                "Reg ID", "Date", "Status", "Name", "Email", "Phone", 
+                "College", "Branch", "Semester"
+            ]
+        else:
+            headers = [
+                "Reg ID", "Date", "Status", "Name", "Email", "Phone", 
+                "USN", "College", "Branch", "Semester"
+            ]
         data = [headers]
         for reg in registrations:
             row = [
@@ -537,11 +595,14 @@ async def export_registrations_to_pdf(registrations: List[Dict[str, Any]], event
                 reg.get("full_name", reg.get("user_name", ""))[:20],
                 reg.get("email", reg.get("user_email", ""))[:25],
                 reg.get("phone_number", ""),
-                reg.get("usn", ""),
+            ]
+            if not use_phone_instead_of_usn:
+                row.append(reg.get("usn", ""))
+            row.extend([
                 reg.get("college", reg.get("user_college", ""))[:20],
                 reg.get("branch", "")[:10],
                 reg.get("semester", "")
-            ]
+            ])
             data.append(row)
     
     # Create table
@@ -574,7 +635,7 @@ async def export_registrations_to_pdf(registrations: List[Dict[str, Any]], event
     return f"/exports/{filename}"
 
 
-async def export_registrations_to_docx(registrations: List[Dict[str, Any]], event_name: str) -> str:
+async def export_registrations_to_docx(registrations: List[Dict[str, Any]], event_name: str, event_type: str = "college_event") -> str:
     """Export registrations to DOCX file"""
     from docx import Document
     from docx.shared import Inches
@@ -596,17 +657,32 @@ async def export_registrations_to_docx(registrations: List[Dict[str, Any]], even
     doc.add_paragraph(f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     doc.add_paragraph()
     
+    # Determine if this event type should use Phone Number instead of USN
+    use_phone_instead_of_usn = event_type in ["prize_challenge", "inter_college"]
+    
     # Determine columns based on registration type
     if registrations[0].get("registration_type") == "group":
-        headers = [
-            "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
-            "Email", "Phone", "USN", "Team Size", "College"
-        ]
+        if use_phone_instead_of_usn:
+            headers = [
+                "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
+                "Email", "Phone", "Team Size", "College"
+            ]
+        else:
+            headers = [
+                "Registration ID", "Date", "Status", "Team Name", "Team Leader", 
+                "Email", "Phone", "USN", "Team Size", "College"
+            ]
     else:
-        headers = [
-            "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
-            "USN", "College", "Branch", "Semester"
-        ]
+        if use_phone_instead_of_usn:
+            headers = [
+                "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
+                "College", "Branch", "Semester"
+            ]
+        else:
+            headers = [
+                "Registration ID", "Date", "Status", "Name", "Email", "Phone", 
+                "USN", "College", "Branch", "Semester"
+            ]
     
     # Create table
     table = doc.add_table(rows=1, cols=len(headers))
@@ -631,10 +707,13 @@ async def export_registrations_to_docx(registrations: List[Dict[str, Any]], even
                 reg.get("team_leader_name", ""),
                 reg.get("team_leader_email", ""),
                 reg.get("team_leader_phone", ""),
-                reg.get("team_leader_usn", ""),
+            ]
+            if not use_phone_instead_of_usn:
+                data.append(reg.get("team_leader_usn", ""))
+            data.extend([
                 str(reg.get("team_size", "")),
                 reg.get("college", reg.get("user_college", ""))
-            ]
+            ])
         else:
             data = [
                 reg.get("id", ""),
@@ -643,11 +722,14 @@ async def export_registrations_to_docx(registrations: List[Dict[str, Any]], even
                 reg.get("full_name", reg.get("user_name", "")),
                 reg.get("email", reg.get("user_email", "")),
                 reg.get("phone_number", ""),
-                reg.get("usn", ""),
+            ]
+            if not use_phone_instead_of_usn:
+                data.append(reg.get("usn", ""))
+            data.extend([
                 reg.get("college", reg.get("user_college", "")),
                 reg.get("branch", ""),
                 reg.get("semester", "")
-            ]
+            ])
         
         for i, value in enumerate(data):
             row_cells[i].text = str(value)
