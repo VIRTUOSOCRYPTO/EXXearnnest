@@ -556,15 +556,21 @@ const Navigation = () => {
               {/* Campus Section - Collapsible */}
               <div className="border-t border-gray-100 pt-4 mt-4">
                 <button
-                  onClick={() => setIsMobileCampusOpen(!isMobileCampusOpen)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsMobileCampusOpen(!isMobileCampusOpen);
+                  }}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
+                  type="button"
                 >
                   <div className="flex items-center gap-2">
                     <BuildingOffice2Icon className="w-5 h-5 text-purple-600" />
                     <span>Campus Features</span>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">{campusItems.length}</span>
                   </div>
                   <svg 
-                    className={`w-4 h-4 transition-transform duration-200 ${isMobileCampusOpen ? 'rotate-180' : ''}`} 
+                    className={`w-5 h-5 transition-transform duration-300 ${isMobileCampusOpen ? 'rotate-180' : 'rotate-0'}`} 
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -574,8 +580,8 @@ const Navigation = () => {
                 </button>
                 
                 {/* Campus Sub-menu */}
-                <div className={`overflow-hidden transition-all duration-300 ${isMobileCampusOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <div className="pl-4 pt-2 space-y-1">
+                {isMobileCampusOpen && (
+                  <div className="pl-4 pt-2 pb-2 space-y-1 animate-slideDown">
                     {campusItems.map((item) => {
                       const Icon = item.icon;
                       const isActive = location.pathname === item.path;
@@ -597,21 +603,27 @@ const Navigation = () => {
                       );
                     })}
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Viral Features Section - Collapsible */}
               <div className="border-t border-gray-100 pt-4 mt-4">
                 <button
-                  onClick={() => setIsMobileViralOpen(!isMobileViralOpen)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsMobileViralOpen(!isMobileViralOpen);
+                  }}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
+                  type="button"
                 >
                   <div className="flex items-center gap-2">
                     <FireIcon className="w-5 h-5 text-orange-600" />
                     <span>🔥 Viral Features</span>
+                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{viralItems.length}</span>
                   </div>
                   <svg 
-                    className={`w-4 h-4 transition-transform duration-200 ${isMobileViralOpen ? 'rotate-180' : ''}`} 
+                    className={`w-5 h-5 transition-transform duration-300 ${isMobileViralOpen ? 'rotate-180' : 'rotate-0'}`} 
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -621,8 +633,8 @@ const Navigation = () => {
                 </button>
                 
                 {/* Viral Sub-menu */}
-                <div className={`overflow-hidden transition-all duration-300 ${isMobileViralOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <div className="pl-4 pt-2 space-y-1">
+                {isMobileViralOpen && (
+                  <div className="pl-4 pt-2 pb-2 space-y-1 animate-slideDown">
                     {viralItems.map((item) => {
                       const Icon = item.icon;
                       const isActive = location.pathname === item.path;
@@ -646,21 +658,26 @@ const Navigation = () => {
                       );
                     })}
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Admin Section - Collapsible */}
               <div className="border-t border-gray-100 pt-4 mt-4">
                 <button
-                  onClick={() => setIsMobileAdminOpen(!isMobileAdminOpen)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsMobileAdminOpen(!isMobileAdminOpen);
+                  }}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-all duration-200"
+                  type="button"
                 >
                   <div className="flex items-center gap-2">
                     <BuildingOffice2Icon className="w-5 h-5 text-blue-600" />
                     <span>Admin</span>
                   </div>
                   <svg 
-                    className={`w-4 h-4 transition-transform duration-200 ${isMobileAdminOpen ? 'rotate-180' : ''}`} 
+                    className={`w-5 h-5 transition-transform duration-300 ${isMobileAdminOpen ? 'rotate-180' : 'rotate-0'}`} 
                     fill="none" 
                     stroke="currentColor" 
                     viewBox="0 0 24 24"
@@ -670,8 +687,8 @@ const Navigation = () => {
                 </button>
                 
                 {/* Admin Sub-menu */}
-                <div className={`overflow-hidden transition-all duration-300 ${isMobileAdminOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                  <div className="pl-4 pt-2 space-y-1">
+                {isMobileAdminOpen && (
+                  <div className="pl-4 pt-2 pb-2 space-y-1 animate-slideDown">
                     {adminItems.map((item) => {
                       // Show based on user admin_level
                       const userAdminLevel = user?.admin_level || 'user';
@@ -727,7 +744,7 @@ const Navigation = () => {
                       return null;
                     })}
                   </div>
-                </div>
+                )}
               </div>
               
               {/* Profile Section */}
