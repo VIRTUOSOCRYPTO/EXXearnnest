@@ -2125,8 +2125,9 @@ class CampusLeaderboard(BaseModel):
     # Progress tracking
     daily_totals: Dict[str, float] = {}  # Date -> daily total
     milestone_achievements: List[Dict[str, Any]] = []
-    # Campus reputation
-    reputation_points_earned: int = 0
+    # Campus reputation (calculated based on rank, participation, and performance)
+    campus_reputation_points: int = 0  # Displayed on leaderboard - calculated from rank + performance
+    reputation_points_earned: int = 0  # Actual points awarded to campus reputation system
     bonus_points: int = 0  # Extra points for achievements
     # Last updated timestamp
     last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
