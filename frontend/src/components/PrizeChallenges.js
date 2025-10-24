@@ -46,6 +46,7 @@ const PrizeChallenges = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [editingChallenge, setEditingChallenge] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [leaderboardChallengeId, setLeaderboardChallengeId] = useState(null);
   useEffect(() => {
     fetchChallenges();
   }, []);
@@ -354,13 +355,22 @@ const PrizeChallenges = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <Dialog>
+          <Dialog 
+            open={leaderboardChallengeId === challenge.id} 
+            onOpenChange={(open) => {
+              if (!open) {
+                setLeaderboardChallengeId(null);
+                setLeaderboard(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 variant="outline"
                 className="w-full sm:flex-1"
                 onClick={() => {
                   setSelectedChallenge(challenge);
+                  setLeaderboardChallengeId(challenge.id);
                   fetchLeaderboard(challenge.id);
                 }}
               >
@@ -858,47 +868,50 @@ const PrizeChallenges = () => {
           {leaderboard.leaderboard?.map((participant, index) => (
             <div
               key={participant.user_id}
-              className={`p-4 rounded-lg border ${
+              className={`p-4 rounded-lg border-2 transition-all ${
                 participant.is_current_user 
-                  ? 'bg-purple-50 border-purple-200' 
-                  : 'bg-gray-50'
+                  ? 'bg-gradient-to-r from-purple-100 to-pink-100 border-purple-400 shadow-lg ring-2 ring-purple-300 ring-offset-2' 
+                  : 'bg-gray-50 border-gray-200'
               }`}
             >
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                    index === 0 ? 'bg-yellow-400 text-yellow-900' : 
-                    index === 1 ? 'bg-gray-300 text-gray-700' : 
-                    index === 2 ? 'bg-orange-300 text-orange-900' : 'bg-gray-200 text-gray-600'
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-md ${
+                    participant.is_current_user 
+                      ? 'bg-purple-500 text-white ring-2 ring-purple-300' 
+                      : index === 0 ? 'bg-yellow-400 text-yellow-900' 
+                      : index === 1 ? 'bg-gray-300 text-gray-700' 
+                      : index === 2 ? 'bg-orange-300 text-orange-900' 
+                      : 'bg-gray-200 text-gray-600'
                   }`}>
                     {participant.rank}
                   </div>
                   <div>
-                    <div className="font-medium flex items-center gap-2">
+                    <div className={`font-medium flex items-center gap-2 ${
+                      participant.is_current_user ? 'font-bold text-purple-900' : ''
+                    }`}>
                       {participant.user_name}
                       {participant.is_current_user && (
-                        <Badge variant="outline" className="text-xs">You</Badge>
+                        <Badge className="bg-purple-600 text-white text-xs">👤 You</Badge>
                       )}
                       {participant.is_completed && (
                         <Badge className="bg-green-500 text-xs">✓ Completed</Badge>
                       )}
                     </div>
-                    <div className="text-sm text-gray-600">{participant.campus}</div>
+                    <div className={`text-sm ${
+                      participant.is_current_user ? 'text-purple-700 font-medium' : 'text-gray-600'
+                    }`}>
+                      {participant.campus}
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold text-purple-600">
+                  <div className={`font-bold ${
+                    participant.is_current_user ? 'text-purple-700 text-lg' : 'text-purple-600'
+                  }`}>
                     {participant.current_progress || 0}
                   </div>
-                  <div className="text-xs text-gray-500">
-                    {participant.progress_percentage?.toFixed(1) || 0}% complete
-                  </div>
                 </div>
-              </div>
-              
-              {/* Progress bar */}
-              <div className="mt-3">
-                <Progress value={participant.progress_percentage || 0} className="h-2" />
               </div>
             </div>
           ))}
@@ -917,9 +930,9 @@ const PrizeChallenges = () => {
               </div>
             </div>
             <div>
-              <div className="text-sm text-gray-600">Progress</div>
+              <div className="text-sm text-gray-600">Current Progress</div>
               <div className="font-bold text-purple-600">
-                {leaderboard.user_stats.entry?.progress_percentage?.toFixed(1) || 0}%
+                {leaderboard.user_stats.entry?.current_progress || 0}
               </div>
             </div>
           </div>
