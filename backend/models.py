@@ -2086,11 +2086,17 @@ class CampusCompetitionParticipation(BaseModel):
     campus: str  # University name
     # Registration details
     registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    joined_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))  # For progress calculation
     registration_status: str = "registered"  # "registered", "active", "disqualified", "withdrawn"
     # Performance tracking
     individual_score: float = 0.0
     individual_rank: int = 0
     campus_contribution: float = 0.0  # This user's contribution to campus total
+    # Automatic progress tracking (like prize challenges)
+    current_progress: float = 0.0  # Current progress value
+    progress_percentage: float = 0.0  # Progress as percentage of target
+    current_rank: int = 0  # Current rank among all participants
+    last_updated: Optional[datetime] = None  # Last progress update time
     # Progress tracking
     daily_progress: Dict[str, float] = {}  # Date -> progress value
     milestones_achieved: List[str] = []
