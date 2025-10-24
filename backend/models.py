@@ -2029,7 +2029,7 @@ class InterCollegeCompetition(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     description: str
-    competition_type: str  # "campus_savings", "campus_streak", "campus_referrals", "campus_goals"
+    competition_type: str  # "campus_savings", "campus_streak", "campus_referrals", "campus_goals", "savings", "individual", "savings_based", "streak", "referrals", "goals", "engagement"
     # Competition details
     start_date: datetime
     end_date: datetime
@@ -2043,7 +2043,7 @@ class InterCollegeCompetition(BaseModel):
     min_user_level: int = 1
     # Competition mechanics
     scoring_method: str = "total"  # "total", "average", "percentage", "top_performers"
-    target_metric: str  # "total_savings", "average_streak", "referral_count", "goals_completed"
+    target_metric: str  # "total_savings", "amount_saved", "savings_amount", "savings_based", "average_streak", "days_streak", "referral_count", "referrals_made", "goals_completed"
     target_value: Optional[float] = None
     # Prizes and rewards
     prize_pool: float  # Total monetary prize pool
@@ -2060,7 +2060,7 @@ class InterCollegeCompetition(BaseModel):
     
     @validator('competition_type')
     def validate_competition_type(cls, v):
-        allowed_types = ["campus_savings", "campus_streak", "campus_referrals", "campus_goals"]
+        allowed_types = ["campus_savings", "campus_streak", "campus_referrals", "campus_goals", "savings", "individual", "savings_based", "streak", "referrals", "goals", "engagement"]
         if v not in allowed_types:
             raise ValueError(f'Competition type must be one of: {", ".join(allowed_types)}')
         return v
