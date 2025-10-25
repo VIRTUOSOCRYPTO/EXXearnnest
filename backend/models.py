@@ -103,7 +103,7 @@ class UserCreate(BaseModel):
     phone_number: str  # MANDATORY - Phone number field
     role: str  # MANDATORY
     student_level: str
-    university: Optional[str] = None  # For campus integration
+    university: str  # MANDATORY - University/College field
     skills: List[str] = []
     availability_hours: int = 10
     location: str  # MANDATORY
@@ -113,11 +113,14 @@ class UserCreate(BaseModel):
     def validate_phone_number(cls, v):
         if not v or not v.strip():
             raise ValueError('Phone number is required')
-        # Remove spaces and dashes
-        phone = v.strip().replace(' ', '').replace('-', '')
-        # Check if it's a valid phone number format (10-15 digits)
-        if not re.match(r'^\+?\d{10,15}$', phone):
-            raise ValueError('Phone number must be 10-15 digits')
+        # Remove spaces, dashes, and plus sign
+        phone = v.strip().replace(' ', '').replace('-', '').replace('+', '')
+        # Check if it's exactly 10 digits
+        if not re.match(r'^\d{10}$', phone):
+            raise ValueError('Phone number must be exactly 10 digits')
+        # Indian phone number validation (starts with 6-9)
+        if not phone[0] in '6789':
+            raise ValueError('Phone number must start with 6, 7, 8, or 9')
         return v
 
     @validator('role')
@@ -176,6 +179,14 @@ class UserCreate(BaseModel):
             raise ValueError('Full name must be at least 2 characters long')
         if not re.match(r'^[a-zA-Z\s.]+$', v):
             raise ValueError('Full name can only contain letters, spaces, and periods')
+        return v.strip()
+
+    @validator('university')
+    def validate_university(cls, v):
+        if not v or not v.strip():
+            raise ValueError('University/College is required')
+        if len(v.strip()) < 3:
+            raise ValueError('University/College name must be at least 3 characters long')
         return v.strip()
 
     @validator('skills')
