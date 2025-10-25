@@ -10996,15 +10996,21 @@ async def get_friends(
         for item in friends_optimized:
             friend_data = item.get("friend", {})
             gamification = item.get("gamification", {})
+            friend_id = item.get("friend_id")
+            
+            # Get friend's actual financial data
+            friend_user = await db.users.find_one({"id": friend_id})
+            total_earnings = friend_user.get("total_earnings", 0.0) if friend_user else 0.0
+            achievement_points = friend_user.get("achievement_points", 0) if friend_user else 0
             
             friends_list.append({
-                "friend_id": item.get("friend_id"),
+                "friend_id": friend_id,
                 "full_name": friend_data.get("full_name", "Unknown"),
                 "avatar": friend_data.get("avatar", "boy"),
                 "university": friend_data.get("university"),
                 "current_streak": gamification.get("current_streak", 0),
-                "total_earnings": 0.0,  # Can be added to aggregation if needed
-                "friendship_points": item.get("points_earned", 0),
+                "total_earnings": total_earnings,
+                "friendship_points": achievement_points,
                 "friendship_created": item.get("created_at"),
                 "level": gamification.get("level", 1),
                 "badges_count": len(gamification.get("badges", []))
@@ -11022,7 +11028,7 @@ async def get_friends(
 @api_router.get("/friends/invitations")
 @limiter.limit("20/minute")
 async def get_invitations(request: Request, current_user: Dict[str, Any] = Depends(get_current_user_dict)):
-    """Get sent and received invitations"""
+    """Get sent and received invitations with comprehensive referral stats"""
     try:
         db = await get_database()
         user_id = current_user.get("id")
@@ -11038,13 +11044,34 @@ async def get_invitations(request: Request, current_user: Dict[str, Any] = Depen
             invite_stats = UserInvitationStats(user_id=user_id).dict()
             await db.user_invitation_stats.insert_one(invite_stats)
         
+        # Get referral program stats for comprehensive view
+        referral_program = await db.referral_programs.find_one({"referrer_id": user_id})
+        
+        # Calculate total referrals from both formal invitations and direct referral code usage
+        total_successful = invite_stats.get("total_successful_invites", 0)
+        if referral_program:
+            # Add successful referrals from referral program (people who used the link)
+            total_successful += referral_program.get("successful_referrals", 0)
+        
+        # Calculate monthly sent including both formal invitations and referrals this month
+        monthly_sent = invite_stats.get("monthly_invites_sent", 0)
+        
+        # Get this month's referrals via referral code
+        from datetime import datetime, timezone
+        start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_referral_signups = await db.referred_users.count_documents({
+            "referrer_id": user_id,
+            "signed_up_at": {"$gte": start_of_month}
+        })
+        monthly_sent += monthly_referral_signups
+        
         return {
             "sent_invitations": sent_invitations,
             "invitation_stats": {
-                "monthly_sent": invite_stats["monthly_invites_sent"],
+                "monthly_sent": monthly_sent,
                 "monthly_limit": invite_stats["monthly_invites_limit"],
-                "remaining": invite_stats["monthly_invites_limit"] - invite_stats["monthly_invites_sent"],
-                "total_successful": invite_stats["total_successful_invites"],
+                "remaining": max(0, invite_stats["monthly_invites_limit"] - monthly_sent),
+                "total_successful": total_successful,
                 "bonus_points_earned": invite_stats["invitation_bonus_points"]
             }
         }
