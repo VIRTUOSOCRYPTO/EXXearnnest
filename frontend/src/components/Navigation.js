@@ -53,7 +53,6 @@ const Navigation = () => {
     { path: '/hustles', label: 'Side Hustles', icon: BriefcaseIcon },
     { path: '/friends-referrals', label: 'Friends & Referrals', icon: UsersIcon },
     { path: '/my-registrations', label: 'My Registrations', icon: CalendarDaysIcon },
-    { path: '/gamification', label: 'Achievements', icon: TrophyIcon },
     { path: '/recommendations', label: 'Recommendations', icon: LightBulbIcon },
     { path: '/challenges', label: 'Challenges', icon: FireIcon },
     { path: '/social-feed', label: 'Social Feed', icon: UserGroupIcon },
@@ -173,7 +172,7 @@ const Navigation = () => {
 
   return (
     <nav ref={navRef} className="bg-white shadow-sm border-b border-gray-100 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink-0">
@@ -185,8 +184,8 @@ const Navigation = () => {
 
           {/* Navigation Links - Desktop */}
           <div className="hidden lg:flex items-center space-x-1">
-            {/* Core Navigation Items */}
-            {navItems.slice(0, 8).map((item) => {
+            {/* Core Navigation Items - Show first 9 items including Recommendations */}
+            {navItems.slice(0, 9).map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
               
@@ -531,8 +530,8 @@ const Navigation = () => {
           <div className="lg:hidden border-t border-gray-100 bg-white shadow-lg">
             {/* Navigation Items */}
             <div className="px-4 py-4 space-y-2 max-h-96 overflow-y-auto">
-              {/* Core Navigation */}
-              {navItems.slice(0, 8).map((item) => {
+              {/* Core Navigation - Show first 9 items including Recommendations */}
+              {navItems.slice(0, 9).map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
                 
