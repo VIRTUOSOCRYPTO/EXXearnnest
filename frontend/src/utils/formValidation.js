@@ -88,18 +88,14 @@ export const validatePhone = (phone) => {
   // Remove all non-digit characters
   const digitsOnly = phone.replace(/\D/g, '');
   
-  if (digitsOnly.length < 10) {
-    errors.push('Phone number must be at least 10 digits');
+  if (digitsOnly.length !== 10) {
+    errors.push('Phone number must be exactly 10 digits');
   }
   
-  if (digitsOnly.length > 12) {
-    errors.push('Phone number is too long');
-  }
-  
-  // Indian phone number validation
+  // Indian phone number validation (must start with 6-9)
   const indianPhoneRegex = /^[6-9]\d{9}$/;
   if (digitsOnly.length === 10 && !indianPhoneRegex.test(digitsOnly)) {
-    errors.push('Invalid Indian phone number');
+    errors.push('Invalid Indian phone number (must start with 6, 7, 8, or 9)');
   }
   
   return {
