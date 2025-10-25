@@ -340,22 +340,22 @@ const MyRegistrations = () => {
       <Card>
         <CardContent className="p-0">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="all" className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                All ({getTabStats('all').total})
+            <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 gap-1 p-2">
+              <TabsTrigger value="all" className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                <Users className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="truncate">All ({getTabStats('all').total})</span>
               </TabsTrigger>
-              <TabsTrigger value="college_events" className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Events ({getTabStats('college_events').total})
+              <TabsTrigger value="college_events" className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                <Calendar className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="truncate">Events ({getTabStats('college_events').total})</span>
               </TabsTrigger>
-              <TabsTrigger value="prize_challenges" className="flex items-center gap-2">
-                <Award className="w-4 h-4" />
-                Challenges ({getTabStats('prize_challenges').total})
+              <TabsTrigger value="prize_challenges" className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                <Award className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="truncate">Challenges ({getTabStats('prize_challenges').total})</span>
               </TabsTrigger>
-              <TabsTrigger value="inter_college_competitions" className="flex items-center gap-2">
-                <Trophy className="w-4 h-4" />
-                Competitions ({getTabStats('inter_college_competitions').total})
+              <TabsTrigger value="inter_college_competitions" className="flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm">
+                <Trophy className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="truncate">Competitions ({getTabStats('inter_college_competitions').total})</span>
               </TabsTrigger>
             </TabsList>
 
