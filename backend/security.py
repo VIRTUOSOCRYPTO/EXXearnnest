@@ -109,8 +109,8 @@ def verify_verification_token(token: str, provided_code: str, token_type: str = 
 def check_password_strength(password: str) -> dict:
     """Check password strength and return score with feedback
     
-    ENHANCED SECURITY REQUIREMENTS:
-    - Minimum 12 characters (enforced)
+    SECURITY REQUIREMENTS:
+    - Minimum 8 characters (enforced)
     - Must contain uppercase letter
     - Must contain lowercase letter  
     - Must contain number
@@ -119,9 +119,9 @@ def check_password_strength(password: str) -> dict:
     score = 0
     feedback = []
     
-    # CRITICAL: Minimum 12 characters required
-    if len(password) < 12:
-        feedback.append("Password must be at least 12 characters long (REQUIRED)")
+    # CRITICAL: Minimum 8 characters required
+    if len(password) < 8:
+        feedback.append("Password must be at least 8 characters long (REQUIRED)")
         return {
             "score": 0,
             "strength": "Invalid",
@@ -131,8 +131,11 @@ def check_password_strength(password: str) -> dict:
         }
     
     # Length bonus
-    if len(password) >= 12:
+    if len(password) >= 8:
         score += 20
+    
+    if len(password) >= 12:
+        score += 10
     
     if len(password) >= 16:
         score += 10
