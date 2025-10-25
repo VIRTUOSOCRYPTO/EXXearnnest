@@ -186,7 +186,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-8 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 sm:px-5 lg:px-6 xl:px-8 py-4 sm:py-6 lg:py-8 space-y-5 lg:space-y-6">
         {/* Enhanced Welcome Section - Responsive */}
         <div className="relative overflow-hidden">
         {/* Background Illustrations - Hidden on mobile */}
@@ -250,14 +250,14 @@ const Dashboard = () => {
         </div>
         </div>
 
-        {/* Enhanced Stats Cards - Fully Responsive */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        {/* Enhanced Stats Cards - Optimized for 1366x768 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
           <div className="stat-card card-hover slide-up overflow-hidden">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
                 <p className="stat-label truncate">Monthly Income</p>
-                <p className="stat-value text-lg sm:text-2xl lg:text-3xl break-words">{formatCurrency(summary.income)}</p>
-                <p className="text-xs sm:text-sm text-emerald-600 font-medium truncate">
+                <p className="stat-value text-xl sm:text-2xl lg:text-3xl break-words">{formatCurrency(summary.income)}</p>
+                <p className="text-xs sm:text-sm text-emerald-600 font-medium truncate mt-1">
                   +{summary.income_count} transactions
                 </p>
               </div>
@@ -359,18 +359,18 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Enhanced Main Content Grid - Fully Responsive */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+        {/* Enhanced Main Content Grid - Optimized for 1366x768 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5 xl:gap-6">
           {/* Recent Transactions - Enhanced */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 slide-up overflow-hidden" style={{ animationDelay: '0.3s' }}>
-            <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sm:p-6 slide-up overflow-hidden" style={{ animationDelay: '0.3s' }}>
+            <div className="flex items-center justify-between mb-5 sm:mb-6">
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Recent Transactions</h2>
               <Link to="/transactions" className="btn-secondary text-xs sm:text-sm whitespace-nowrap">
                 View All
               </Link>
             </div>
 
-            <div className="space-y-2 sm:space-y-3 max-h-96 overflow-y-auto">
+            <div className="space-y-3 max-h-96 overflow-y-auto">
               {recentTransactions.length > 0 ? (
                 recentTransactions.map((transaction) => (
                   <div
@@ -379,20 +379,20 @@ const Dashboard = () => {
                       transaction.type === 'income' ? 'transaction-income' : 'transaction-expense'
                     }`}
                   >
-                    <div className="flex items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">{transaction.description}</p>
-                        <p className="text-xs sm:text-sm text-gray-500">
+                        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
                           {transaction.category} • {formatDate(transaction.date)}
                         </p>
                         {transaction.is_hustle_related && (
-                          <span className="inline-block mt-1 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                          <span className="inline-block mt-1.5 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
                             Side Hustle
                           </span>
                         )}
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className={`font-bold text-sm sm:text-base ${
+                        <p className={`font-bold text-sm sm:text-base whitespace-nowrap ${
                           transaction.type === 'income' ? 'text-emerald-600' : 'text-red-500'
                         }`}>
                           {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
@@ -411,35 +411,35 @@ const Dashboard = () => {
             </div>
             
             {/* Quick Stats */}
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
-                  <p className="text-sm font-bold text-gray-900">{totalTransactions}</p>
-                  <p className="text-xs text-gray-500">Total</p>
+                  <p className="text-base sm:text-lg font-bold text-gray-900">{totalTransactions}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Total</p>
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-emerald-600">{summary.income_count}</p>
-                  <p className="text-xs text-gray-500">Income</p>
+                  <p className="text-base sm:text-lg font-bold text-emerald-600">{summary.income_count}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Income</p>
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-red-500">{summary.expense_count}</p>
-                  <p className="text-xs text-gray-500">Expenses</p>
+                  <p className="text-base sm:text-lg font-bold text-red-500">{summary.expense_count}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Expenses</p>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Enhanced Leaderboard & Achievements - Live Updates */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 slide-up overflow-hidden" style={{ animationDelay: '0.4s' }}>
-            <div className="flex items-center gap-2 mb-4 sm:mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sm:p-6 slide-up overflow-hidden" style={{ animationDelay: '0.4s' }}>
+            <div className="flex items-center gap-2 mb-5 sm:mb-6">
               <TrophyIcon className="w-5 sm:w-6 h-5 sm:h-6 text-yellow-500" />
               <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Live Rankings</h2>
               <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">LIVE</span>
             </div>
 
-            <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-6 max-h-64 overflow-y-auto">
+            <div className="space-y-3 mb-5 sm:mb-6 max-h-64 overflow-y-auto">
               {leaderboard.length > 0 ? leaderboard.slice(0, 5).map((user, index) => (
-                <div key={index} className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <div className={`w-6 sm:w-8 h-6 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold flex-shrink-0 ${
                       index === 0 ? 'bg-yellow-500 text-white' :
@@ -475,21 +475,21 @@ const Dashboard = () => {
             </div>
 
             {/* Enhanced User Progress Stats */}
-            <div className="border-t pt-4 sm:pt-6">
-              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+            <div className="border-t border-gray-100 pt-5">
+              <div className="flex items-center gap-2 sm:gap-3 mb-4">
                 <FireIcon className="w-4 sm:w-5 h-4 sm:h-5 text-orange-500" />
                 <h3 className="font-semibold text-gray-900 text-sm sm:text-base">Your Progress</h3>
                 {refreshing && <div className="w-3 h-3 animate-spin rounded-full border-2 border-orange-500 border-t-transparent"></div>}
               </div>
               
-              <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                <div className="text-center p-2 sm:p-3 bg-emerald-50 rounded-lg">
-                  <p className="text-lg sm:text-2xl font-bold text-emerald-600">{insights?.income_streak || 0}</p>
-                  <p className="text-xs sm:text-sm text-emerald-700">Income Streak</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-center p-3 sm:p-4 bg-emerald-50 rounded-lg">
+                  <p className="text-xl sm:text-2xl font-bold text-emerald-600">{insights?.income_streak || 0}</p>
+                  <p className="text-xs text-emerald-700 mt-1">Income Streak</p>
                 </div>
-                <div className="text-center p-2 sm:p-3 bg-purple-50 rounded-lg">
-                  <p className="text-lg sm:text-2xl font-bold text-purple-600">{gamificationProfile?.total_badges || 0}</p>
-                  <p className="text-xs sm:text-sm text-purple-700">Achievements</p>
+                <div className="text-center p-3 sm:p-4 bg-purple-50 rounded-lg">
+                  <p className="text-xl sm:text-2xl font-bold text-purple-600">{gamificationProfile?.total_badges || 0}</p>
+                  <p className="text-xs text-purple-700 mt-1">Achievements</p>
                 </div>
               </div>
             </div>
@@ -497,7 +497,7 @@ const Dashboard = () => {
         </div>
 
         {/* Enhanced Real-time Alerts & Engagement Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5 xl:gap-6">
           {/* Enhanced Daily Tips Widget */}
           {dailyTip && (
             <div className="bg-gradient-to-br from-emerald-50 to-green-100 rounded-xl border border-emerald-200 p-4 sm:p-6 slide-up overflow-hidden">
@@ -630,7 +630,7 @@ const Dashboard = () => {
         </div>
 
         {/* Enhanced Engagement Features Section - Real-time Updates */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5 xl:gap-6">
           {/* Enhanced Daily Tips with Live Data */}
           <div>
             <DailyTips 
