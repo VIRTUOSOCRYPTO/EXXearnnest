@@ -456,43 +456,42 @@ const FriendsAndReferrals = () => {
       </div>
 
       {/* Tab Navigation & Controls */}
-      <div className="flex items-center justify-between">
-        <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 w-full">
-          <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg w-fit min-w-full sm:min-w-0">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="overflow-x-auto scrollbar-hide w-full sm:w-auto">
+          <div className="flex space-x-1 bg-gray-100 p-1.5 rounded-lg w-fit min-w-full sm:min-w-0">
             <Button
               onClick={() => setActiveTab('friends')}
               variant={activeTab === 'friends' ? 'default' : 'ghost'}
-              className={`${activeTab === 'friends' ? 'btn-primary flex items-center gap-2 text-xs sm:text-sm px-3 sm:px-6 py-2 sm:py-3' : 'px-3 sm:px-6 text-xs sm:text-sm'} whitespace-nowrap flex-shrink-0`}
+              className={`${activeTab === 'friends' ? 'btn-primary' : ''} flex items-center gap-1.5 text-xs sm:text-sm px-3 sm:px-5 py-2.5 whitespace-nowrap flex-shrink-0`}
             >
-              <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Friends Network</span>
-              <span className="xs:hidden">Friends</span>
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Friends Network</span>
+              <span className="sm:hidden">Friends</span>
               {liveStats?.friends_count > 0 && (
-                <Badge variant="secondary" className="ml-1 sm:ml-2 text-xs">{liveStats.friends_count}</Badge>
+                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0.5">{liveStats.friends_count}</Badge>
               )}
             </Button>
             <Button
               onClick={() => setActiveTab('referrals')}
               variant={activeTab === 'referrals' ? 'default' : 'ghost'}
-              className={`${activeTab === 'referrals' ? 'btn-primary flex items-center gap-2 text-xs sm:text-sm px-3 sm:px-6 py-2 sm:py-3' : 'px-3 sm:px-6 text-xs sm:text-sm'} whitespace-nowrap flex-shrink-0`}
+              className={`${activeTab === 'referrals' ? 'btn-primary' : ''} flex items-center gap-1.5 text-xs sm:text-sm px-3 sm:px-5 py-2.5 whitespace-nowrap flex-shrink-0`}
             >
-              <Gift className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Refer & Earn</span>
-              <span className="xs:hidden">Refer</span>
+              <Gift className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Refer & Earn</span>
+              <span className="sm:hidden">Refer</span>
               {liveStats?.total_referrals > 0 && (
-                <Badge variant="secondary" className="ml-1 sm:ml-2 text-xs">{liveStats.total_referrals}</Badge>
+                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0.5">{liveStats.total_referrals}</Badge>
               )}
             </Button>
             <Button
               onClick={() => setActiveTab('activity')}
               variant={activeTab === 'activity' ? 'default' : 'ghost'}
-              className={`${activeTab === 'activity' ? 'btn-primary flex items-center gap-2 text-xs sm:text-sm px-3 sm:px-6 py-2 sm:py-3' : 'px-3 sm:px-6 text-xs sm:text-sm'} whitespace-nowrap flex-shrink-0`}
+              className={`${activeTab === 'activity' ? 'btn-primary' : ''} flex items-center gap-1.5 text-xs sm:text-sm px-3 sm:px-5 py-2.5 whitespace-nowrap flex-shrink-0`}
             >
-              <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden xs:inline">Activity</span>
-              <span className="xs:hidden">Activity</span>
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span>Activity</span>
               {liveStats?.recent_friend_activities > 0 && (
-                <Badge variant="secondary" className="ml-1 sm:ml-2 text-xs">{liveStats.recent_friend_activities}</Badge>
+                <Badge variant="secondary" className="ml-1 text-xs px-1.5 py-0.5">{liveStats.recent_friend_activities}</Badge>
               )}
             </Button>
           </div>
