@@ -242,9 +242,13 @@ const Register = () => {
           setError('Phone number is required');
           return false;
         }
-        const phone = formData.phone_number.replace(/[^0-9+]/g, '');
-        if (!/^\+?\d{10,15}$/.test(phone)) {
-          setError('Phone number must be 10-15 digits');
+        const phone = formData.phone_number.replace(/[^0-9]/g, '');
+        if (phone.length !== 10) {
+          setError('Phone number must be exactly 10 digits');
+          return false;
+        }
+        if (!/^[6-9]\d{9}$/.test(phone)) {
+          setError('Invalid Indian phone number (must start with 6, 7, 8, or 9)');
           return false;
         }
         if (formData.password !== formData.confirmPassword) {
@@ -272,6 +276,14 @@ const Register = () => {
         const location = formData.location.trim();
         if (!location.includes(',') && location.split(' ').length < 2) {
           setError('Location should include city and state/country');
+          return false;
+        }
+        if (!formData.university || !formData.university.trim()) {
+          setError('University/College is required');
+          return false;
+        }
+        if (formData.university.trim().length < 3) {
+          setError('University/College name must be at least 3 characters long');
           return false;
         }
         break;
@@ -487,7 +499,7 @@ const Register = () => {
                     value={formData.phone_number}
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all bg-white/50"
-                    placeholder="Enter your phone number (10-15 digits)"
+                    placeholder="Enter your phone number (10 digits)"
                     required
                   />
                 </div>
@@ -663,7 +675,8 @@ const Register = () => {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    University/College (Optional)
+                    University/College *
+                    <span className="text-xs text-gray-500 ml-2">(Required)</span>
                   </label>
                   
                   <div className="space-y-3">
@@ -672,8 +685,9 @@ const Register = () => {
                       value={formData.university}
                       onChange={handleChange}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all bg-white/50"
+                      required
                     >
-                      <option value="">Select your institution (optional)</option>
+                      <option value="">Select your institution *</option>
                       
                       {suggestedUniversities.length > 0 && (
                         <optgroup label="🎯 Recommended for you">
